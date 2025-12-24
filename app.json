@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "MeFinance",
+    "slug": "mefinance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/MeFiance.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1A1A1A"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mefinance.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/MeFiance.png",
+        "backgroundColor": "#1A1A1A"
+      },
+      "package": "com.mefinance.app"
+    },
+    "web": {
+      "favicon": "./assets/MeFiance.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#F8F8F8"
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      "expo-sqlite"
+    ]
+  }
+}
