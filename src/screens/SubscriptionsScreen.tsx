@@ -12,6 +12,7 @@ import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
+import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
@@ -107,7 +108,11 @@ export default function SubscriptionsScreen() {
 
   if (loading && !refreshing) {
     return (
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.container} 
+        contentInsetAdjustmentBehavior="never"
+        showsVerticalScrollIndicator={false}
+      >
         <SkeletonHeader />
         <View style={styles.skeletonStatsContainer}>
           <SkeletonStatCard />
@@ -125,14 +130,15 @@ export default function SubscriptionsScreen() {
     <View style={styles.container}>
       <ScrollView
         style={styles.scrollView}
+        contentInsetAdjustmentBehavior="never"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <Text style={styles.title}>Subscriptions</Text>
-          <Text style={styles.subtitle}>Track your recurring payments</Text>
-        </View>
+        <ScreenHeader
+          title="Subscriptions"
+          subtitle="Track your recurring payments"
+        />
 
         {/* Stats */}
         <View style={styles.statsContainer}>
@@ -323,22 +329,6 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -1,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   statsContainer: {
     flexDirection: 'row',

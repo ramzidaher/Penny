@@ -10,13 +10,13 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import { SkeletonList } from '../components/SkeletonLoader';
+import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 
 export default function DebtsScreen() {
   const navigation = useNavigation();
-  const insets = useSafeAreaInsets();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -105,8 +105,14 @@ export default function DebtsScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <ScreenHeader
+        title="Debts"
+        subtitle="Track your loans and credit"
+      />
+      
       {/* Header Stats */}
-      <View style={[styles.headerStats, { paddingTop: insets.top + 20 }]}>
+      <View style={styles.headerStats}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{activeDebts.length}</Text>
           <Text style={styles.statLabel}>Active Debts</Text>
@@ -231,8 +237,8 @@ const styles = StyleSheet.create({
   },
   headerStats: {
     flexDirection: 'row',
-    padding: 20,
-    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     gap: 12,
   },
   statCard: {

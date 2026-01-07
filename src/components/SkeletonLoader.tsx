@@ -94,8 +94,12 @@ export const SkeletonStatCard = () => (
 
 export const SkeletonHeader = () => {
   const insets = useSafeAreaInsets();
+  // #region agent log
+  const skeletonPadding = insets.top + 16; // Match ScreenHeader padding
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/components/SkeletonLoader.tsx:98',message:'SkeletonHeader padding calculation',data:{insetsTop:insets.top,skeletonPadding:skeletonPadding},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'E'})}).catch(()=>{});
+  // #endregion
   return (
-    <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+    <View style={[styles.header, { paddingTop: skeletonPadding }]}>
       <SkeletonLoader width={200} height={32} style={styles.marginBottom} />
       <SkeletonLoader width={150} height={16} />
     </View>

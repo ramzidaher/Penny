@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
@@ -12,13 +11,13 @@ import { getTransactionIcon } from '../utils/icons';
 import { getSubscriptionIcon } from '../utils/icons';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
+import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -100,7 +99,11 @@ export default function HomeScreen() {
 
   if (loading && !refreshing) {
     return (
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.container} 
+        contentInsetAdjustmentBehavior="never"
+        showsVerticalScrollIndicator={false}
+      >
         <SkeletonHeader />
         <View style={styles.skeletonContainer}>
           <View style={styles.skeletonBalanceCard}>
@@ -126,24 +129,25 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.container}
+      contentInsetAdjustmentBehavior="never"
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       showsVerticalScrollIndicator={false}
     >
+      {/* #region agent log */}
+      {(() => {
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/screens/HomeScreen.tsx:126',message:'HomeScreen container structure',data:{hasViewWrapper:false,hasScrollView:true,directScrollView:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'B'})}).catch(()=>{});
+        return null;
+      })()}
+      {/* #endregion */}
       {/* Header Section */}
-      <View style={[styles.header, { paddingTop: Math.min(insets.top + 4, 16) }]}>
-        <View style={styles.headerTop}>
-          <View>
-            <Text style={styles.greeting}>{getGreeting()}</Text>
-            <Text style={styles.userName}>Welcome back</Text>
-          </View>
-          <TouchableOpacity 
-            style={styles.notificationButton}
-            onPress={() => router.push('/(tabs)/finance/settings')}
-          >
-            <Ionicons name="settings-outline" size={24} color={colors.text} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScreenHeader
+        subtitle={getGreeting()}
+        title="Welcome back"
+        rightAction={{
+          icon: "settings-outline",
+          onPress: () => router.push('/(tabs)/finance/settings')
+        }}
+      />
 
       {/* Balance Card */}
       <View style={styles.balanceCard}>
@@ -160,46 +164,6 @@ export default function HomeScreen() {
             <Text style={styles.balanceStatValue}>{formatCurrencySync(monthlyExpenses, currencyCode)}</Text>
           </View>
         </View>
-      </View>
-
-      {/* Quick Actions */}
-      <View style={styles.quickActions}>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/finance')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Add Transaction</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/finance')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="wallet-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Accounts</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/finance')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="pie-chart-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Budgets</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/ai')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="chatbubbles-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>AI Advisor</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Recent Transactions */}
@@ -333,37 +297,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-  },
-  headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  greeting: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 4,
-    fontWeight: '500',
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  notificationButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
   balanceCard: {
     backgroundColor: colors.primary,
     marginHorizontal: 20,
@@ -413,35 +346,6 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     marginHorizontal: 16,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 32,
-    gap: 12,
-  },
-  quickActionButton: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-  },
-  quickActionIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  quickActionLabel: {
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: '500',
-    textAlign: 'center',
   },
   section: {
     paddingHorizontal: 20,

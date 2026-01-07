@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Activi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { askAI, canAffordPurchase } from '../services/aiService';
+import ScreenHeader from '../components/ScreenHeader';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -67,12 +68,14 @@ export default function AIScreen() {
       <ScrollView
         ref={scrollViewRef}
         style={styles.scrollView}
+        contentInsetAdjustmentBehavior="never"
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <Text style={styles.title}>AI Financial Advisor</Text>
-          <Text style={styles.subtitle}>Ask me anything about your finances</Text>
-        </View>
+        <ScreenHeader
+          title="AI Financial Advisor"
+          subtitle="Ask me anything about your finances"
+        />
 
         {response ? (
           <View style={styles.responseContainer}>
@@ -140,22 +143,6 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 100,
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -1,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',

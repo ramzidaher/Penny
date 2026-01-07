@@ -18,6 +18,7 @@ import { getAccounts, getTransactions, getBudgets } from '../database/db';
 import { Account, Transaction, Budget } from '../database/schema';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
+import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import SettingsScreen from './SettingsScreen';
 import { getSettings } from '../services/settingsService';
@@ -93,6 +94,16 @@ function FinanceHomeScreen({ navigation }: any) {
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.currentSpent, 0);
 
+  const getProgressPercentage = (budget: Budget) => {
+    return Math.min((budget.currentSpent / budget.limit) * 100, 100);
+  };
+
+  const getProgressColor = (percentage: number) => {
+    if (percentage >= 100) return colors.error;
+    if (percentage >= 80) return colors.textSecondary;
+    return colors.primary;
+  };
+
   if (loading && !refreshing) {
     return (
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -116,10 +127,10 @@ function FinanceHomeScreen({ navigation }: any) {
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Finance</Text>
-        <Text style={styles.subtitle}>Manage your money</Text>
-      </View>
+      <ScreenHeader
+        title="Finance"
+        subtitle="Manage your money"
+      />
 
       {/* Quick Stats */}
       <View style={styles.statsContainer}>
@@ -157,7 +168,6 @@ function FinanceHomeScreen({ navigation }: any) {
                 {formatCurrencySync(monthlyIncome, currencyCode)}
               </Text>
             </View>
-            <View style={styles.overviewDivider} />
             <View style={styles.overviewItem}>
               <Text style={styles.overviewLabel}>Expenses</Text>
               <Text style={[styles.overviewAmount, styles.expenseText]}>
@@ -185,6 +195,68 @@ function FinanceHomeScreen({ navigation }: any) {
           )}
         </View>
       </View>
+
+      {/* Budgets List */}
+      {budgets.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Budgets</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Budgets')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          {budgets.slice(0, 3).map((budget) => {
+            const percentage = getProgressPercentage(budget);
+            const progressColor = getProgressColor(percentage);
+            
+            return (
+              <View key={budget.id} style={styles.budgetCard}>
+                <View style={styles.budgetHeader}>
+                  <Text style={styles.budgetCategory}>{budget.category}</Text>
+                  <Text style={styles.budgetPeriod}>{budget.period}</Text>
+                </View>
+                <View style={styles.budgetAmounts}>
+                  <Text style={styles.budgetSpent}>
+                    {formatCurrencySync(budget.currentSpent, currencyCode)}
+                  </Text>
+                  <Text style={styles.budgetLimit}>
+                    / {formatCurrencySync(budget.limit, currencyCode)}
+                  </Text>
+                  <Text style={styles.budgetPercent}>
+                    {percentage.toFixed(0)}%
+                  </Text>
+                </View>
+                <View style={styles.progressContainer}>
+                  <View 
+                    style={[
+                      styles.progressBar, 
+                      { 
+                        width: `${percentage}%`, 
+                        backgroundColor: progressColor 
+                      }
+                    ]} 
+                  />
+                </View>
+              </View>
+            );
+          })}
+          {budgets.length > 3 && (
+            <TouchableOpacity
+              style={styles.viewMoreButton}
+              onPress={() => navigation.navigate('Budgets')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewMoreText}>
+                View {budgets.length - 3} more budget{budgets.length - 3 !== 1 ? 's' : ''}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* Quick Actions */}
       <View style={styles.section}>
@@ -295,34 +367,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    padding: 20,
-    paddingTop: 60,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -1,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 24,
+    marginBottom: 20,
     gap: 12,
   },
   statCard: {
     flex: 1,
     backgroundColor: colors.surface,
     borderRadius: 20,
-    padding: 20,
+    padding: 16,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
@@ -334,7 +389,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.border,
   },
@@ -351,26 +406,26 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 20,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 16,
+    marginBottom: 12,
     letterSpacing: -0.5,
   },
   overviewCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
-    padding: 24,
+    padding: 20,
     borderWidth: 1,
     borderColor: colors.border,
   },
   overviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   overviewItem: {
     alignItems: 'center',
@@ -379,7 +434,7 @@ const styles = StyleSheet.create({
   overviewLabel: {
     fontSize: 13,
     color: colors.textSecondary,
-    marginBottom: 8,
+    marginBottom: 6,
     fontWeight: '500',
   },
   overviewAmount: {
@@ -392,16 +447,8 @@ const styles = StyleSheet.create({
   expenseText: {
     color: colors.text,
   },
-  overviewDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    marginHorizontal: 16,
-  },
   budgetOverview: {
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    marginTop: 12,
   },
   budgetOverviewHeader: {
     flexDirection: 'row',
@@ -477,5 +524,86 @@ const styles = StyleSheet.create({
   },
   skeletonContainer: {
     paddingHorizontal: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  budgetCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  budgetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  budgetCategory: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  budgetPeriod: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  budgetAmounts: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    marginBottom: 8,
+  },
+  budgetSpent: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  budgetLimit: {
+    fontSize: 16,
+    color: colors.textSecondary,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  budgetPercent: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginLeft: 'auto',
+    fontWeight: '600',
+  },
+  progressContainer: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  viewMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  viewMoreText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    marginRight: 4,
   },
 });
