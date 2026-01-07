@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from '../utils/navigation';
 import { addDebt, getAccounts, getBudgets } from '../database/db';
 import { Debt, Account, Budget } from '../database/schema';
 import { colors } from '../theme/colors';
@@ -372,4 +372,11 @@ const styles = StyleSheet.create({
     color: colors.background,
   },
 });
+
+
+
+
+
+
+
 

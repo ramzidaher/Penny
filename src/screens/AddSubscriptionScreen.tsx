@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from '../utils/navigation';
 import { addSubscription, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';

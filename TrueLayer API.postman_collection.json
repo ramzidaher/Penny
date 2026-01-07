@@ -1,0 +1,686 @@
+{
+	"info": {
+		"_postman_id": "9fb65a02-dead-47f2-b6df-a286f163cf94",
+		"name": "TrueLayer API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "41555145",
+		"_collection_link": "https://ramzis-team.postman.co/workspace/Ramzi's-Team-Workspace~ab27ca71-94c9-4c86-9872-5916ed14e255/collection/41555145-9fb65a02-dead-47f2-b6df-a286f163cf94?action=share&source=collection_link&creator=41555145"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Exchange Code",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var parsedResponse = JSON.parse(responseBody);",
+									"pm.globals.set(\"TL_ACCESS_TOKEN\", parsedResponse.access_token);",
+									"pm.globals.set(\"TL_REFRESH_TOKEN\", parsedResponse.refresh_token);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "grant_type",
+									"value": "authorization_code",
+									"type": "text"
+								},
+								{
+									"key": "client_id",
+									"value": "{{client_id}}",
+									"type": "text"
+								},
+								{
+									"key": "client_secret",
+									"value": "{{client_secret}}",
+									"type": "text"
+								},
+								{
+									"key": "redirect_uri",
+									"value": "https://console.truelayer.com/redirect-page",
+									"type": "text"
+								},
+								{
+									"key": "code",
+									"value": "{{auth_dialog_code}}",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://{{auth_api}}/connect/token",
+							"protocol": "https",
+							"host": [
+								"{{auth_api}}"
+							],
+							"path": [
+								"connect",
+								"token"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh access token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"var parsedResponse = JSON.parse(responseBody);",
+									"pm.globals.set(\"TL_ACCESS_TOKEN\", parsedResponse.access_token);",
+									"pm.globals.set(\"TL_REFRESH_TOKEN\", parsedResponse.refresh_token);"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "urlencoded",
+							"urlencoded": [
+								{
+									"key": "grant_type",
+									"value": "refresh_token",
+									"type": "text"
+								},
+								{
+									"key": "client_id",
+									"value": "{{client_id}}",
+									"type": "text"
+								},
+								{
+									"key": "client_secret",
+									"value": "{{client_secret}}",
+									"type": "text"
+								},
+								{
+									"key": "refresh_token",
+									"value": "{{TL_REFRESH_TOKEN}}",
+									"type": "text"
+								}
+							]
+						},
+						"url": {
+							"raw": "https://{{auth_api}}/connect/token",
+							"protocol": "https",
+							"host": [
+								"{{auth_api}}"
+							],
+							"path": [
+								"connect",
+								"token"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit access token for debug",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"access_token\": \"{{TL_ACCESS_TOKEN}}\"}\n",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://{{auth_api}}/api/debug",
+							"protocol": "https",
+							"host": [
+								"{{auth_api}}"
+							],
+							"path": [
+								"api",
+								"debug"
+							]
+						}
+					},
+					"response": []
+				}
+			],
+			"event": [
+				{
+					"listen": "prerequest",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				},
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							""
+						]
+					}
+				}
+			]
+		},
+		{
+			"name": "Data API",
+			"item": [
+				{
+					"name": "Cards",
+					"item": [
+						{
+							"name": "List all cards",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var parsedResponse = JSON.parse(responseBody);",
+											"pm.globals.set(\"card_id\", parsedResponse.results[0].account_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/cards",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"cards"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve a card",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/cards/{{card_id}}",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"cards",
+										"{{card_id}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve a card balance",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/cards/{{card_id}}/balance",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"cards",
+										"{{card_id}}",
+										"balance"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve card transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/cards/{{card_id}}/transactions",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"cards",
+										"{{card_id}}",
+										"transactions"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve card pending transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/cards/{{card_id}}/transactions/pending",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"cards",
+										"{{card_id}}",
+										"transactions",
+										"pending"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Accounts",
+					"item": [
+						{
+							"name": "List all accounts",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"var parsedResponse = JSON.parse(responseBody);",
+											"pm.globals.set(\"account_id\", parsedResponse.results[0].account_id);"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve an account",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve account balance",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}/balance",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}",
+										"balance"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve account transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}/transactions",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}",
+										"transactions"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve account pending transactions",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}/transactions/pending",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}",
+										"transactions",
+										"pending"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve direct debits",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}/direct_debits",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}",
+										"direct_debits"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Retrieve standing orders",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{TL_ACCESS_TOKEN}}"
+									}
+								],
+								"url": {
+									"raw": "https://{{api}}/data/v1/accounts/{{account_id}}/standing_orders",
+									"protocol": "https",
+									"host": [
+										"{{api}}"
+									],
+									"path": [
+										"data",
+										"v1",
+										"accounts",
+										"{{account_id}}",
+										"standing_orders"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Retrieve access_token metadata",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{TL_ACCESS_TOKEN}}"
+							}
+						],
+						"url": {
+							"raw": "https://{{api}}/data/v1/me",
+							"protocol": "https",
+							"host": [
+								"{{api}}"
+							],
+							"path": [
+								"data",
+								"v1",
+								"me"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Retrieve identity information",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{TL_ACCESS_TOKEN}}"
+							}
+						],
+						"url": {
+							"raw": "https://{{api}}/data/v1/info",
+							"protocol": "https",
+							"host": [
+								"{{api}}"
+							],
+							"path": [
+								"data",
+								"v1",
+								"info"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Verification",
+			"item": [
+				{
+					"name": "Verify Account Holder",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"",
+									""
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{access_token}}",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Smith\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "https://{{api}}/verification/v1/verify",
+							"protocol": "https",
+							"host": [
+								"{{api}}"
+							],
+							"path": [
+								"verification",
+								"v1",
+								"verify"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "client_id",
+			"value": ""
+		},
+		{
+			"key": "client_secret",
+			"value": ""
+		},
+		{
+			"key": "auth_api",
+			"value": "auth.truelayer.com"
+		},
+		{
+			"key": "api",
+			"value": "api.truelayer.com"
+		},
+		{
+			"key": "auth_dialog_code",
+			"value": ""
+		}
+	]
+}

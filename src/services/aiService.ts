@@ -59,7 +59,7 @@ export const askAI = async (question: string): Promise<string> => {
   try {
     const financialData = await getFinancialData();
     
-    const prompt = `You are a financial advisor AI assistant for MeFinance app. Analyze the following financial data and answer the user's question.
+    const prompt = `You are a financial advisor AI assistant for Penny app. Analyze the following financial data and answer the user's question.
 
 Financial Summary:
 - Total Balance: $${financialData.totalBalance.toFixed(2)}
@@ -128,4 +128,11 @@ export const canAffordPurchase = async (amount: number, description?: string): P
   
   return askAI(question);
 };
+
+
+
+
+
+
+
 

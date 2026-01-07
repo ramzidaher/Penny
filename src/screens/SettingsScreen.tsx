@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Platform } from 'react-native';
+import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getSettings, updateSettings } from '../services/settingsService';
 import { AppSettings } from '../database/settingsSchema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { waitForFirebase } from '../services/firebase';
-import { scheduleAllNotifications } from '../services/notifications';
+import { waitForFirebase, logoutUser, getUserEmail } from '../services/firebase';
+import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 
 const currencies = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -41,11 +42,11 @@ export default function SettingsScreen() {
     }
   };
 
-  useEffect(() => {
-    loadSettings();
-    const unsubscribe = navigation.addListener('focus', loadSettings);
-    return unsubscribe;
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      loadSettings();
+    }, [])
+  );
 
   const handleUpdate = async (updates: Partial<AppSettings>) => {
     if (!settings) return;
@@ -318,6 +319,110 @@ export default function SettingsScreen() {
         )}
       </View>
 
+      {/* Test Notifications */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Test Notifications</Text>
+        <View style={styles.sectionCard}>
+          <Text style={styles.settingDescription}>
+            Send a test notification to verify notifications are working correctly.
+          </Text>
+          <TouchableOpacity
+            style={styles.testButton}
+            onPress={async () => {
+              try {
+                const hasPermission = await requestPermissions();
+                if (!hasPermission) {
+                  Alert.alert('Permission Required', 'Please enable notification permissions in your device settings.');
+                  return;
+                }
+                await sendTestNotification('generic');
+                Alert.alert('Success', 'Test notification sent! Check your notification tray.');
+              } catch (error: any) {
+                Alert.alert('Error', error.message || 'Failed to send test notification');
+              }
+            }}
+          >
+            <Ionicons name="notifications-outline" size={20} color={colors.background} />
+            <Text style={styles.testButtonText}>Send Test Notification</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Account Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Account</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Email</Text>
+              <Text style={styles.settingDescription}>
+                {getUserEmail() || 'Not signed in'}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={styles.logoutButton}
+            onPress={async () => {
+              console.log('Sign out button clicked!');
+              
+              // Use web-compatible confirmation
+              const confirmSignOut = () => {
+                if (Platform.OS === 'web') {
+                  return window.confirm('Are you sure you want to sign out?');
+                } else {
+                  return new Promise<boolean>((resolve) => {
+                    Alert.alert(
+                      'Sign Out',
+                      'Are you sure you want to sign out?',
+                      [
+                        { 
+                          text: 'Cancel', 
+                          style: 'cancel',
+                          onPress: () => resolve(false)
+                        },
+                        {
+                          text: 'Sign Out',
+                          style: 'destructive',
+                          onPress: () => resolve(true),
+                        },
+                      ],
+                      { cancelable: true, onDismiss: () => resolve(false) }
+                    );
+                  });
+                }
+              };
+
+              const shouldSignOut = await confirmSignOut();
+              
+              if (shouldSignOut) {
+                try {
+                  console.log('Signing out...');
+                  await logoutUser();
+                  console.log('Sign out successful - App.tsx should handle navigation');
+                  // Navigation will be handled by App.tsx auth state listener
+                } catch (error: any) {
+                  console.error('Sign out error:', error);
+                  if (Platform.OS === 'web') {
+                    window.alert(error.message || 'Failed to sign out. Please try again.');
+                  } else {
+                    Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
+                  }
+                }
+              } else {
+                console.log('Sign out cancelled');
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.background} />
+            <Text style={styles.logoutButtonText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       <View style={styles.bottomPadding} />
     </ScrollView>
   );
@@ -479,6 +584,35 @@ const styles = StyleSheet.create({
   },
   thresholdButtonTextActive: {
     color: colors.primary,
+  },
+  testButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 12,
+    gap: 8,
+  },
+  testButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    padding: 16,
+    gap: 8,
+  },
+  logoutButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.background,
   },
   bottomPadding: {
     height: 40,

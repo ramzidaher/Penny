@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "MeFinance",
-    "slug": "mefinance",
+    "name": "Penny",
+    "slug": "penny",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/MeFiance.png",
+    "icon": "./assets/Penny Logo RD.png",
     "userInterfaceStyle": "automatic",
+    "scheme": "penny",
+    "main": "expo-router/entry",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -16,17 +18,37 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mefinance.app"
+      "bundleIdentifier": "com.penny.app",
+      "associatedDomains": [],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/MeFiance.png",
+        "foregroundImage": "./assets/Penny Logo RD.png",
         "backgroundColor": "#1A1A1A"
       },
-      "package": "com.mefinance.app"
+      "package": "com.penny.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "penny",
+              "host": "truelayer-callback"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
-      "favicon": "./assets/MeFiance.png",
+      "favicon": "./assets/Penny Logo RD.png",
       "bundler": "metro",
       "output": "single"
     },
@@ -40,6 +62,11 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-sqlite"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ddf1d704-a3b6-4f48-85c3-038424c2a2c9"
+      }
+    }
   }
 }

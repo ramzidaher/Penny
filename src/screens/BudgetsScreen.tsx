@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
+import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getBudgets, deleteBudget } from '../database/db';
 import { Budget } from '../database/schema';
@@ -35,16 +36,14 @@ export default function BudgetsScreen() {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadBudgets();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadBudgets);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadBudgets();
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -211,10 +210,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
-    shadowColor: '#1A1A1A',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      },
+      web: {
+        boxShadow: '0px 2px 3.84px rgba(26, 26, 26, 0.25)',
+      },
+    }),
   },
 });
 

@@ -1,10 +1,13 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { getSubscriptions, getBudgets, getTransactions, getAccounts, getDebts } from '../database/db';
 import { getSettings } from './settingsService';
 import { format, addDays, differenceInDays, startOfMonth, endOfMonth, startOfDay, isToday } from 'date-fns';
 
 // Configure notification handler (will be updated based on settings)
 const updateNotificationHandler = async () => {
+  if (Platform.OS === 'web') return;
+  
   try {
     const settings = await getSettings();
     Notifications.setNotificationHandler({
@@ -34,6 +37,11 @@ const updateNotificationHandler = async () => {
 updateNotificationHandler();
 
 export const requestPermissions = async () => {
+  // Notifications API is not available on web
+  if (Platform.OS === 'web') {
+    return false;
+  }
+  
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
   
@@ -53,11 +61,17 @@ export const requestPermissions = async () => {
 
 // Cancel all existing notifications and reschedule
 export const cancelAllNotifications = async () => {
+  // Notifications API is not available on web
+  if (Platform.OS === 'web') {
+    return;
+  }
   await Notifications.cancelAllScheduledNotificationsAsync();
 };
 
 // Low balance alerts for accounts
 export const checkLowBalanceAlerts = async () => {
+  if (Platform.OS === 'web') return;
+  
   const settings = await getSettings();
   if (!settings.enableLowBalanceAlerts) return;
   
@@ -89,12 +103,18 @@ export const checkLowBalanceAlerts = async () => {
 
 // Daily account update reminder
 export const scheduleDailyAccountUpdateReminder = async () => {
+  if (Platform.OS === 'web') return;
+  
   const settings = await getSettings();
   if (!settings.enableDailyReminders) return;
   
   // Parse time from settings (HH:mm format)
   const [hours, minutes] = settings.dailyReminderTime.split(':').map(Number);
+  const targetHour = hours || 9;
+  const targetMinute = minutes || 0;
   
+  // Use DailyTriggerInput format with type property
+  // This will automatically repeat daily
   await Notifications.scheduleNotificationAsync({
     content: {
       title: 'Daily Account Update',
@@ -102,15 +122,17 @@ export const scheduleDailyAccountUpdateReminder = async () => {
       data: { type: 'daily_update' },
     },
     trigger: {
-      hour: hours || 9,
-      minute: minutes || 0,
-      repeats: true,
-    } as any,
+      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      hour: targetHour,
+      minute: targetMinute,
+    },
   });
 };
 
 // Subscription payment reminders
 export const scheduleSubscriptionReminders = async () => {
+  if (Platform.OS === 'web') return;
+  
   const settings = await getSettings();
   if (!settings.enableSubscriptionReminders) return;
   
@@ -156,7 +178,10 @@ export const scheduleSubscriptionReminders = async () => {
             body,
             data: { type: 'subscription', id: subscription.id, daysUntil: daysBefore },
           },
-        trigger: reminderDate as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: reminderDate,
+          },
         });
       }
     }
@@ -173,7 +198,10 @@ export const scheduleSubscriptionReminders = async () => {
             body: `${subscription.name} will be charged $${subscription.amount.toFixed(2)} today.`,
             data: { type: 'subscription', id: subscription.id, daysUntil: 0 },
           },
-        trigger: reminderDate as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: reminderDate,
+          },
         });
       }
     }
@@ -182,6 +210,8 @@ export const scheduleSubscriptionReminders = async () => {
 
 // Budget alerts
 export const checkBudgetAlerts = async () => {
+  if (Platform.OS === 'web') return;
+  
   const settings = await getSettings();
   if (!settings.enableBudgetAlerts) return;
   
@@ -239,6 +269,8 @@ export const checkBudgetAlerts = async () => {
 
 // Debt payment reminders
 export const scheduleDebtReminders = async () => {
+  if (Platform.OS === 'web') return;
+  
   const settings = await getSettings();
   if (!settings.enableSubscriptionReminders) return; // Use same setting for debt reminders
   
@@ -276,7 +308,10 @@ export const scheduleDebtReminders = async () => {
           body: `${debt.name} payment of ${amountText} is due in 3 days.`,
           data: { type: 'debt', id: debt.id, daysUntil: 3 },
         },
-        trigger: reminderDate as any,
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminderDate,
+        },
       });
     }
     
@@ -291,7 +326,10 @@ export const scheduleDebtReminders = async () => {
           body: `${debt.name} payment is due tomorrow.`,
           data: { type: 'debt', id: debt.id, daysUntil: 1 },
         },
-        trigger: reminderDate as any,
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminderDate,
+        },
       });
     }
     
@@ -307,7 +345,10 @@ export const scheduleDebtReminders = async () => {
             body: `${debt.name} payment is due today.`,
             data: { type: 'debt', id: debt.id, daysUntil: 0 },
           },
-          trigger: reminderDate as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: reminderDate,
+          },
         });
       }
     }
@@ -328,6 +369,8 @@ export const scheduleDebtReminders = async () => {
 
 // Payment reminders (for transactions with due dates - if you add this feature)
 export const schedulePaymentReminders = async () => {
+  if (Platform.OS === 'web') return;
+  
   // This can be extended if you add due dates to transactions
   // For now, we'll check for upcoming subscription payments
   const subscriptions = await getSubscriptions();
@@ -338,17 +381,23 @@ export const schedulePaymentReminders = async () => {
     
     // If payment is due today, send a reminder
     if (isToday(nextBilling)) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Payment Reminder',
-          body: `Don't forget: ${subscription.name} payment of $${subscription.amount.toFixed(2)} is due today.`,
-          data: { type: 'payment_reminder', id: subscription.id },
-        },
-        trigger: {
-          hour: 8,
-          minute: 0,
-        } as any,
-      });
+      const reminderDate = new Date(nextBilling);
+      reminderDate.setHours(8, 0, 0, 0);
+      
+      // Only schedule if the time hasn't passed yet
+      if (reminderDate > now) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Payment Reminder',
+            body: `Don't forget: ${subscription.name} payment of $${subscription.amount.toFixed(2)} is due today.`,
+            data: { type: 'payment_reminder', id: subscription.id },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: reminderDate,
+          },
+        });
+      }
     }
   }
 };
@@ -406,4 +455,63 @@ export const initializeNotifications = async () => {
     await scheduleAllNotifications();
   }
   return hasPermission;
+};
+
+// Test notification function - sends an immediate notification for testing
+export const sendTestNotification = async (type: 'low_balance' | 'subscription' | 'budget' | 'debt' | 'daily' | 'generic' = 'generic') => {
+  if (Platform.OS === 'web') {
+    throw new Error('Notifications are not available on web');
+  }
+  
+  const hasPermission = await requestPermissions();
+  if (!hasPermission) {
+    throw new Error('Notification permissions not granted');
+  }
+
+  const { getCurrencySymbol } = await import('../utils/currency');
+  const settings = await getSettings();
+  const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
+
+  let title = '';
+  let body = '';
+
+  switch (type) {
+    case 'low_balance':
+      title = 'Low Balance Alert';
+      body = `Test: Your account balance is below ${currencySymbol}${settings.lowBalanceThreshold}. Consider adding funds.`;
+      break;
+    case 'subscription':
+      title = 'Subscription Reminder';
+      body = `Test: Netflix subscription of ${currencySymbol}15.99 will be charged in 3 days.`;
+      break;
+    case 'budget':
+      title = 'Budget Alert';
+      body = `Test: You've used 85% of your Food & Dining budget. Only ${currencySymbol}50.00 remaining.`;
+      break;
+    case 'debt':
+      title = 'Debt Payment Due';
+      body = `Test: Credit Card payment of ${currencySymbol}100.00 is due in 3 days.`;
+      break;
+    case 'daily':
+      title = 'Daily Account Update';
+      body = "Test: Don't forget to update your account balances today!";
+      break;
+    case 'generic':
+    default:
+      title = 'Test Notification';
+      body = 'This is a test notification from Penny. If you see this, notifications are working!';
+      break;
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      data: { type: 'test', testType: type },
+      sound: true,
+    },
+    trigger: null, // Immediate
+  });
+
+  return true;
 };

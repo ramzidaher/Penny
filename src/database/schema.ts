@@ -4,6 +4,17 @@ export interface Account {
   type: 'bank' | 'card' | 'cash' | 'investment';
   balance: number;
   currency: string;
+  // Card-specific fields (only used when type === 'card')
+  linkedAccountId?: string; // The bank account this card is linked to
+  cardNumber?: string; // Full card number (stored securely, not displayed)
+  cardPin?: string; // Last 4 digits of card (for display)
+  cardLogo?: string; // Bank/issuer name for logo display
+  // TrueLayer-specific fields
+  truelayerConnectionId?: string; // ID to track which TrueLayer connection
+  truelayerAccountId?: string; // TrueLayer's account ID
+  isSynced?: boolean; // Whether account is synced from TrueLayer
+  lastSyncedAt?: string; // Last sync timestamp
+  truelayerAccountType?: string; // Account type from TrueLayer (savings, current, etc.)
   createdAt: string;
   updatedAt: string;
 }

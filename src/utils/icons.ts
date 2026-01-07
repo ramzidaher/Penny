@@ -28,6 +28,11 @@ export const getTransactionIcon = (category: string, description?: string): { na
     return { name: 'car', color: '#1A1A1A' };
   }
 
+  // Subscription
+  if (lowerCategory.includes('subscription') || lowerDesc.includes('subscription')) {
+    return { name: 'repeat', color: '#1A1A1A' };
+  }
+
   // Bills & Utilities
   if (lowerCategory.includes('bills') || lowerCategory.includes('utilities') ||
       lowerDesc.includes('electric') || lowerDesc.includes('water') ||
@@ -152,4 +157,6 @@ export const getSubscriptionIcon = (name: string): { name: keyof typeof Ionicons
   // Default subscription icon
   return { name: 'repeat', color: '#1A1A1A' };
 };
+
+
 

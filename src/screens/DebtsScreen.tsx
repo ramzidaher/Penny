@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
+import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getDebts, deleteDebt } from '../database/db';
 import { Debt } from '../database/schema';
@@ -36,16 +37,14 @@ export default function DebtsScreen() {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadDebts();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadDebts);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadDebts();
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -441,10 +440,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      web: {
+        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.25)',
+      },
+    }),
   },
 });
 

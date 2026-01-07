@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from '../utils/navigation';
 import AccountsScreen from './AccountsScreen';
 import TransactionsScreen from './TransactionsScreen';
 import BudgetsScreen from './BudgetsScreen';
@@ -10,6 +10,7 @@ import AddAccountScreen from './AddAccountScreen';
 import AddTransactionScreen from './AddTransactionScreen';
 import AddBudgetScreen from './AddBudgetScreen';
 import AddDebtScreen from './AddDebtScreen';
+import ConnectBankScreen from './ConnectBankScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
@@ -277,6 +278,7 @@ export default function FinanceStack() {
       />
       <Stack.Screen name="Accounts" component={AccountsScreen} options={{ title: 'Accounts' }} />
       <Stack.Screen name="AddAccount" component={AddAccountScreen} options={{ title: 'Add Account' }} />
+      <Stack.Screen name="ConnectBank" component={ConnectBankScreen} options={{ title: 'Connect Bank' }} />
       <Stack.Screen name="Transactions" component={TransactionsScreen} options={{ title: 'Transactions' }} />
       <Stack.Screen name="AddTransaction" component={AddTransactionScreen} options={{ title: 'Add Transaction' }} />
       <Stack.Screen name="Budgets" component={BudgetsScreen} options={{ title: 'Budgets' }} />

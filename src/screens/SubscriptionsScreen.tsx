@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, FlatList } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, FlatList, Platform, Alert } from 'react-native';
+import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getSubscriptions, deleteSubscription } from '../database/db';
+import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Subscription } from '../database/schema';
 import { colors } from '../theme/colors';
@@ -25,6 +26,14 @@ export default function SubscriptionsScreen() {
     try {
       setLoading(true);
       await waitForFirebase();
+      
+      // Process due subscriptions first (creates transactions automatically)
+      try {
+        await processDueSubscriptions();
+      } catch (error) {
+        console.error('Error processing due subscriptions:', error);
+      }
+      
       const [subs, settings] = await Promise.all([
         getSubscriptions(),
         getSettings(),
@@ -38,16 +47,14 @@ export default function SubscriptionsScreen() {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadSubscriptions();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadSubscriptions);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadSubscriptions();
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -60,6 +67,18 @@ export default function SubscriptionsScreen() {
     // Reschedule notifications after deleting subscription
     await scheduleAllNotifications();
     await loadSubscriptions();
+  };
+
+  const handleMarkAsPaid = async (id: string) => {
+    try {
+      await markSubscriptionAsPaid(id);
+      // Reschedule notifications after marking as paid
+      await scheduleAllNotifications();
+      await loadSubscriptions();
+    } catch (error) {
+      console.error('Error marking subscription as paid:', error);
+      Alert.alert('Error', 'Failed to mark subscription as paid');
+    }
   };
 
   const getDaysUntil = (date: string) => {
@@ -256,6 +275,15 @@ export default function SubscriptionsScreen() {
                           ]}>
                             {isDueToday ? 'Due today' : `${daysUntil} day${daysUntil !== 1 ? 's' : ''} left`}
                           </Text>
+                        )}
+                        {(isDueToday || daysUntil < 0) && (
+                          <TouchableOpacity
+                            onPress={() => handleMarkAsPaid(subscription.id)}
+                            style={styles.markPaidButton}
+                          >
+                            <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                            <Text style={styles.markPaidText}>Mark as Paid</Text>
+                          </TouchableOpacity>
                         )}
                       </View>
                     </View>
@@ -503,6 +531,21 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '700',
   },
+  markPaidButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: colors.primary + '20',
+    borderRadius: 8,
+    gap: 6,
+  },
+  markPaidText: {
+    ...typography.bodySmall,
+    color: colors.primary,
+    fontWeight: '600',
+  },
   deleteButton: {
     padding: 8,
     borderRadius: 8,
@@ -542,10 +585,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
-    shadowColor: '#1A1A1A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      web: {
+        boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
+      },
+    }),
   },
   skeletonStatsContainer: {
     flexDirection: 'row',

@@ -126,6 +126,20 @@ export const deleteSubscription = async (id: string): Promise<void> => {
   return await cloudDb.cloudDeleteSubscription(id);
 };
 
+export const markSubscriptionAsPaid = async (id: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.markSubscriptionAsPaid(id);
+};
+
+export const processDueSubscriptions = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.processDueSubscriptions();
+};
+
 // Debt operations
 export const getDebts = async (): Promise<Debt[]> => {
   if (!isFirebaseAvailable()) {
@@ -154,3 +168,12 @@ export const deleteDebt = async (id: string): Promise<void> => {
   }
   return await cloudDb.cloudDeleteDebt(id);
 };
+
+// TrueLayer sync operations
+export const syncTrueLayerAccounts = async (connectionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.syncTrueLayerAccounts(connectionId);
+};
+

@@ -137,25 +137,30 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
     paddingBottom: 100,
   },
   header: {
-    marginBottom: 24,
+    padding: 20,
+    paddingTop: 60,
+    paddingBottom: 24,
   },
   title: {
-    ...typography.h1,
+    fontSize: 32,
+    fontWeight: '700',
     color: colors.text,
+    letterSpacing: -1,
     marginBottom: 4,
   },
   subtitle: {
-    ...typography.bodySmall,
+    fontSize: 16,
     color: colors.textSecondary,
+    fontWeight: '500',
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 60,
+    paddingHorizontal: 20,
   },
   emptyText: {
     ...typography.body,
@@ -169,6 +174,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    marginHorizontal: 20,
     marginBottom: 24,
   },
   responseHeader: {
@@ -189,6 +195,7 @@ const styles = StyleSheet.create({
   },
   quickQuestionsContainer: {
     marginTop: 8,
+    paddingHorizontal: 20,
   },
   quickQuestionsTitle: {
     ...typography.body,

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
@@ -16,7 +16,7 @@ import { getSettings } from '../services/settingsService';
 import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
 
 export default function HomeScreen() {
-  const navigation = useNavigation();
+  const router = useRouter();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -49,17 +49,15 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => {
-    // Small delay to ensure Firebase is initialized
-    const timer = setTimeout(() => {
-      loadData();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadData);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      // Small delay to ensure Firebase is initialized
+      const timer = setTimeout(() => {
+        loadData();
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -138,7 +136,7 @@ export default function HomeScreen() {
           </View>
           <TouchableOpacity 
             style={styles.notificationButton}
-            onPress={() => navigation.navigate('Settings' as never)}
+            onPress={() => router.push('/(tabs)/finance/settings')}
           >
             <Ionicons name="settings-outline" size={24} color={colors.text} />
           </TouchableOpacity>
@@ -166,7 +164,7 @@ export default function HomeScreen() {
       <View style={styles.quickActions}>
         <TouchableOpacity 
           style={styles.quickActionButton}
-          onPress={() => navigation.navigate('Finance' as never)}
+          onPress={() => router.push('/(tabs)/finance')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
@@ -175,7 +173,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.quickActionButton}
-          onPress={() => navigation.navigate('Finance' as never)}
+          onPress={() => router.push('/(tabs)/finance')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="wallet-outline" size={28} color={colors.primary} />
@@ -184,7 +182,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.quickActionButton}
-          onPress={() => navigation.navigate('Finance' as never)}
+          onPress={() => router.push('/(tabs)/finance')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="pie-chart-outline" size={28} color={colors.primary} />
@@ -193,7 +191,7 @@ export default function HomeScreen() {
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.quickActionButton}
-          onPress={() => navigation.navigate('AI' as never)}
+          onPress={() => router.push('/(tabs)/ai')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="chatbubbles-outline" size={28} color={colors.primary} />
@@ -220,9 +218,16 @@ export default function HomeScreen() {
           <View style={styles.transactionsList}>
             {recentTransactions.map((transaction, index) => {
               const iconInfo = getTransactionIcon(transaction.category, transaction.description);
-              const companyName = transaction.description 
-                ? transaction.description.split(/[,\s-]/)[0].trim()
-                : null;
+              // For subscriptions, use the description directly (it's the subscription name)
+              // For other transactions, extract from description
+              let companyName: string | null = null;
+              if (transaction.category === 'Subscription') {
+                companyName = transaction.description || null;
+              } else if (transaction.description) {
+                // Remove "Subscription: " prefix if present
+                const cleanDesc = transaction.description.replace(/^Subscription:\s*/i, '');
+                companyName = cleanDesc.split(/[,\s-]/)[0].trim();
+              }
               
               return (
                 <TouchableOpacity 
@@ -281,7 +286,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Upcoming Subscriptions</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Subscriptions' as never)}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/subscriptions')}>
               <Text style={styles.seeAll}>View All</Text>
             </TouchableOpacity>
           </View>

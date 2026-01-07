@@ -13,6 +13,12 @@ import {
 } from 'firebase/firestore';
 import { getFirestoreDb, getUserId, isFirebaseAvailable } from './firebase';
 import { Account, Transaction, Budget, Subscription, Debt } from '../database/schema';
+import { addMonths, addWeeks, addYears, isBefore, isToday, startOfDay } from 'date-fns';
+import {
+  getAccounts as getTrueLayerAccounts,
+  getAccountBalance,
+} from './truelayerService';
+import { TrueLayerAccount } from '../types/truelayer';
 
 // Helper to convert Firestore timestamp to ISO string
 const timestampToISO = (timestamp: any): string => {
@@ -72,11 +78,23 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     const now = new Date().toISOString();
     const accountRef = doc(db, `users/${userId}/accounts`, id);
     
-    await setDoc(accountRef, {
-      ...account,
+    // Filter out undefined and empty string values for optional fields
+    const accountData: any = {
+      name: account.name,
+      type: account.type,
+      balance: account.balance,
+      currency: account.currency,
       createdAt: isoToTimestamp(now),
       updatedAt: isoToTimestamp(now),
-    });
+    };
+    
+    // Only include card fields if they are defined and not empty
+    if (account.linkedAccountId) accountData.linkedAccountId = account.linkedAccountId;
+    if (account.cardNumber) accountData.cardNumber = account.cardNumber;
+    if (account.cardPin) accountData.cardPin = account.cardPin;
+    if (account.cardLogo) accountData.cardLogo = account.cardLogo;
+    
+    await setDoc(accountRef, accountData);
     
     return id;
   } catch (error) {
@@ -180,15 +198,34 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
     });
     
     // Update account balance
+    // If the account is a card, update the linked bank account instead
     const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
     const accountSnap = await getDoc(accountRef);
     if (accountSnap.exists()) {
-      const accountData = accountSnap.data();
-      const balanceChange = transaction.type === 'income' ? transaction.amount : -transaction.amount;
-      await setDoc(accountRef, {
-        balance: (accountData.balance || 0) + balanceChange,
-        updatedAt: isoToTimestamp(now),
-      }, { merge: true });
+      const accountData = accountSnap.data() as Account;
+      
+      {
+        const balanceChange = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+        
+        // If this is a card with a linked account, update the linked account balance
+        if (accountData.type === 'card' && accountData.linkedAccountId) {
+          const linkedAccountRef = doc(db, `users/${userId}/accounts`, accountData.linkedAccountId);
+          const linkedAccountSnap = await getDoc(linkedAccountRef);
+          if (linkedAccountSnap.exists()) {
+            const linkedAccountData = linkedAccountSnap.data() as Account;
+            await setDoc(linkedAccountRef, {
+              balance: (linkedAccountData.balance || 0) + balanceChange,
+              updatedAt: isoToTimestamp(now),
+            }, { merge: true });
+          }
+        } else {
+          // Update the account itself (for bank, cash, investment, or card without linked account)
+          await setDoc(accountRef, {
+            balance: (accountData.balance || 0) + balanceChange,
+            updatedAt: isoToTimestamp(now),
+          }, { merge: true });
+        }
+      }
     }
     
     // Update budget if it's an expense
@@ -229,15 +266,35 @@ export const cloudDeleteTransaction = async (id: string): Promise<void> => {
       const transaction = transactionSnap.data() as Transaction;
       
       // Revert account balance
+      // If the account is a card, revert the linked bank account instead
       const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
       const accountSnap = await getDoc(accountRef);
       if (accountSnap.exists()) {
-        const accountData = accountSnap.data();
-        const balanceChange = transaction.type === 'income' ? -transaction.amount : transaction.amount;
-        await setDoc(accountRef, {
-          balance: (accountData.balance || 0) + balanceChange,
-          updatedAt: isoToTimestamp(new Date().toISOString()),
-        }, { merge: true });
+        const accountData = accountSnap.data() as Account;
+        
+        {
+          const balanceChange = transaction.type === 'income' ? -transaction.amount : transaction.amount;
+          const now = new Date().toISOString();
+          
+          // If this is a card with a linked account, revert the linked account balance
+          if (accountData.type === 'card' && accountData.linkedAccountId) {
+            const linkedAccountRef = doc(db, `users/${userId}/accounts`, accountData.linkedAccountId);
+            const linkedAccountSnap = await getDoc(linkedAccountRef);
+            if (linkedAccountSnap.exists()) {
+              const linkedAccountData = linkedAccountSnap.data() as Account;
+              await setDoc(linkedAccountRef, {
+                balance: (linkedAccountData.balance || 0) + balanceChange,
+                updatedAt: isoToTimestamp(now),
+              }, { merge: true });
+            }
+          } else {
+            // Revert the account itself (for bank, cash, investment, or card without linked account)
+            await setDoc(accountRef, {
+              balance: (accountData.balance || 0) + balanceChange,
+              updatedAt: isoToTimestamp(now),
+            }, { merge: true });
+          }
+        }
       }
       
       // Revert budget if it was an expense
@@ -392,6 +449,100 @@ export const cloudGetSubscriptions = async (): Promise<Subscription[]> => {
   }
 };
 
+// Helper function to create a transaction from a subscription
+const createSubscriptionTransaction = async (
+  db: any,
+  userId: string,
+  subscription: Subscription,
+  billingDate: Date
+): Promise<void> => {
+  // Check if transaction already exists for this subscription on this date
+  // Use description and category to find potential duplicates
+  const transactionsRef = collection(db, `users/${userId}/transactions`);
+  const billingDateStart = startOfDay(billingDate);
+  
+  // Query by description (subscription name) and category
+  const existingTransactions = await getDocs(
+    query(
+      transactionsRef,
+      where('description', '==', subscription.name),
+      where('category', '==', 'Subscription')
+    )
+  );
+  
+  // Check if any existing transaction is on the same date and same account
+  const sameDateTransaction = existingTransactions.docs.find(doc => {
+    const txData = doc.data();
+    const txDate = timestampToISO(txData.date);
+    const txDateStart = startOfDay(new Date(txDate));
+    const sameDate = txDateStart.getTime() === billingDateStart.getTime();
+    const sameAccount = txData.accountId === subscription.accountId;
+    return sameDate && sameAccount;
+  });
+  
+  if (sameDateTransaction) {
+    // Transaction already exists for this subscription on this date
+    console.log(`Transaction already exists for subscription ${subscription.name} on ${billingDate.toISOString()}`);
+    return;
+  }
+  
+  // Create transaction for the subscription payment
+  const transactionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  const now = new Date().toISOString();
+  const transactionRef = doc(db, `users/${userId}/transactions`, transactionId);
+  
+  await setDoc(transactionRef, {
+    accountId: subscription.accountId,
+    amount: subscription.amount,
+    type: 'expense',
+    category: 'Subscription',
+    description: subscription.name, // Use subscription name directly for better logo extraction
+    date: isoToTimestamp(billingDate.toISOString()),
+    createdAt: isoToTimestamp(now),
+  });
+  
+  // Update account balance
+  // Handles card linking automatically
+  const accountRef = doc(db, `users/${userId}/accounts`, subscription.accountId);
+  const accountSnap = await getDoc(accountRef);
+  if (accountSnap.exists()) {
+    const accountData = accountSnap.data() as Account;
+    
+    {
+      // If this is a card with a linked account, update the linked account balance
+      if (accountData.type === 'card' && accountData.linkedAccountId) {
+        const linkedAccountRef = doc(db, `users/${userId}/accounts`, accountData.linkedAccountId);
+        const linkedAccountSnap = await getDoc(linkedAccountRef);
+        if (linkedAccountSnap.exists()) {
+          const linkedAccountData = linkedAccountSnap.data() as Account;
+          await setDoc(linkedAccountRef, {
+            balance: (linkedAccountData.balance || 0) - subscription.amount,
+            updatedAt: isoToTimestamp(now),
+          }, { merge: true });
+        }
+      } else {
+        // Update the account itself
+        await setDoc(accountRef, {
+          balance: (accountData.balance || 0) - subscription.amount,
+          updatedAt: isoToTimestamp(now),
+        }, { merge: true });
+      }
+    }
+  }
+  
+  // Update budget if it exists (check for Subscription category)
+  const budgetsRef = collection(db, `users/${userId}/budgets`);
+  const budgetsSnapshot = await getDocs(query(budgetsRef, where('category', '==', 'Subscription')));
+  if (!budgetsSnapshot.empty) {
+    const budgetDoc = budgetsSnapshot.docs[0];
+    const budgetData = budgetDoc.data();
+    await setDoc(budgetDoc.ref, {
+      currentSpent: (budgetData.currentSpent || 0) + subscription.amount,
+      updatedAt: isoToTimestamp(now),
+    }, { merge: true });
+  }
+};
+
 export const cloudAddSubscription = async (subscription: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase not available');
@@ -402,9 +553,22 @@ export const cloudAddSubscription = async (subscription: Omit<Subscription, 'id'
   
   try {
     const userId = getUserId();
+    if (!userId) throw new Error('User not authenticated');
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const now = new Date().toISOString();
     const subscriptionRef = doc(db, `users/${userId}/subscriptions`, id);
+    
+    const billingDate = new Date(subscription.nextBillingDate);
+    const today = startOfDay(new Date());
+    const billingDateStart = startOfDay(billingDate);
+    
+    // Create subscription
+    const subscriptionData: Subscription = {
+      id,
+      ...subscription,
+      createdAt: now,
+      updatedAt: now,
+    };
     
     await setDoc(subscriptionRef, {
       ...subscription,
@@ -412,6 +576,11 @@ export const cloudAddSubscription = async (subscription: Omit<Subscription, 'id'
       createdAt: isoToTimestamp(now),
       updatedAt: isoToTimestamp(now),
     });
+    
+    // If billing date is today or in the past, create a transaction immediately
+    if (isBefore(billingDateStart, today) || isToday(billingDateStart)) {
+      await createSubscriptionTransaction(db, userId, subscriptionData, billingDate);
+    }
     
     return id;
   } catch (error) {
@@ -446,6 +615,121 @@ export const cloudUpdateSubscription = async (id: string, updates: Partial<Subsc
     await setDoc(subscriptionRef, updateData, { merge: true });
   } catch (error) {
     console.error('Error updating subscription in cloud:', error);
+    throw error;
+  }
+};
+
+// Process due subscriptions and create transactions for them
+export const processDueSubscriptions = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    if (!userId) throw new Error('User not authenticated');
+    const subscriptionsRef = collection(db, `users/${userId}/subscriptions`);
+    const subscriptionsSnapshot = await getDocs(subscriptionsRef);
+    
+    const today = startOfDay(new Date());
+    const processedSubscriptions: Subscription[] = [];
+    
+    for (const subDoc of subscriptionsSnapshot.docs) {
+      const subscription = {
+        id: subDoc.id,
+        ...subDoc.data(),
+        nextBillingDate: timestampToISO(subDoc.data().nextBillingDate),
+        createdAt: timestampToISO(subDoc.data().createdAt),
+        updatedAt: timestampToISO(subDoc.data().updatedAt),
+      } as Subscription;
+      
+      const billingDate = startOfDay(new Date(subscription.nextBillingDate));
+      
+      // If subscription is due today or in the past, create transaction
+      if (isBefore(billingDate, today) || isToday(billingDate)) {
+        await createSubscriptionTransaction(db, userId, subscription, billingDate);
+        
+        // Update next billing date based on frequency
+        let nextBilling: Date;
+        if (subscription.frequency === 'weekly') {
+          nextBilling = addWeeks(billingDate, 1);
+        } else if (subscription.frequency === 'monthly') {
+          nextBilling = addMonths(billingDate, 1);
+        } else {
+          nextBilling = addYears(billingDate, 1);
+        }
+        
+        // Update subscription with new billing date
+        await setDoc(subDoc.ref, {
+          nextBillingDate: isoToTimestamp(nextBilling.toISOString()),
+          updatedAt: isoToTimestamp(new Date().toISOString()),
+        }, { merge: true });
+        
+        processedSubscriptions.push(subscription);
+      }
+    }
+    
+    if (processedSubscriptions.length > 0) {
+      console.log(`Processed ${processedSubscriptions.length} due subscription(s)`);
+    }
+  } catch (error) {
+    console.error('Error processing due subscriptions:', error);
+    throw error;
+  }
+};
+
+// Mark a subscription as paid (create transaction and update next billing date)
+export const markSubscriptionAsPaid = async (subscriptionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    if (!userId) throw new Error('User not authenticated');
+    const subscriptionRef = doc(db, `users/${userId}/subscriptions`, subscriptionId);
+    const subscriptionSnap = await getDoc(subscriptionRef);
+    
+    if (!subscriptionSnap.exists()) {
+      throw new Error('Subscription not found');
+    }
+    
+    const subscription = {
+      id: subscriptionSnap.id,
+      ...subscriptionSnap.data(),
+      nextBillingDate: timestampToISO(subscriptionSnap.data().nextBillingDate),
+      createdAt: timestampToISO(subscriptionSnap.data().createdAt),
+      updatedAt: timestampToISO(subscriptionSnap.data().updatedAt),
+    } as Subscription;
+    
+    const billingDate = new Date(subscription.nextBillingDate);
+    
+    // Create transaction for the payment
+    await createSubscriptionTransaction(db, userId, subscription, billingDate);
+    
+    // Calculate next billing date based on frequency
+    let nextBilling: Date;
+    if (subscription.frequency === 'weekly') {
+      nextBilling = addWeeks(billingDate, 1);
+    } else if (subscription.frequency === 'monthly') {
+      nextBilling = addMonths(billingDate, 1);
+    } else {
+      nextBilling = addYears(billingDate, 1);
+    }
+    
+    // Update subscription with new billing date
+    await setDoc(subscriptionRef, {
+      nextBillingDate: isoToTimestamp(nextBilling.toISOString()),
+      updatedAt: isoToTimestamp(new Date().toISOString()),
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error marking subscription as paid:', error);
     throw error;
   }
 };
@@ -624,5 +908,141 @@ export const syncLocalToCloud = async (): Promise<void> => {
 export const syncCloudToLocal = async (): Promise<void> => {
   // This will be called to sync cloud data to local
   // Implementation depends on your sync strategy
+};
+
+// TrueLayer sync functions
+export const syncTrueLayerAccounts = async (connectionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+
+  try {
+    // Fetch accounts from TrueLayer
+    const accountsResponse = await getTrueLayerAccounts(connectionId);
+    const truelayerAccounts = accountsResponse.results;
+
+    if (truelayerAccounts.length === 0) {
+      console.log('No accounts found in TrueLayer connection');
+      return;
+    }
+
+    const db = getFirestoreDb();
+    if (!db) throw new Error('Firestore not initialized');
+
+    const userId = getUserId();
+    const now = new Date().toISOString();
+
+    // Get existing accounts to check for updates
+    const existingAccounts = await cloudGetAccounts();
+    const truelayerAccountMap = new Map(
+      existingAccounts
+        .filter(acc => acc.truelayerConnectionId === connectionId)
+        .map(acc => [acc.truelayerAccountId || '', acc])
+    );
+
+    // Process each TrueLayer account
+    for (const tlAccount of truelayerAccounts) {
+      try {
+        // Fetch balance for this account
+        const balanceResponse = await getAccountBalance(connectionId, tlAccount.account_id);
+        const balance = balanceResponse.results[0];
+
+        // Check if account already exists
+        const existingAccount = truelayerAccountMap.get(tlAccount.account_id);
+
+        const accountData: Partial<Account> = {
+          name: tlAccount.display_name,
+          type: 'bank' as const,
+          balance: balance?.current || balance?.available || 0,
+          currency: tlAccount.currency,
+          truelayerConnectionId: connectionId,
+          truelayerAccountId: tlAccount.account_id,
+          isSynced: true,
+          lastSyncedAt: now,
+          truelayerAccountType: tlAccount.account_type,
+          updatedAt: now,
+        };
+
+        if (existingAccount) {
+          // Update existing account
+          await cloudUpdateAccount(existingAccount.id, accountData);
+        } else {
+          // Create new account
+          await cloudAddAccount({
+            name: accountData.name!,
+            type: accountData.type!,
+            balance: accountData.balance!,
+            currency: accountData.currency!,
+            truelayerConnectionId: accountData.truelayerConnectionId,
+            truelayerAccountId: accountData.truelayerAccountId,
+            isSynced: accountData.isSynced,
+            lastSyncedAt: accountData.lastSyncedAt,
+            truelayerAccountType: accountData.truelayerAccountType,
+          });
+        }
+      } catch (error) {
+        console.error(`Error syncing account ${tlAccount.account_id}:`, error);
+        // Continue with other accounts even if one fails
+      }
+    }
+
+    console.log(`Successfully synced ${truelayerAccounts.length} account(s) from TrueLayer`);
+  } catch (error) {
+    console.error('Error syncing TrueLayer accounts:', error);
+    throw error;
+  }
+};
+
+export const createOrUpdateTrueLayerAccount = async (
+  connectionId: string,
+  truelayerAccount: TrueLayerAccount,
+  balance: number
+): Promise<string> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+
+  const userId = getUserId();
+  const now = new Date().toISOString();
+
+  // Check if account already exists
+  const existingAccounts = await cloudGetAccounts();
+  const existingAccount = existingAccounts.find(
+    acc => acc.truelayerAccountId === truelayerAccount.account_id &&
+           acc.truelayerConnectionId === connectionId
+  );
+
+  const accountData: Partial<Account> = {
+    name: truelayerAccount.display_name,
+    type: 'bank' as const,
+    balance: balance,
+    currency: truelayerAccount.currency,
+    truelayerConnectionId: connectionId,
+    truelayerAccountId: truelayerAccount.account_id,
+    isSynced: true,
+    lastSyncedAt: now,
+    truelayerAccountType: truelayerAccount.account_type,
+    updatedAt: now,
+  };
+
+  if (existingAccount) {
+    await cloudUpdateAccount(existingAccount.id, accountData);
+    return existingAccount.id;
+  } else {
+    return await cloudAddAccount({
+      name: accountData.name!,
+      type: accountData.type!,
+      balance: accountData.balance!,
+      currency: accountData.currency!,
+      truelayerConnectionId: accountData.truelayerConnectionId,
+      truelayerAccountId: accountData.truelayerAccountId,
+      isSynced: accountData.isSynced,
+      lastSyncedAt: accountData.lastSyncedAt,
+      truelayerAccountType: accountData.truelayerAccountType,
+    });
+  }
 };
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from '../utils/navigation';
 import { addTransaction, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';
@@ -14,6 +14,7 @@ const categories = [
   'Shopping',
   'Transportation',
   'Bills & Utilities',
+  'Subscription',
   'Entertainment',
   'Healthcare',
   'Education',

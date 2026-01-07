@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
+import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getTransactions, deleteTransaction } from '../database/db';
 import { Transaction } from '../database/schema';
@@ -38,16 +39,14 @@ export default function TransactionsScreen() {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadTransactions();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadTransactions);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      const timer = setTimeout(() => {
+        loadTransactions();
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -87,9 +86,16 @@ export default function TransactionsScreen() {
         renderItem={({ item }) => {
           const iconInfo = getTransactionIcon(item.category, item.description);
           // Try to extract company name from description
-          const companyName = item.description 
-            ? item.description.split(/[,\s-]/)[0].trim()
-            : null;
+          // For subscriptions, use the description directly (it's the subscription name)
+          // For other transactions, extract from description
+          let companyName: string | null = null;
+          if (item.category === 'Subscription') {
+            companyName = item.description || null;
+          } else if (item.description) {
+            // Remove "Subscription: " prefix if present
+            const cleanDesc = item.description.replace(/^Subscription:\s*/i, '');
+            companyName = cleanDesc.split(/[,\s-]/)[0].trim();
+          }
           
           return (
             <TouchableOpacity 
@@ -266,9 +272,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
-    shadowColor: '#1A1A1A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      web: {
+        boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
+      },
+    }),
   },
 });

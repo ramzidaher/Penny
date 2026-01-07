@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation } from '../utils/navigation';
 import { addBudget } from '../database/db';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -193,4 +193,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+
+
+
+
+
+
 
