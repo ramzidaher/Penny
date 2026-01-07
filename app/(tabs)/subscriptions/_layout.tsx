@@ -9,6 +9,8 @@ export default function SubscriptionsLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '600', fontSize: 18 },
         headerShadowVisible: false,
+        headerBackTitle: '',
+        headerBackTitleVisible: false,
       }}
     >
       <Stack.Screen 

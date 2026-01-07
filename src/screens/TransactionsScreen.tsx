@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getTransactions, deleteTransaction } from '../database/db';
 import { Transaction } from '../database/schema';
@@ -17,6 +18,7 @@ import { formatCurrencySync } from '../utils/currency';
 
 export default function TransactionsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -151,10 +153,10 @@ export default function TransactionsScreen() {
             </TouchableOpacity>
           );
         }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 20 }]}
       />
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
         onPress={() => navigation.navigate('AddTransaction' as never)}
         activeOpacity={0.8}
       >

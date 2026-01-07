@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, FlatList, Platform, Alert } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
@@ -17,6 +18,7 @@ import { formatCurrencySync } from '../utils/currency';
 
 export default function SubscriptionsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -127,7 +129,7 @@ export default function SubscriptionsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <Text style={styles.title}>Subscriptions</Text>
           <Text style={styles.subtitle}>Track your recurring payments</Text>
         </View>
@@ -304,7 +306,7 @@ export default function SubscriptionsScreen() {
         <View style={styles.bottomPadding} />
       </ScrollView>
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
         onPress={() => navigation.navigate('AddSubscription' as never)}
         activeOpacity={0.8}
       >
@@ -324,7 +326,6 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingTop: 60,
     paddingBottom: 24,
   },
   title: {

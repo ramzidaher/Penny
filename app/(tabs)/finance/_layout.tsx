@@ -1,5 +1,4 @@
 import { Stack } from 'expo-router';
-import { Image } from 'react-native';
 import { colors } from '../../../src/theme/colors';
 
 export default function FinanceLayout() {
@@ -10,13 +9,8 @@ export default function FinanceLayout() {
         headerTintColor: colors.text,
         headerTitleStyle: { fontWeight: '600', fontSize: 18 },
         headerShadowVisible: false,
-        headerLeft: () => (
-          <Image
-            source={require('../../../assets/Penny Logo RD.png')}
-            style={{ width: 32, height: 32, marginLeft: 16 }}
-            resizeMode="contain"
-          />
-        ),
+        headerBackTitle: '',
+        headerBackTitleVisible: false,
       }}
     >
       <Stack.Screen 

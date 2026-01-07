@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
 
 interface SkeletonLoaderProps {
@@ -91,12 +92,15 @@ export const SkeletonStatCard = () => (
   </View>
 );
 
-export const SkeletonHeader = () => (
-  <View style={styles.header}>
-    <SkeletonLoader width={200} height={32} style={styles.marginBottom} />
-    <SkeletonLoader width={150} height={16} />
-  </View>
-);
+export const SkeletonHeader = () => {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+      <SkeletonLoader width={200} height={32} style={styles.marginBottom} />
+      <SkeletonLoader width={150} height={16} />
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   card: {
@@ -136,7 +140,6 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingTop: 60,
     paddingBottom: 24,
   },
 });

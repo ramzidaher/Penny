@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
@@ -17,6 +18,7 @@ import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -128,7 +130,7 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* Header Section */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.min(insets.top + 4, 16) }]}>
         <View style={styles.headerTop}>
           <View>
             <Text style={styles.greeting}>{getGreeting()}</Text>
@@ -204,7 +206,7 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Finance' as never)}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/finance/transactions')}>
             <Text style={styles.seeAll}>View All</Text>
           </TouchableOpacity>
         </View>
@@ -333,7 +335,6 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 24,
   },
   headerTop: {

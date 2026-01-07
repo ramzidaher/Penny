@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, Alert } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, deleteAccount } from '../database/db';
 import { syncTrueLayerAccounts } from '../database/db';
@@ -17,6 +18,7 @@ import { getAllConnections } from '../services/truelayerService';
 
 export default function AccountsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -229,10 +231,10 @@ export default function AccountsScreen() {
             </View>
           );
         }}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 20 }]}
       />
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
         onPress={() => navigation.navigate('AddAccount' as never)}
       >
         <Ionicons name="add" size={28} color={colors.background} />
@@ -361,23 +363,22 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    elevation: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#1A1A1A',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
       },
       web: {
-        boxShadow: '0px 2px 3.84px rgba(26, 26, 26, 0.25)',
+        boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
       },
     }),
   },

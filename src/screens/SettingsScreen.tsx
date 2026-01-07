@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getSettings, updateSettings } from '../services/settingsService';
 import { AppSettings } from '../database/settingsSchema';
@@ -23,6 +24,7 @@ const currencies = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -87,7 +89,7 @@ export default function SettingsScreen() {
   if (loading || !settings) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <Text style={styles.title}>Settings</Text>
         </View>
         <View style={styles.loadingContainer}>
@@ -100,7 +102,7 @@ export default function SettingsScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={styles.title}>Settings</Text>
         <Text style={styles.subtitle}>Manage your app preferences</Text>
       </View>
@@ -435,7 +437,6 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingTop: 60,
     paddingBottom: 24,
   },
   title: {

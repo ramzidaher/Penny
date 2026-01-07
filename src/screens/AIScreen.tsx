@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { askAI, canAffordPurchase } from '../services/aiService';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
 export default function AIScreen() {
+  const insets = useSafeAreaInsets();
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
@@ -67,7 +69,7 @@ export default function AIScreen() {
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
           <Text style={styles.title}>AI Financial Advisor</Text>
           <Text style={styles.subtitle}>Ask me anything about your finances</Text>
         </View>
@@ -102,7 +104,7 @@ export default function AIScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 80 }]}>
         <TextInput
           style={styles.input}
           value={question}
@@ -141,7 +143,6 @@ const styles = StyleSheet.create({
   },
   header: {
     padding: 20,
-    paddingTop: 60,
     paddingBottom: 24,
   },
   title: {
@@ -218,6 +219,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     padding: 16,
+    paddingBottom: 16,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,

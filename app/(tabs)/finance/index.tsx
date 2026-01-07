@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AccountsScreen from '../../../src/screens/AccountsScreen';
 import TransactionsScreen from '../../../src/screens/TransactionsScreen';
 import BudgetsScreen from '../../../src/screens/BudgetsScreen';
@@ -24,6 +25,7 @@ import { formatCurrencySync } from '../../../src/utils/currency';
 
 export default function FinanceHomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -112,7 +114,7 @@ export default function FinanceHomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.min(insets.top + 4, 16) }]}>
         <Text style={styles.title}>Finance</Text>
         <Text style={styles.subtitle}>Manage your money</Text>
       </View>
@@ -263,8 +265,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: 20,
     paddingBottom: 24,
   },
   title: {

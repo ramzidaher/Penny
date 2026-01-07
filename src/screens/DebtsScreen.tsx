@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getDebts, deleteDebt } from '../database/db';
 import { Debt } from '../database/schema';
@@ -15,6 +16,7 @@ import { formatCurrencySync } from '../utils/currency';
 
 export default function DebtsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -104,7 +106,7 @@ export default function DebtsScreen() {
   return (
     <View style={styles.container}>
       {/* Header Stats */}
-      <View style={styles.headerStats}>
+      <View style={[styles.headerStats, { paddingTop: insets.top + 20 }]}>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{activeDebts.length}</Text>
           <Text style={styles.statLabel}>Active Debts</Text>
@@ -212,7 +214,7 @@ export default function DebtsScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       />
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
         onPress={() => navigation.navigate('AddDebt' as never)}
         activeOpacity={0.8}
       >
@@ -230,6 +232,7 @@ const styles = StyleSheet.create({
   headerStats: {
     flexDirection: 'row',
     padding: 20,
+    paddingTop: 20,
     gap: 12,
   },
   statCard: {
@@ -432,23 +435,22 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
+    elevation: 8,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
+        shadowColor: '#1A1A1A',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
       },
       web: {
-        boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.25)',
+        boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
       },
     }),
   },
