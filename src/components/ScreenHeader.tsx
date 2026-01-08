@@ -17,8 +17,8 @@ interface ScreenHeaderProps {
 export default function ScreenHeader({ title, subtitle, rightAction, style }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   
-  // Consistent padding: safe area top + 16px base padding
-  const paddingTop = insets.top + 16;
+  // Minimal padding: safe area top only
+  const paddingTop = insets.top;
 
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/components/ScreenHeader.tsx:21',message:'ScreenHeader padding calculation',data:{insetsTop:insets.top,insetsBottom:insets.bottom,insetsLeft:insets.left,insetsRight:insets.right,paddingTop:paddingTop,title:title,hasSubtitle:!!subtitle,hasRightAction:!!rightAction},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'C'})}).catch(()=>{});

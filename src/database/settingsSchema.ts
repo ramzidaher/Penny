@@ -45,3 +45,4 @@ export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 
 
 
 
+

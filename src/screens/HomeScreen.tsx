@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
@@ -12,6 +12,7 @@ import { getSubscriptionIcon } from '../utils/icons';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
@@ -97,40 +98,35 @@ export default function HomeScreen() {
     return 'Good Evening';
   };
 
-  if (loading && !refreshing) {
-    return (
-      <ScrollView 
-        style={styles.container} 
-        contentInsetAdjustmentBehavior="never"
-        showsVerticalScrollIndicator={false}
-      >
-        <SkeletonHeader />
-        <View style={styles.skeletonContainer}>
-          <View style={styles.skeletonBalanceCard}>
-            <SkeletonLoader width={200} height={40} style={styles.marginBottom} />
-            <SkeletonLoader width={150} height={24} style={styles.marginBottom} />
-            <View style={styles.skeletonRow}>
-              <SkeletonLoader width={100} height={16} />
-              <SkeletonLoader width={100} height={16} />
-            </View>
+  const loadingComponent = (
+    <>
+      <SkeletonHeader />
+      <View style={styles.skeletonContainer}>
+        <View style={styles.skeletonBalanceCard}>
+          <SkeletonLoader width={200} height={40} style={styles.marginBottom} />
+          <SkeletonLoader width={150} height={24} style={styles.marginBottom} />
+          <View style={styles.skeletonRow}>
+            <SkeletonLoader width={100} height={16} />
+            <SkeletonLoader width={100} height={16} />
           </View>
-          <View style={styles.skeletonStatsRow}>
-            <SkeletonStatCard />
-            <SkeletonStatCard />
-            <SkeletonStatCard />
-          </View>
-          <SkeletonCard />
-          <SkeletonCard />
         </View>
-      </ScrollView>
-    );
-  }
+        <View style={styles.skeletonStatsRow}>
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+          <SkeletonStatCard />
+        </View>
+        <SkeletonCard />
+        <SkeletonCard />
+      </View>
+    </>
+  );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentInsetAdjustmentBehavior="never"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    <ScreenWrapper
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      loading={loading && !refreshing}
+      loadingComponent={loadingComponent}
       showsVerticalScrollIndicator={false}
     >
       {/* #region agent log */}
@@ -288,15 +284,11 @@ export default function HomeScreen() {
       )}
 
       <View style={styles.bottomPadding} />
-    </ScrollView>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   balanceCard: {
     backgroundColor: colors.primary,
     marginHorizontal: 20,

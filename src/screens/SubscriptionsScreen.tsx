@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, FlatList, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform, Alert } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { format, differenceInDays } from 'date-fns';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
+import ScreenWrapper from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
@@ -106,32 +107,27 @@ export default function SubscriptionsScreen() {
     })
     .sort((a, b) => getDaysUntil(a.nextBillingDate) - getDaysUntil(b.nextBillingDate));
 
-  if (loading && !refreshing) {
-    return (
-      <ScrollView 
-        style={styles.container} 
-        contentInsetAdjustmentBehavior="never"
-        showsVerticalScrollIndicator={false}
-      >
-        <SkeletonHeader />
-        <View style={styles.skeletonStatsContainer}>
-          <SkeletonStatCard />
-          <SkeletonStatCard />
-          <SkeletonStatCard />
-        </View>
-        <View style={styles.skeletonContainer}>
-          <SkeletonList count={3} />
-        </View>
-      </ScrollView>
-    );
-  }
+  const loadingComponent = (
+    <>
+      <SkeletonHeader />
+      <View style={styles.skeletonStatsContainer}>
+        <SkeletonStatCard />
+        <SkeletonStatCard />
+        <SkeletonStatCard />
+      </View>
+      <View style={styles.skeletonContainer}>
+        <SkeletonList count={3} />
+      </View>
+    </>
+  );
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentInsetAdjustmentBehavior="never"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      <ScreenWrapper
+        onRefresh={onRefresh}
+        refreshing={refreshing}
+        loading={loading && !refreshing}
+        loadingComponent={loadingComponent}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
@@ -310,7 +306,7 @@ export default function SubscriptionsScreen() {
         </View>
 
         <View style={styles.bottomPadding} />
-      </ScrollView>
+      </ScreenWrapper>
       <TouchableOpacity
         style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
         onPress={() => navigation.navigate('AddSubscription' as never)}
@@ -326,9 +322,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   statsContainer: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import AccountsScreen from '../../../src/screens/AccountsScreen';
 import TransactionsScreen from '../../../src/screens/TransactionsScreen';
@@ -18,6 +18,7 @@ import { Account, Transaction, Budget } from '../../../src/database/schema';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../../../src/components/SkeletonLoader';
 import ScreenHeader from '../../../src/components/ScreenHeader';
+import ScreenWrapper from '../../../src/components/ScreenWrapper';
 import { waitForFirebase } from '../../../src/services/firebase';
 import SettingsScreen from '../../../src/screens/SettingsScreen';
 import { getSettings } from '../../../src/services/settingsService';
@@ -93,31 +94,26 @@ export default function FinanceHomeScreen() {
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.currentSpent, 0);
 
-  if (loading && !refreshing) {
-    return (
-      <ScrollView 
-        style={styles.container} 
-        contentInsetAdjustmentBehavior="never"
-        showsVerticalScrollIndicator={false}
-      >
-        <SkeletonHeader />
-        <View style={styles.skeletonStatsContainer}>
-          <SkeletonStatCard />
-          <SkeletonStatCard />
-          <SkeletonStatCard />
-        </View>
-        <View style={styles.skeletonContainer}>
-          <SkeletonList count={3} />
-        </View>
-      </ScrollView>
-    );
-  }
+  const loadingComponent = (
+    <>
+      <SkeletonHeader />
+      <View style={styles.skeletonStatsContainer}>
+        <SkeletonStatCard />
+        <SkeletonStatCard />
+        <SkeletonStatCard />
+      </View>
+      <View style={styles.skeletonContainer}>
+        <SkeletonList count={3} />
+      </View>
+    </>
+  );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentInsetAdjustmentBehavior="never"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    <ScreenWrapper
+      onRefresh={onRefresh}
+      refreshing={refreshing}
+      loading={loading && !refreshing}
+      loadingComponent={loadingComponent}
       showsVerticalScrollIndicator={false}
     >
       {/* #region agent log */}
@@ -456,15 +452,11 @@ export default function FinanceHomeScreen() {
       </View>
 
       <View style={styles.bottomPadding} />
-    </ScrollView>
+    </ScreenWrapper>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
   section: {
     paddingHorizontal: 20,
     marginBottom: 32,

@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { askAI, canAffordPurchase } from '../services/aiService';
 import ScreenHeader from '../components/ScreenHeader';
+import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
@@ -12,7 +13,7 @@ export default function AIScreen() {
   const [question, setQuestion] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
+  const screenWrapperRef = useRef<ScreenWrapperRef>(null);
 
   const handleAsk = async () => {
     if (!question.trim()) return;
@@ -55,20 +56,16 @@ export default function AIScreen() {
 
   useEffect(() => {
     if (response) {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
+      screenWrapperRef.current?.scrollToEnd({ animated: true });
     }
   }, [response]);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
-    >
-      <ScrollView
-        ref={scrollViewRef}
-        style={styles.scrollView}
-        contentInsetAdjustmentBehavior="never"
+    <View style={styles.container}>
+      <ScreenWrapper
+        ref={screenWrapperRef}
+        enableKeyboardAvoiding={true}
+        keyboardVerticalOffset={90}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -105,7 +102,7 @@ export default function AIScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </ScrollView>
+      </ScreenWrapper>
 
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 80 }]}>
         <TextInput
@@ -129,7 +126,7 @@ export default function AIScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -137,9 +134,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   scrollContent: {
     paddingBottom: 100,
