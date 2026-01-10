@@ -28,14 +28,6 @@ export default function TabLayout() {
         />
       </NativeTabs.Trigger>
       
-      <NativeTabs.Trigger name="subscriptions">
-        <Icon 
-          sf={{ default: 'arrow.clockwise', selected: 'arrow.clockwise.circle.fill' }} 
-          drawable="ic_repeat"
-        />
-        <Label>Subscriptions</Label>
-      </NativeTabs.Trigger>
-      
       <NativeTabs.Trigger name="ai">
         <Icon 
           sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} 
@@ -43,7 +35,16 @@ export default function TabLayout() {
         />
         <Label>Advisor</Label>
       </NativeTabs.Trigger>
+      
+      <NativeTabs.Trigger name="add">
+        <Icon 
+          sf={{ default: 'line.horizontal.3', selected: 'line.horizontal.3.circle.fill' }} 
+          drawable="ic_menu"
+        />
+        <Label>Menu</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
+
 

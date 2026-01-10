@@ -17,8 +17,11 @@ import { addMonths, addWeeks, addYears, isBefore, isToday, startOfDay } from 'da
 import {
   getAccounts as getTrueLayerAccounts,
   getAccountBalance,
+  getAccountTransactions,
+  getAccountPendingTransactions,
+  getCardTransactions,
 } from './truelayerService';
-import { TrueLayerAccount } from '../types/truelayer';
+import { TrueLayerAccount, TrueLayerTransaction } from '../types/truelayer';
 
 // Helper to convert Firestore timestamp to ISO string
 const timestampToISO = (timestamp: any): string => {
@@ -94,6 +97,13 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     if (account.cardPin) accountData.cardPin = account.cardPin;
     if (account.cardLogo) accountData.cardLogo = account.cardLogo;
     
+    // Include TrueLayer-specific fields if present
+    if (account.truelayerConnectionId) accountData.truelayerConnectionId = account.truelayerConnectionId;
+    if (account.truelayerAccountId) accountData.truelayerAccountId = account.truelayerAccountId;
+    if (account.isSynced !== undefined) accountData.isSynced = account.isSynced;
+    if (account.lastSyncedAt) accountData.lastSyncedAt = account.lastSyncedAt;
+    if (account.truelayerAccountType) accountData.truelayerAccountType = account.truelayerAccountType;
+    
     await setDoc(accountRef, accountData);
     
     return id;
@@ -162,17 +172,38 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
   
   try {
     const userId = getUserId();
-    const transactionsRef = collection(db, `users/${userId}/transactions`);
-    const snapshot = await getDocs(query(transactionsRef, orderBy('createdAt', 'desc')));
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      date: timestampToISO(doc.data().date),
-      createdAt: timestampToISO(doc.data().createdAt),
-    })) as Transaction[];
-  } catch (error) {
-    console.error('Error fetching transactions from cloud:', error);
+    const transactionsRef = collection(db, `users/${userId}/transactions`);
+    
+    let snapshot;
+    try {
+      snapshot = await getDocs(query(transactionsRef, orderBy('createdAt', 'desc')));
+      console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions with ordered query`);
+    } catch (queryError: unknown) {
+      const errorMessage = queryError instanceof Error ? queryError.message : 'Unknown query error';
+      console.warn('Error with ordered query, trying without order:', errorMessage);
+      snapshot = await getDocs(transactionsRef);
+      console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions without order`);
+    }
+    
+    const transactions = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        date: timestampToISO(data.date),
+        createdAt: timestampToISO(data.createdAt),
+      };
+    }) as Transaction[];
+    
+    console.log(`[cloudGetTransactions] Returning ${transactions.length} mapped transactions`);
+    return transactions;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching transactions from cloud:', errorMessage);
     throw error;
   }
 };
@@ -191,20 +222,25 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
     const now = new Date().toISOString();
     const transactionRef = doc(db, `users/${userId}/transactions`, id);
     
-    await setDoc(transactionRef, {
+    const transactionDoc = {
       ...transaction,
       date: isoToTimestamp(transaction.date),
       createdAt: isoToTimestamp(now),
-    });
+    };
     
-    // Update account balance
-    // If the account is a card, update the linked bank account instead
+    console.log(`[cloudAddTransaction] Adding transaction: type=${transaction.type}`);
+    await setDoc(transactionRef, transactionDoc);
+    console.log(`[cloudAddTransaction] Successfully added transaction`);
+    
+    // Update account balance only for manual accounts (not TrueLayer synced)
+    // TrueLayer account balances are fetched on-demand from API
     const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
     const accountSnap = await getDoc(accountRef);
     if (accountSnap.exists()) {
       const accountData = accountSnap.data() as Account;
       
-      {
+      // Only update balance for manual accounts (not synced from TrueLayer)
+      if (!accountData.isSynced) {
         const balanceChange = transaction.type === 'income' ? transaction.amount : -transaction.amount;
         
         // If this is a card with a linked account, update the linked account balance
@@ -213,10 +249,13 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
           const linkedAccountSnap = await getDoc(linkedAccountRef);
           if (linkedAccountSnap.exists()) {
             const linkedAccountData = linkedAccountSnap.data() as Account;
-            await setDoc(linkedAccountRef, {
-              balance: (linkedAccountData.balance || 0) + balanceChange,
-              updatedAt: isoToTimestamp(now),
-            }, { merge: true });
+            // Only update if linked account is also manual
+            if (!linkedAccountData.isSynced) {
+              await setDoc(linkedAccountRef, {
+                balance: (linkedAccountData.balance || 0) + balanceChange,
+                updatedAt: isoToTimestamp(now),
+              }, { merge: true });
+            }
           }
         } else {
           // Update the account itself (for bank, cash, investment, or card without linked account)
@@ -265,14 +304,15 @@ export const cloudDeleteTransaction = async (id: string): Promise<void> => {
     if (transactionSnap.exists()) {
       const transaction = transactionSnap.data() as Transaction;
       
-      // Revert account balance
-      // If the account is a card, revert the linked bank account instead
+      // Revert account balance only for manual accounts (not TrueLayer synced)
+      // TrueLayer account balances are fetched on-demand from API
       const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
       const accountSnap = await getDoc(accountRef);
       if (accountSnap.exists()) {
         const accountData = accountSnap.data() as Account;
         
-        {
+        // Only revert balance for manual accounts (not synced from TrueLayer)
+        if (!accountData.isSynced) {
           const balanceChange = transaction.type === 'income' ? -transaction.amount : transaction.amount;
           const now = new Date().toISOString();
           
@@ -282,10 +322,13 @@ export const cloudDeleteTransaction = async (id: string): Promise<void> => {
             const linkedAccountSnap = await getDoc(linkedAccountRef);
             if (linkedAccountSnap.exists()) {
               const linkedAccountData = linkedAccountSnap.data() as Account;
-              await setDoc(linkedAccountRef, {
-                balance: (linkedAccountData.balance || 0) + balanceChange,
-                updatedAt: isoToTimestamp(now),
-              }, { merge: true });
+              // Only revert if linked account is also manual
+              if (!linkedAccountData.isSynced) {
+                await setDoc(linkedAccountRef, {
+                  balance: (linkedAccountData.balance || 0) + balanceChange,
+                  updatedAt: isoToTimestamp(now),
+                }, { merge: true });
+              }
             }
           } else {
             // Revert the account itself (for bank, cash, investment, or card without linked account)
@@ -482,7 +525,7 @@ const createSubscriptionTransaction = async (
   
   if (sameDateTransaction) {
     // Transaction already exists for this subscription on this date
-    console.log(`Transaction already exists for subscription ${subscription.name} on ${billingDate.toISOString()}`);
+    console.log(`Transaction already exists for subscription on this date`);
     return;
   }
   
@@ -501,24 +544,28 @@ const createSubscriptionTransaction = async (
     createdAt: isoToTimestamp(now),
   });
   
-  // Update account balance
-  // Handles card linking automatically
+  // Update account balance only for manual accounts (not TrueLayer synced)
+  // TrueLayer account balances are fetched on-demand from API
   const accountRef = doc(db, `users/${userId}/accounts`, subscription.accountId);
   const accountSnap = await getDoc(accountRef);
   if (accountSnap.exists()) {
     const accountData = accountSnap.data() as Account;
     
-    {
+    // Only update balance for manual accounts (not synced from TrueLayer)
+    if (!accountData.isSynced) {
       // If this is a card with a linked account, update the linked account balance
       if (accountData.type === 'card' && accountData.linkedAccountId) {
         const linkedAccountRef = doc(db, `users/${userId}/accounts`, accountData.linkedAccountId);
         const linkedAccountSnap = await getDoc(linkedAccountRef);
         if (linkedAccountSnap.exists()) {
           const linkedAccountData = linkedAccountSnap.data() as Account;
-          await setDoc(linkedAccountRef, {
-            balance: (linkedAccountData.balance || 0) - subscription.amount,
-            updatedAt: isoToTimestamp(now),
-          }, { merge: true });
+          // Only update if linked account is also manual
+          if (!linkedAccountData.isSynced) {
+            await setDoc(linkedAccountRef, {
+              balance: (linkedAccountData.balance || 0) - subscription.amount,
+              updatedAt: isoToTimestamp(now),
+            }, { merge: true });
+          }
         }
       } else {
         // Update the account itself
@@ -950,10 +997,12 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         // Check if account already exists
         const existingAccount = truelayerAccountMap.get(tlAccount.account_id);
 
+        // For TrueLayer accounts, don't store balance in Firestore (security: minimize persisted financial data)
+        // Balance will be fetched on-demand from TrueLayer API and cached locally
         const accountData: Partial<Account> = {
           name: tlAccount.display_name,
           type: 'bank' as const,
-          balance: balance?.current || balance?.available || 0,
+          balance: 0, // Placeholder - actual balance fetched on-demand
           currency: tlAccount.currency,
           truelayerConnectionId: connectionId,
           truelayerAccountId: tlAccount.account_id,
@@ -964,7 +1013,7 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         };
 
         if (existingAccount) {
-          // Update existing account
+          // Update existing account - ensure all TrueLayer fields are included
           await cloudUpdateAccount(existingAccount.id, accountData);
         } else {
           // Create new account
@@ -981,7 +1030,7 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
           });
         }
       } catch (error) {
-        console.error(`Error syncing account ${tlAccount.account_id}:`, error);
+        console.error(`Error syncing account:`, error);
         // Continue with other accounts even if one fails
       }
     }
@@ -1015,10 +1064,12 @@ export const createOrUpdateTrueLayerAccount = async (
            acc.truelayerConnectionId === connectionId
   );
 
+  // For TrueLayer accounts, don't store balance in Firestore (security: minimize persisted financial data)
+  // Balance will be fetched on-demand from TrueLayer API and cached locally
   const accountData: Partial<Account> = {
     name: truelayerAccount.display_name,
     type: 'bank' as const,
-    balance: balance,
+    balance: 0, // Placeholder - actual balance fetched on-demand
     currency: truelayerAccount.currency,
     truelayerConnectionId: connectionId,
     truelayerAccountId: truelayerAccount.account_id,
@@ -1035,7 +1086,7 @@ export const createOrUpdateTrueLayerAccount = async (
     return await cloudAddAccount({
       name: accountData.name!,
       type: accountData.type!,
-      balance: accountData.balance!,
+      balance: 0, // Placeholder - actual balance fetched on-demand
       currency: accountData.currency!,
       truelayerConnectionId: accountData.truelayerConnectionId,
       truelayerAccountId: accountData.truelayerAccountId,
@@ -1043,6 +1094,188 @@ export const createOrUpdateTrueLayerAccount = async (
       lastSyncedAt: accountData.lastSyncedAt,
       truelayerAccountType: accountData.truelayerAccountType,
     });
+  }
+};
+
+const mapTrueLayerCategory = (tlCategory: string): string => {
+  const categoryMap: Record<string, string> = {
+    'general': 'Other',
+    'entertainment': 'Entertainment',
+    'eating_out': 'Food & Dining',
+    'expenses': 'Other',
+    'transport': 'Transport',
+    'cash': 'Cash',
+    'bills': 'Bills',
+    'groceries': 'Groceries',
+    'shopping': 'Shopping',
+    'holidays': 'Travel',
+    'gas_stations': 'Transport',
+    'atm': 'Cash',
+    'fees': 'Fees',
+    'general_merchandise': 'Shopping',
+    'food_and_drink': 'Food & Dining',
+    'recreation': 'Entertainment',
+    'service': 'Other',
+    'utilities': 'Bills',
+    'healthcare': 'Healthcare',
+    'transfer': 'Transfer',
+    'income': 'Income',
+  };
+  
+  const normalized = tlCategory.toLowerCase().replace(/\s+/g, '_');
+  return categoryMap[normalized] || 'Other';
+};
+
+const mapTrueLayerTransaction = (
+  tlTransaction: TrueLayerTransaction,
+  accountId: string
+): Omit<Transaction, 'id' | 'createdAt'> => {
+  const transactionType = (tlTransaction.transaction_type || '').toUpperCase();
+  const isCredit = transactionType === 'CREDIT';
+  
+  const type: 'income' | 'expense' = isCredit ? 'income' : 'expense';
+  const amount = Math.abs(tlTransaction.amount);
+  const category = mapTrueLayerCategory(tlTransaction.transaction_category || 'general');
+  const description = tlTransaction.merchant_name || tlTransaction.description || 'Transaction';
+  
+  let date: string;
+  try {
+    date = new Date(tlTransaction.timestamp).toISOString();
+    if (isNaN(new Date(date).getTime())) {
+      date = new Date().toISOString();
+    }
+  } catch {
+    date = new Date().toISOString();
+  }
+  
+  return {
+    accountId,
+    amount,
+    type,
+    category,
+    description,
+    date,
+    truelayerTransactionId: tlTransaction.transaction_id,
+  };
+};
+
+export const syncTrueLayerTransactions = async (connectionId: string): Promise<void> => {
+  console.log(`[syncTrueLayerTransactions] Starting transaction sync`);
+  
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+
+  try {
+    const db = getFirestoreDb();
+    if (!db) throw new Error('Firestore not initialized');
+
+    const userId = getUserId();
+
+    let existingAccounts = await cloudGetAccounts();
+    console.log(`[syncTrueLayerTransactions] Found ${existingAccounts.length} total accounts`);
+    
+    // Log account count only (no sensitive data)
+    console.log(`[syncTrueLayerTransactions] Checking ${existingAccounts.length} account(s) for sync eligibility`);
+    
+    let syncedAccounts = existingAccounts.filter(
+      acc => acc.truelayerConnectionId === connectionId && 
+             acc.truelayerAccountId && 
+             acc.isSynced
+    );
+
+    console.log(`[syncTrueLayerTransactions] Found ${syncedAccounts.length} synced accounts on first attempt`);
+
+    if (syncedAccounts.length === 0) {
+      console.log(`[syncTrueLayerTransactions] No synced accounts found, waiting 300ms and retrying...`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      existingAccounts = await cloudGetAccounts();
+      syncedAccounts = existingAccounts.filter(
+        acc => acc.truelayerConnectionId === connectionId && 
+               acc.truelayerAccountId && 
+               acc.isSynced
+      );
+      
+      console.log(`[syncTrueLayerTransactions] Found ${syncedAccounts.length} synced accounts after retry`);
+      
+      if (syncedAccounts.length === 0) {
+        console.warn(`[syncTrueLayerTransactions] No synced accounts found, skipping transaction sync`);
+        return;
+      }
+    }
+
+    const existingTransactions = await cloudGetTransactions();
+    const initialTransactionCount = existingTransactions.length;
+    const existingTlTransactionIds = new Set(
+      existingTransactions
+        .filter(tx => tx.truelayerTransactionId)
+        .map(tx => tx.truelayerTransactionId!)
+    );
+
+    let syncedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    console.log(`[syncTrueLayerTransactions] Starting sync for ${syncedAccounts.length} account(s)`);
+
+    for (const account of syncedAccounts) {
+      if (!account.truelayerAccountId) {
+        console.warn(`[syncTrueLayerTransactions] Account missing required identifier, skipping`);
+        continue;
+      }
+
+      try {
+        console.log(`[syncTrueLayerTransactions] Fetching transactions for account`);
+        const transactionsResponse = await getAccountTransactions(
+          connectionId,
+          account.truelayerAccountId
+        );
+        const pendingTransactionsResponse = await getAccountPendingTransactions(
+          connectionId,
+          account.truelayerAccountId
+        );
+
+        const allTransactions = [
+          ...transactionsResponse.results,
+          ...pendingTransactionsResponse.results,
+        ];
+
+        console.log(`[syncTrueLayerTransactions] Found ${allTransactions.length} transactions (${transactionsResponse.results.length} confirmed, ${pendingTransactionsResponse.results.length} pending)`);
+
+        for (const tlTransaction of allTransactions) {
+          if (existingTlTransactionIds.has(tlTransaction.transaction_id)) {
+            skippedCount++;
+            continue;
+          }
+
+          try {
+            const transactionData = mapTrueLayerTransaction(tlTransaction, account.id);
+            await cloudAddTransaction(transactionData);
+            existingTlTransactionIds.add(tlTransaction.transaction_id);
+            syncedCount++;
+          } catch (error: unknown) {
+            errorCount++;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`[syncTrueLayerTransactions] Error adding transaction:`, errorMessage);
+          }
+        }
+      } catch (error: unknown) {
+        errorCount++;
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`[syncTrueLayerTransactions] Error syncing transactions for account:`, errorMessage);
+      }
+    }
+
+    const finalTransactionCount = (await cloudGetTransactions()).length;
+    console.log(`[syncTrueLayerTransactions] Sync completed: ${syncedCount} new, ${skippedCount} skipped, ${errorCount} errors. Total transactions: ${finalTransactionCount} (was ${initialTransactionCount})`);
+    
+    if (errorCount > 0) {
+      console.error(`[syncTrueLayerTransactions] Transaction sync completed with ${errorCount} error(s)`);
+    }
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error syncing TrueLayer transactions:', errorMessage);
+    throw error;
   }
 };
 

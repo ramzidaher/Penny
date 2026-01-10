@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ViewStyle, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
@@ -12,9 +12,11 @@ interface ScreenHeaderProps {
     onPress: () => void;
   };
   style?: ViewStyle;
+  titleFontFamily?: string;
+  titleLetterSpacing?: number;
 }
 
-export default function ScreenHeader({ title, subtitle, rightAction, style }: ScreenHeaderProps) {
+export default function ScreenHeader({ title, subtitle, rightAction, style, titleFontFamily, titleLetterSpacing }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   
   // Minimal padding: safe area top only
@@ -31,13 +33,25 @@ export default function ScreenHeader({ title, subtitle, rightAction, style }: Sc
           {subtitle && (
             <Text style={styles.subtitle}>{subtitle}</Text>
           )}
-          <Text style={styles.title}>{title}</Text>
+          <Text 
+            style={[
+              styles.title, 
+              titleFontFamily && { 
+                fontFamily: titleFontFamily,
+                fontWeight: undefined // Remove fontWeight when using custom font
+              },
+              titleLetterSpacing !== undefined && { letterSpacing: titleLetterSpacing }
+            ]}
+          >
+            {title}
+          </Text>
         </View>
         {rightAction && (
           <TouchableOpacity 
             style={styles.actionButton}
             onPress={rightAction.onPress}
             activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Ionicons name={rightAction.icon} size={24} color={colors.text} />
           </TouchableOpacity>
@@ -71,6 +85,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -1,
+  },
+  titleWithCustomFont: {
+    fontWeight: undefined, // Remove fontWeight when using custom font
   },
   actionButton: {
     width: 44,

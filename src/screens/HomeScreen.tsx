@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,10 +26,13 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const hasLoadedRef = useRef(false);
 
-  const loadData = async () => {
+  const loadData = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       // Wait for Firebase to be ready before loading data
       await waitForFirebase();
       const [accs, trans, buds, subs, settings] = await Promise.all([
@@ -44,6 +47,7 @@ export default function HomeScreen() {
       setBudgets(buds);
       setSubscriptions(subs);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -53,9 +57,10 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      // Small delay to ensure Firebase is initialized
+      // Only show loading on initial load, refresh silently on subsequent focuses
+      const isInitialLoad = !hasLoadedRef.current;
       const timer = setTimeout(() => {
-        loadData();
+        loadData(isInitialLoad);
       }, 100);
       return () => clearTimeout(timer);
     }, [])
@@ -139,9 +144,11 @@ export default function HomeScreen() {
       <ScreenHeader
         subtitle={getGreeting()}
         title="Welcome back"
+        titleFontFamily="GulfsDisplay-Normal"
+        titleLetterSpacing={0.5}
         rightAction={{
-          icon: "settings-outline",
-          onPress: () => router.push('/(tabs)/finance/settings')
+          icon: "person-outline",
+          onPress: () => router.push('/profile' as any)
         }}
       />
 
@@ -179,6 +186,8 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.transactionsList}>
             {recentTransactions.map((transaction, index) => {
+              // Ensure unique key - use truelayerTransactionId if available, otherwise use id + index
+              const uniqueKey = transaction.truelayerTransactionId || `${transaction.id}_${index}`;
               const iconInfo = getTransactionIcon(transaction.category, transaction.description);
               // For subscriptions, use the description directly (it's the subscription name)
               // For other transactions, extract from description
@@ -193,7 +202,7 @@ export default function HomeScreen() {
               
               return (
                 <TouchableOpacity 
-                  key={transaction.id} 
+                  key={uniqueKey} 
                   style={[
                     styles.transactionCard,
                     index === recentTransactions.length - 1 && styles.transactionCardLast
@@ -248,7 +257,7 @@ export default function HomeScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Upcoming Subscriptions</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/subscriptions')}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/finance/subscriptions')}>
               <Text style={styles.seeAll}>View All</Text>
             </TouchableOpacity>
           </View>

@@ -1,16 +1,16 @@
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform, DynamicColorIOS } from 'react-native';
 import { NativeTabs, Icon, Label } from 'expo-router/unstable-native-tabs';
-import { colors } from '../../src/theme/colors';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   
-  // Use theme colors
-  const backgroundColor = isDark ? colors.dark.background : colors.background;
-  const activeColor = isDark ? colors.dark.primary : colors.primary;
-  const inactiveColor = isDark ? colors.dark.textSecondary : colors.textSecondary;
-  const textColor = isDark ? colors.dark.text : colors.text;
+  // Use DynamicColorIOS for native tab bar colors that adapt to liquid glass on iOS
+  const textColor = Platform.OS === 'ios' 
+    ? DynamicColorIOS({
+        dark: 'white',
+        light: 'black',
+      })
+    : colorScheme === 'dark' ? 'white' : 'black';
   
   return (
     <NativeTabs
@@ -19,9 +19,7 @@ export default function TabLayout() {
         fontSize: 12,
         fontWeight: '500',
       }}
-      tintColor={activeColor}
-      barTintColor={backgroundColor}
-      unselectedTintColor={inactiveColor}
+      tintColor={textColor}
     >
       <NativeTabs.Trigger name="index">
         <Label>Home</Label>
@@ -39,14 +37,6 @@ export default function TabLayout() {
         />
       </NativeTabs.Trigger>
       
-      <NativeTabs.Trigger name="subscriptions">
-        <Icon 
-          sf={{ default: 'arrow.clockwise', selected: 'arrow.clockwise.circle.fill' }} 
-          drawable="ic_repeat"
-        />
-        <Label>Subscriptions</Label>
-      </NativeTabs.Trigger>
-      
       <NativeTabs.Trigger name="ai">
         <Icon 
           sf={{ default: 'bubble.left.and.bubble.right', selected: 'bubble.left.and.bubble.right.fill' }} 
@@ -54,7 +44,16 @@ export default function TabLayout() {
         />
         <Label>Advisor</Label>
       </NativeTabs.Trigger>
+      
+      <NativeTabs.Trigger name="add">
+        <Icon 
+          sf={{ default: 'line.horizontal.3', selected: 'line.horizontal.3.circle.fill' }} 
+          drawable="ic_menu"
+        />
+        <Label>Menu</Label>
+      </NativeTabs.Trigger>
     </NativeTabs>
   );
 }
+
 

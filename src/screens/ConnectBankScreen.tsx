@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useNavigation } from '../utils/navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { useToast } from '../contexts/ToastContext';
 import {
   openAuthUrl,
   exchangeCodeForTokens,
@@ -24,15 +25,22 @@ import {
   TrueLayerConnection,
 } from '../services/truelayerService';
 import { syncTrueLayerAccounts } from '../database/db';
+import { refreshTransactions } from '../services/transactionService';
 import { formatDistanceToNow } from 'date-fns';
+
+// Module-level tracking to persist across component mounts/unmounts
+const processedCodesGlobal = new Set<string>();
+const processingGlobal = { current: false };
 
 export default function ConnectBankScreen() {
   const navigation = useNavigation();
-  const { code, error } = useLocalSearchParams<{ code?: string; error?: string }>();
+  const { code, state, error } = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [connections, setConnections] = useState<TrueLayerConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const processingRef = useRef(false);
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => {
     loadConnections();
@@ -43,19 +51,40 @@ export default function ConnectBankScreen() {
     // This is a fallback - WebBrowser should handle it directly
     // Only process if we're not already processing a WebBrowser result
 
+    // Prevent duplicate processing (check both local and global)
+    if (processingRef.current || processingGlobal.current) {
+      console.log('[ConnectBankScreen] Already processing OAuth callback, ignoring duplicate');
+      return;
+    }
+
     // Only process if we're not currently connecting via WebBrowser
     if (connecting) {
+      console.log('[ConnectBankScreen] WebBrowser is handling OAuth, ignoring deep link');
       return; // WebBrowser is handling it, ignore deep link
     }
 
     if (error) {
-      Alert.alert('Connection Failed', `Error: ${error}`);
+      // Only show error if we haven't processed it already
+      const errorKey = `error_${error}`;
+      if (!processedCodesGlobal.has(errorKey)) {
+        processedCodesGlobal.add(errorKey);
+        showError(`Connection failed: ${error}`);
+      }
       return;
     }
 
     if (code) {
-      // Process the callback from deep link (fallback scenario)
-      handleOAuthCallback(code);
+      // Check if we've already processed this code (global check)
+      if (processedCodesGlobal.has(code)) {
+        console.log('[ConnectBankScreen] Code already processed, ignoring duplicate');
+        return;
+      }
+
+      // Mark as processed immediately to prevent duplicate processing
+      processedCodesGlobal.add(code);
+      
+      // Process the callback from deep link (fallback scenario) with state parameter
+      handleOAuthCallback(code, state);
     }
   }, [code, error, connecting]);
 
@@ -74,50 +103,101 @@ export default function ConnectBankScreen() {
   const handleConnect = async () => {
     try {
       setConnecting(true);
+      processingRef.current = true;
+      processingGlobal.current = true;
+      
       // On mobile, WebBrowser will handle the OAuth flow
       // It returns the result directly with the code
       const result = await openAuthUrl();
       
       // Always reset connecting state when WebBrowser returns
       setConnecting(false);
+      processingRef.current = false;
+      processingGlobal.current = false;
       
       if (result?.error) {
         if (result.error !== 'Authentication cancelled by user' && result.error !== 'Authentication dismissed') {
-          Alert.alert('Connection Failed', result.error);
+          showError(`Connection failed: ${result.error}`);
         }
         return;
       }
       
       if (result?.code) {
-        // Process the OAuth callback directly
+        // Check if we've already processed this code (shouldn't happen, but safety check)
+        if (processedCodesGlobal.has(result.code)) {
+          console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring');
+          return;
+        }
+        
+        // Mark as processed immediately (global)
+        processedCodesGlobal.add(result.code);
+        
+        // Process the OAuth callback directly with state parameter
         // Don't set connecting to true again - handleOAuthCallback will show its own loading
-        await handleOAuthCallback(result.code);
+        await handleOAuthCallback(result.code, result.state);
       }
       // If no result, it means we're using Linking fallback and deep link handler will process it
     } catch (error: any) {
       console.error('Error opening auth URL:', error);
       setConnecting(false);
-      Alert.alert('Error', error.message || 'Failed to open TrueLayer authentication');
+      processingRef.current = false;
+      processingGlobal.current = false;
+      showError(error.message || 'Failed to open TrueLayer authentication');
     }
   };
 
-  const handleOAuthCallback = async (code: string) => {
-    try {
-      setConnecting(true);
-      const { connectionId } = await exchangeCodeForTokens(code);
+  const handleOAuthCallback = async (code: string, state?: string) => {
+    // Prevent duplicate processing (check both local and global)
+    if (processingRef.current || processingGlobal.current) {
+      console.log('[ConnectBankScreen] OAuth callback already being processed, ignoring duplicate');
+      return;
+    }
 
-      // Immediately sync accounts
+    try {
+      processingRef.current = true;
+      processingGlobal.current = true;
+      setConnecting(true);
+      
+      const { connectionId } = await exchangeCodeForTokens(code, undefined, state);
+
+      // Sync accounts first
+      console.log('[ConnectBankScreen] Syncing accounts...');
       await syncTrueLayerAccounts(connectionId);
 
-      // Reload connections
+      // Reload connections immediately
       await loadConnections();
 
-      Alert.alert('Success', 'Bank account connected successfully!');
+      // Navigate immediately - don't wait for transactions
+      navigation.navigate('Accounts' as never);
+      showSuccess('Bank account connected successfully!');
+
+      // Fetch transactions in background (non-blocking)
+      // This allows user to see accounts immediately while transactions load
+      console.log('[ConnectBankScreen] Fetching transactions in background...');
+      refreshTransactions()
+        .then(() => {
+          console.log('[ConnectBankScreen] Background transaction fetch completed');
+        })
+        .catch((error) => {
+          console.error('[ConnectBankScreen] Background transaction fetch failed (non-critical):', error);
+        });
     } catch (error: any) {
       console.error('Error handling OAuth callback:', error);
-      Alert.alert('Connection Failed', error.message || 'Failed to connect bank account');
+      
+      // Remove from processed codes so user can retry (global)
+      processedCodesGlobal.delete(code);
+      
+      // Check for specific error messages
+      const errorMessage = error.message || 'Failed to connect bank account';
+      if (errorMessage.includes('invalid_grant') || errorMessage.includes('Invalid grant')) {
+        showError('This authorization code has already been used. Please try connecting again.');
+      } else {
+        showError(errorMessage);
+      }
     } finally {
       setConnecting(false);
+      processingRef.current = false;
+      processingGlobal.current = false;
     }
   };
 
@@ -134,10 +214,10 @@ export default function ConnectBankScreen() {
             try {
               await clearTokens(connectionId);
               await loadConnections();
-              Alert.alert('Success', 'Account disconnected successfully');
+              showSuccess('Account disconnected successfully');
             } catch (error: any) {
               console.error('Error disconnecting:', error);
-              Alert.alert('Error', error.message || 'Failed to disconnect account');
+              showError(error.message || 'Failed to disconnect account');
             }
           },
         },
@@ -149,11 +229,12 @@ export default function ConnectBankScreen() {
     try {
       setRefreshing(true);
       await syncTrueLayerAccounts(connectionId);
+      await refreshTransactions();
       await loadConnections();
-      Alert.alert('Success', 'Account synced successfully');
+      showSuccess('Account and transactions synced successfully');
     } catch (error: any) {
       console.error('Error syncing:', error);
-      Alert.alert('Sync Failed', error.message || 'Failed to sync account');
+      showError(error.message || 'Failed to sync account');
     } finally {
       setRefreshing(false);
     }

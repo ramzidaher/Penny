@@ -51,7 +51,12 @@ const getFinancialData = async (): Promise<FinancialData> => {
   };
 };
 
-export const askAI = async (question: string): Promise<string> => {
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export const askAI = async (question: string, conversationHistory: Message[] = []): Promise<string> => {
   if (!OPENAI_API_KEY) {
     return 'OpenAI API key not configured. Please add EXPO_PUBLIC_OPENAI_API_KEY to your .env file.';
   }
@@ -59,7 +64,7 @@ export const askAI = async (question: string): Promise<string> => {
   try {
     const financialData = await getFinancialData();
     
-    const prompt = `You are a financial advisor AI assistant for Penny app. Analyze the following financial data and answer the user's question.
+    const systemPrompt = `You are a financial advisor AI assistant for Penny app. Analyze the following financial data and answer the user's question.
 
 Financial Summary:
 - Total Balance: $${financialData.totalBalance.toFixed(2)}
@@ -85,24 +90,28 @@ ${financialData.subscriptions.map(s =>
   `  - ${s.name}: $${s.amount.toFixed(2)}/${s.frequency}`
 ).join('\n')}
 
-User Question: ${question}
+Provide a concise, helpful answer. If asked about purchasing something, analyze if they can afford it based on their current financial situation. Be direct and practical. You can reference previous conversation context when answering follow-up questions.`;
 
-Provide a concise, helpful answer. If asked about purchasing something, analyze if they can afford it based on their current financial situation. Be direct and practical.`;
+    const messages = [
+      {
+        role: 'system' as const,
+        content: systemPrompt,
+      },
+      ...conversationHistory.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      })),
+      {
+        role: 'user' as const,
+        content: question,
+      },
+    ];
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
       {
         model: 'gpt-3.5-turbo',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a helpful financial advisor AI assistant. Provide clear, practical financial advice based on the user\'s financial data.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        messages,
         max_tokens: 500,
         temperature: 0.7,
       },

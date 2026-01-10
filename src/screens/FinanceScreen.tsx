@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useNavigation } from '../utils/navigation';
+import { useFocusEffect } from 'expo-router';
 import AccountsScreen from './AccountsScreen';
 import TransactionsScreen from './TransactionsScreen';
 import BudgetsScreen from './BudgetsScreen';
@@ -11,11 +12,13 @@ import AddTransactionScreen from './AddTransactionScreen';
 import AddBudgetScreen from './AddBudgetScreen';
 import AddDebtScreen from './AddDebtScreen';
 import ConnectBankScreen from './ConnectBankScreen';
+import SubscriptionsScreen from './SubscriptionsScreen';
+import AddSubscriptionScreen from './AddSubscriptionScreen';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { Ionicons } from '@expo/vector-icons';
-import { getAccounts, getTransactions, getBudgets } from '../database/db';
-import { Account, Transaction, Budget } from '../database/schema';
+import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
+import { Account, Transaction, Budget, Subscription } from '../database/schema';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
@@ -30,24 +33,31 @@ function FinanceHomeScreen({ navigation }: any) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const hasLoadedRef = useRef(false);
 
-  const loadData = async () => {
+  const loadData = async (showLoading = false) => {
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       await waitForFirebase();
-      const [accs, trans, buds, settings] = await Promise.all([
+      const [accs, trans, buds, subs, settings] = await Promise.all([
         getAccounts(),
         getTransactions(),
         getBudgets(),
+        getSubscriptions(),
         getSettings(),
       ]);
       setAccounts(accs);
       setTransactions(trans);
       setBudgets(buds);
+      setSubscriptions(subs);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -55,16 +65,16 @@ function FinanceHomeScreen({ navigation }: any) {
     }
   };
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadData();
-    }, 100);
-    const unsubscribe = navigation.addListener('focus', loadData);
-    return () => {
-      clearTimeout(timer);
-      unsubscribe();
-    };
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      // Only show loading on initial load, refresh silently on subsequent focuses
+      const isInitialLoad = !hasLoadedRef.current;
+      const timer = setTimeout(() => {
+        loadData(isInitialLoad);
+      }, 100);
+      return () => clearTimeout(timer);
+    }, [])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -93,6 +103,19 @@ function FinanceHomeScreen({ navigation }: any) {
   const activeBudgets = budgets.length;
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.currentSpent, 0);
+
+  const totalMonthlySubscriptions = subscriptions
+    .filter(s => s.frequency === 'monthly')
+    .reduce((sum, s) => sum + s.amount, 0);
+  const totalYearlySubscriptions = subscriptions
+    .filter(s => s.frequency === 'yearly')
+    .reduce((sum, s) => sum + s.amount, 0);
+  const monthlySubscriptionCost = totalMonthlySubscriptions + (totalYearlySubscriptions / 12);
+  
+  const upcomingSubscriptions = subscriptions
+    .filter(s => new Date(s.nextBillingDate) >= now)
+    .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())
+    .slice(0, 3);
 
   const getProgressPercentage = (budget: Budget) => {
     return Math.min((budget.currentSpent / budget.limit) * 100, 100);
@@ -155,6 +178,13 @@ function FinanceHomeScreen({ navigation }: any) {
           <Text style={styles.statValue}>{activeBudgets}</Text>
           <Text style={styles.statLabel}>Budgets</Text>
         </View>
+        <View style={styles.statCard}>
+          <View style={styles.statIconContainer}>
+            <Ionicons name="repeat" size={24} color={colors.primary} />
+          </View>
+          <Text style={styles.statValue}>{subscriptions.length}</Text>
+          <Text style={styles.statLabel}>Subscriptions</Text>
+        </View>
       </View>
 
       {/* Monthly Overview */}
@@ -195,6 +225,65 @@ function FinanceHomeScreen({ navigation }: any) {
           )}
         </View>
       </View>
+
+      {/* Subscriptions Section */}
+      {subscriptions.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Subscriptions</Text>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Subscriptions')}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.viewAllText}>View All</Text>
+            </TouchableOpacity>
+          </View>
+          {upcomingSubscriptions.length > 0 ? (
+            <>
+              {upcomingSubscriptions.map((subscription) => {
+                const daysUntil = Math.ceil((new Date(subscription.nextBillingDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+                const isDueToday = daysUntil === 0;
+                
+                return (
+                  <View key={subscription.id} style={styles.subscriptionCard}>
+                    <View style={styles.subscriptionHeader}>
+                      <Text style={styles.subscriptionName}>{subscription.name}</Text>
+                      <Text style={styles.subscriptionAmount}>
+                        {formatCurrencySync(subscription.amount, currencyCode)}
+                      </Text>
+                    </View>
+                    <View style={styles.subscriptionFooter}>
+                      <Text style={styles.subscriptionFrequency}>
+                        {subscription.frequency.charAt(0).toUpperCase() + subscription.frequency.slice(1)}
+                      </Text>
+                      <Text style={[styles.subscriptionDate, isDueToday && styles.subscriptionDateDue]}>
+                        {isDueToday ? 'Due today' : `${daysUntil} day${daysUntil !== 1 ? 's' : ''} left`}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {subscriptions.length > 3 && (
+                <TouchableOpacity
+                  style={styles.viewMoreButton}
+                  onPress={() => navigation.navigate('Subscriptions')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.viewMoreText}>
+                    View {subscriptions.length - 3} more subscription{subscriptions.length - 3 !== 1 ? 's' : ''}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Ionicons name="repeat-outline" size={48} color={colors.textSecondary} />
+              <Text style={styles.emptyText}>No upcoming subscriptions</Text>
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Budgets List */}
       {budgets.length > 0 && (
@@ -325,6 +414,22 @@ function FinanceHomeScreen({ navigation }: any) {
               </Text>
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => navigation.navigate('Subscriptions')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionIconContainer}>
+              <Ionicons name="repeat" size={28} color={colors.background} />
+            </View>
+            <View style={styles.actionTextContainer}>
+              <Text style={styles.actionTitle}>Subscriptions</Text>
+              <Text style={styles.actionSubtitle}>
+                {subscriptions.length === 0 ? 'Track recurring payments' : `${subscriptions.length} active subscription${subscriptions.length !== 1 ? 's' : ''}`}
+              </Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -357,6 +462,8 @@ export default function FinanceStack() {
       <Stack.Screen name="AddBudget" component={AddBudgetScreen} options={{ title: 'Add Budget' }} />
       <Stack.Screen name="Debts" component={DebtsScreen} options={{ title: 'Debts' }} />
       <Stack.Screen name="AddDebt" component={AddDebtScreen} options={{ title: 'Add Debt' }} />
+      <Stack.Screen name="Subscriptions" component={SubscriptionsScreen} options={{ title: 'Subscriptions' }} />
+      <Stack.Screen name="AddSubscription" component={AddSubscriptionScreen} options={{ title: 'Add Subscription' }} />
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
     </Stack.Navigator>
   );
@@ -605,5 +712,64 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
     marginRight: 4,
+  },
+  subscriptionCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  subscriptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  subscriptionName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    flex: 1,
+  },
+  subscriptionAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  subscriptionFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  subscriptionFrequency: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    textTransform: 'capitalize',
+  },
+  subscriptionDate: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  subscriptionDateDue: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 12,
+    fontWeight: '500',
   },
 });

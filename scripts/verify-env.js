@@ -86,6 +86,22 @@ if (invalidVars.length > 0) {
   console.log('  ✅ All variables use EXPO_PUBLIC_ prefix');
 }
 
+// Security check: Warn about client secret in client code
+console.log('\n🔒 Security check:');
+const hasClientSecret = envLines.some(line => {
+  const varName = line.split('=')[0].trim();
+  return varName === 'EXPO_PUBLIC_TRUELAYER_CLIENT_SECRET';
+});
+
+if (hasClientSecret) {
+  console.log('  ⚠️  WARNING: EXPO_PUBLIC_TRUELAYER_CLIENT_SECRET detected in client code!');
+  console.log('  ⚠️  Client secrets should NEVER be in client code.');
+  console.log('  ⚠️  Move token exchange to backend service (Firebase Cloud Functions).');
+  console.log('  ⚠️  See SECURITY.md for details.');
+} else {
+  console.log('  ✅ No client secret in client code');
+}
+
 // Summary
 console.log('\n' + '='.repeat(50));
 if (allPresent) {

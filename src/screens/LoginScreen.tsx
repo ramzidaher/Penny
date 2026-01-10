@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { loginUser, resetPassword, initFirebase } from '../services/firebase';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import {
+  isBiometricAvailable,
+  getBiometricType,
+  performBiometricLogin,
+  saveBiometricCredentials,
+  hasBiometricCredentials,
+} from '../services/biometricService';
+import { getSettings, waitForFirebase } from '../services/settingsService';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -12,6 +20,65 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricType, setBiometricType] = useState('Biometric');
+  const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
+
+  // Check biometric availability and settings on mount
+  useEffect(() => {
+    const checkBiometric = async () => {
+      try {
+        const available = await isBiometricAvailable();
+        setBiometricAvailable(available);
+        
+        if (available) {
+          const type = await getBiometricType();
+          setBiometricType(type);
+          
+          // Check if user has enabled biometric in settings
+          try {
+            await waitForFirebase();
+            const settings = await getSettings();
+            setBiometricEnabled(settings.enableBiometric);
+            
+            // Check if credentials are saved
+            const hasCredentials = await hasBiometricCredentials();
+            setHasSavedCredentials(hasCredentials);
+            
+            // Auto-trigger biometric login if enabled and credentials exist
+            if (settings.enableBiometric && hasCredentials) {
+              // Small delay to let UI render first
+              setTimeout(() => {
+                handleBiometricLogin();
+              }, 500);
+            }
+          } catch (error) {
+            console.error('Error checking biometric settings:', error);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking biometric availability:', error);
+      }
+    };
+    
+    checkBiometric();
+  }, []);
+
+  const handleBiometricLogin = async () => {
+    try {
+      setLoading(true);
+      await performBiometricLogin();
+      // Navigation will be handled by App.tsx auth state listener
+    } catch (error: any) {
+      console.error('Biometric login error:', error);
+      if (error.message !== 'Authentication cancelled') {
+        Alert.alert('Biometric Login Failed', error.message || 'Failed to authenticate. Please try again.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -27,6 +94,18 @@ export default function LoginScreen() {
       setLoading(true);
       await initFirebase();
       await loginUser(email.trim(), password);
+      
+      // Save credentials for biometric login if biometric is enabled
+      if (biometricEnabled && biometricAvailable) {
+        try {
+          await saveBiometricCredentials(email.trim(), password);
+          setHasSavedCredentials(true);
+        } catch (error) {
+          console.error('Error saving biometric credentials:', error);
+          // Don't show error to user, login was successful
+        }
+      }
+      
       // Navigation will be handled by App.tsx auth state listener
     } catch (error: any) {
       console.error('Login error:', error);
@@ -160,6 +239,31 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
 
+            {/* Biometric Login Button */}
+            {biometricAvailable && biometricEnabled && hasSavedCredentials && (
+              <>
+                <View style={styles.divider}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                <TouchableOpacity
+                  style={[styles.biometricButton, loading && styles.biometricButtonDisabled]}
+                  onPress={handleBiometricLogin}
+                  disabled={loading}
+                >
+                  <Ionicons 
+                    name={Platform.OS === 'ios' ? 'finger-print-outline' : 'finger-print'} 
+                    size={24} 
+                    color={colors.background} 
+                  />
+                  <Text style={styles.biometricButtonText}>
+                    {loading ? 'Authenticating...' : `Sign in with ${biometricType}`}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             <View style={styles.signupContainer}>
               <Text style={styles.signupText}>Don't have an account? </Text>
               <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
@@ -274,6 +378,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  biometricButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    height: 56,
+    gap: 12,
+    marginBottom: 24,
+  },
+  biometricButtonDisabled: {
+    opacity: 0.6,
+  },
+  biometricButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.background,
   },
 });
 

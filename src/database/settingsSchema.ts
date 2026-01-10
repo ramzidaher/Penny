@@ -16,6 +16,8 @@ export interface AppSettings {
   enableNotifications: boolean;
   enableSound: boolean;
   enableBadge: boolean;
+  // Security settings
+  enableBiometric: boolean;
   // Other settings
   theme: 'light' | 'dark' | 'auto';
   createdAt: string;
@@ -35,8 +37,11 @@ export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 
   enableNotifications: true,
   enableSound: true,
   enableBadge: true,
+  enableBiometric: false,
   theme: 'light',
 };
+
+
 
 
 

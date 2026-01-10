@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, deleteAccount } from '../database/db';
 import { syncTrueLayerAccounts } from '../database/db';
+import { refreshTransactions } from '../services/transactionService';
 import { Account } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -23,17 +24,24 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
+  const [activeConnectionIds, setActiveConnectionIds] = useState<Set<string>>(new Set());
 
   const loadAccounts = async () => {
     try {
       setLoading(true);
       await waitForFirebase();
-      const [accs, settings] = await Promise.all([
+      const [accs, settings, connections] = await Promise.all([
         getAccounts(),
         getSettings(),
+        getAllConnections(),
       ]);
       
       console.log(`📋 Loaded ${accs.length} total account(s) from database`);
+      
+      // Track which connections are active on this device
+      const activeIds = new Set(connections.map(conn => conn.id));
+      setActiveConnectionIds(activeIds);
       
       setAccounts(accs);
       setCurrencyCode(settings.defaultCurrency);
@@ -59,18 +67,25 @@ export default function AccountsScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Sync TrueLayer accounts if any connections exist
+      // Sync TrueLayer accounts and transactions if any connections exist
       const connections = await getAllConnections();
       for (const connection of connections) {
         try {
           await syncTrueLayerAccounts(connection.id);
+          await refreshTransactions();
         } catch (error) {
-          console.error(`Error syncing connection ${connection.id}:`, error);
+          console.error(`Error syncing connection:`, error);
           // Continue with other connections even if one fails
         }
       }
+      
+      // Refresh account balances (fetches from API for TrueLayer accounts)
+      const { refreshAccountBalances } = await import('../services/accountBalanceService');
+      const currentAccounts = await getAccounts();
+      const refreshedAccounts = await refreshAccountBalances(currentAccounts);
+      setAccounts(refreshedAccounts);
     } catch (error) {
-      console.error('Error syncing TrueLayer accounts:', error);
+      console.error('Error syncing TrueLayer data:', error);
     }
     await loadAccounts();
     setRefreshing(false);
@@ -81,6 +96,77 @@ export default function AccountsScreen() {
     await loadAccounts();
   };
 
+  const handleSyncAccount = async (account: Account) => {
+    if (!account.truelayerConnectionId) {
+      console.error('Account does not have a connection ID');
+      return;
+    }
+
+    try {
+      setSyncingAccountId(account.id);
+      
+      // Verify connection exists before attempting sync
+      const { getAllConnections } = await import('../services/truelayerService');
+      const connections = await getAllConnections();
+      const connectionExists = connections.some(conn => conn.id === account.truelayerConnectionId);
+      
+      if (!connectionExists) {
+        // Connection was deleted or doesn't exist
+        // Show user-friendly message and suggest reconnecting
+        Alert.alert(
+          'Connection Not Found',
+          `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
+      // Sync accounts and transactions for this connection
+      await syncTrueLayerAccounts(account.truelayerConnectionId);
+      await refreshTransactions();
+      
+      // Refresh account balances
+      const { refreshAccountBalances } = await import('../services/accountBalanceService');
+      const currentAccounts = await getAccounts();
+      const refreshedAccounts = await refreshAccountBalances(currentAccounts, true);
+      setAccounts(refreshedAccounts);
+      
+      // Reload accounts to get latest data
+      await loadAccounts();
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Error syncing account:', errorMessage);
+      
+      // Handle "Connection not found" errors gracefully
+      if (errorMessage.includes('Connection not found')) {
+        Alert.alert(
+          'Connection Not Found',
+          `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
+          [{ text: 'OK' }]
+        );
+      } else {
+        // For other errors, show generic error message
+        Alert.alert(
+          'Sync Failed',
+          `Failed to sync "${account.name}". Please try again.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } finally {
+      setSyncingAccountId(null);
+    }
+  };
+
+  const calculateTotalBalance = () => {
+    return accounts.reduce((total, account) => {
+      // For card accounts with linked accounts, use the linked account balance
+      if (account.type === 'card' && account.linkedAccountId) {
+        const linkedAccount = accounts.find(acc => acc.id === account.linkedAccountId);
+        return total + (linkedAccount ? linkedAccount.balance : account.balance);
+      }
+      return total + account.balance;
+    }, 0);
+  };
 
   const getAccountIcon = (type: string) => {
     switch (type) {
@@ -114,17 +200,57 @@ export default function AccountsScreen() {
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
-          <TouchableOpacity
-            style={styles.connectBankButton}
-            onPress={() => navigation.navigate('ConnectBank' as never)}
-          >
-            <Ionicons name="link" size={24} color={colors.primary} />
-            <View style={styles.connectBankTextContainer}>
-              <Text style={styles.connectBankTitle}>Connect Bank Account</Text>
-              <Text style={styles.connectBankSubtitle}>Sync accounts automatically with TrueLayer</Text>
+          <View style={styles.headerSection}>
+            <View style={styles.quickActionsSection}>
+              <Text style={styles.sectionTitle}>Quick Actions</Text>
+              <View style={styles.actionsContainer}>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => navigation.navigate('ConnectBank' as never)}
+                >
+                  <View style={styles.actionIconContainer}>
+                    <Ionicons name="link" size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.actionTextContainer}>
+                    <Text style={styles.actionTitle}>Connect Bank</Text>
+                    <Text style={styles.actionSubtitle}>Auto-sync with TrueLayer</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => navigation.navigate('AddAccount' as never)}
+                >
+                  <View style={styles.actionIconContainer}>
+                    <Ionicons name="wallet-outline" size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.actionTextContainer}>
+                    <Text style={styles.actionTitle}>Add Manual</Text>
+                    <Text style={styles.actionSubtitle}>Create account manually</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
+            {accounts.length > 0 && (
+              <View style={styles.summarySection}>
+                <View style={styles.summaryCard}>
+                  <Text style={styles.summaryLabel}>Total Balance</Text>
+                  <Text style={styles.summaryAmount}>
+                    {formatCurrencySync(calculateTotalBalance(), currencyCode)}
+                  </Text>
+                  <Text style={styles.summaryCount}>
+                    {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+                  </Text>
+                </View>
+              </View>
+            )}
+            {accounts.length > 0 && (
+              <View style={styles.accountsSection}>
+                <Text style={styles.sectionTitle}>Your Accounts</Text>
+              </View>
+            )}
+          </View>
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -189,10 +315,27 @@ export default function AccountsScreen() {
                   <View style={styles.accountNameRow}>
                     <Text style={styles.accountName}>{item.name}</Text>
                     {item.isSynced && (
-                      <View style={styles.syncBadge}>
-                        <Ionicons name="sync" size={12} color={colors.primary} />
-                        <Text style={styles.syncBadgeText}>Synced</Text>
-                      </View>
+                      <>
+                        {item.truelayerConnectionId && activeConnectionIds.has(item.truelayerConnectionId) ? (
+                          <View style={styles.syncBadge}>
+                            <Ionicons name="sync" size={12} color={colors.primary} />
+                            <Text style={styles.syncBadgeText}>Synced</Text>
+                          </View>
+                        ) : item.truelayerConnectionId ? (
+                          <TouchableOpacity
+                            style={styles.reconnectBadge}
+                            onPress={() => navigation.navigate('ConnectBank' as never)}
+                          >
+                            <Ionicons name="refresh" size={12} color={colors.error} />
+                            <Text style={styles.reconnectBadgeText}>Reconnect</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.syncBadge}>
+                            <Ionicons name="sync" size={12} color={colors.primary} />
+                            <Text style={styles.syncBadgeText}>Synced</Text>
+                          </View>
+                        )}
+                      </>
                     )}
                   </View>
                   <View style={styles.accountMetaRow}>
@@ -221,24 +364,33 @@ export default function AccountsScreen() {
                     item.currency || currencyCode
                   )}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => handleDelete(item.id)}
-                  style={styles.deleteButton}
-                >
-                  <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
+                <View style={styles.accountActions}>
+                  {item.isSynced && item.truelayerConnectionId && (
+                    <TouchableOpacity
+                      onPress={() => handleSyncAccount(item)}
+                      style={styles.syncButton}
+                      disabled={syncingAccountId === item.id}
+                    >
+                      {syncingAccountId === item.id ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Ionicons name="refresh" size={18} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    onPress={() => handleDelete(item.id)}
+                    style={styles.deleteButton}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
           );
         }}
-        contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 20 }]}
+        contentContainerStyle={[styles.listContent, { paddingTop: 8, paddingBottom: 20 }]}
       />
-      <TouchableOpacity
-        style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
-        onPress={() => navigation.navigate('AddAccount' as never)}
-      >
-        <Ionicons name="add" size={28} color={colors.background} />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -249,7 +401,96 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   listContent: {
-    padding: 20,
+    paddingHorizontal: 20,
+  },
+  headerSection: {
+    marginBottom: 8,
+  },
+  quickActionsSection: {
+    marginTop: 0,
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '700',
+    fontSize: 16,
+    marginBottom: 12,
+    letterSpacing: -0.3,
+  },
+  actionsContainer: {
+    // gap: 10, // Not supported in all RN versions
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  actionTextContainer: {
+    flex: 1,
+  },
+  actionTitle: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    fontSize: 15,
+    marginBottom: 2,
+  },
+  actionSubtitle: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  summarySection: {
+    marginBottom: 24,
+  },
+  summaryCard: {
+    backgroundColor: colors.primary,
+    padding: 24,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  summaryLabel: {
+    ...typography.caption,
+    color: colors.background,
+    fontSize: 13,
+    fontWeight: '500',
+    marginBottom: 8,
+    opacity: 0.8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summaryAmount: {
+    ...typography.h2,
+    color: colors.background,
+    fontSize: 32,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.5,
+  },
+  summaryCount: {
+    ...typography.caption,
+    color: colors.background,
+    fontSize: 13,
+    opacity: 0.7,
+  },
+  accountsSection: {
+    marginBottom: 12,
   },
   accountCard: {
     flexDirection: 'row',
@@ -324,6 +565,24 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 4,
   },
+  reconnectBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: colors.error,
+  },
+  reconnectBadgeText: {
+    ...typography.caption,
+    color: colors.error,
+    fontSize: 10,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
   syncTime: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -343,6 +602,17 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginBottom: 4,
   },
+  accountActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  syncButton: {
+    padding: 4,
+    minWidth: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   deleteButton: {
     padding: 4,
   },
@@ -359,28 +629,6 @@ const styles = StyleSheet.create({
   emptySubtext: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-  },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#1A1A1A',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-      },
-      web: {
-        boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
-      },
-    }),
   },
   // Card-specific styles
   cardAccountCard: {
@@ -436,32 +684,6 @@ const styles = StyleSheet.create({
     ...typography.h3,
     color: colors.text,
     marginBottom: 4,
-  },
-  connectBankButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    marginHorizontal: 20,
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  connectBankTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  connectBankTitle: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  connectBankSubtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
   },
 });
 

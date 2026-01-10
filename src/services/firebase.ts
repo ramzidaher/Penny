@@ -1,5 +1,6 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore, enableNetwork, disableNetwork } from 'firebase/firestore';
+import { getFunctions, Functions, httpsCallable } from 'firebase/functions';
 import { 
   getAuth as getFirebaseAuth,
   initializeAuth,
@@ -32,6 +33,7 @@ const firebaseConfig = {
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
+let functions: Functions | null = null;
 let auth: Auth | null = null;
 let currentUser: User | null = null;
 let isInitializing = false;
@@ -95,6 +97,7 @@ export const initFirebase = async (): Promise<boolean> => {
       }
 
       db = getFirestore(app);
+      functions = getFunctions(app);
 
       // Update currentUser from auth state (but don't set up listener here - App.tsx handles it)
       if (auth.currentUser) {
@@ -135,6 +138,11 @@ export const waitForFirebase = async (maxWait = 5000): Promise<boolean> => {
 // Get Firestore instance
 export const getFirestoreDb = (): Firestore | null => {
   return db;
+};
+
+// Get Functions instance
+export const getFirebaseFunctions = (): Functions | null => {
+  return functions;
 };
 
 // Get Auth instance

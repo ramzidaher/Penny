@@ -11,14 +11,15 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#1A1A1A"
+      "backgroundColor": "#080808"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.penny.app",
+      "bundleIdentifier": "com.pennyfinance.app",
+      "buildNumber": "2",
       "associatedDomains": [],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -27,9 +28,9 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/Penny Logo RD.png",
-        "backgroundColor": "#1A1A1A"
+        "backgroundColor": "#080808"
       },
-      "package": "com.penny.app",
+      "package": "com.pennyfinance.app",
       "intentFilters": [
         {
           "action": "VIEW",
@@ -61,7 +62,8 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-local-authentication"
     ],
     "extra": {
       "eas": {

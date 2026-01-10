@@ -8,40 +8,58 @@ import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export default function AIScreen() {
   const insets = useSafeAreaInsets();
   const [question, setQuestion] = useState('');
-  const [response, setResponse] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const screenWrapperRef = useRef<ScreenWrapperRef>(null);
 
   const handleAsk = async () => {
     if (!question.trim()) return;
 
+    const userQuestion = question.trim();
+    setQuestion('');
     setLoading(true);
-    setResponse('');
+    
+    // Add user message to conversation
+    const userMessage: Message = { role: 'user', content: userQuestion };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     
     try {
-      const answer = await askAI(question.trim());
-      setResponse(answer);
-      setQuestion('');
+      const answer = await askAI(userQuestion, messages);
+      const assistantMessage: Message = { role: 'assistant', content: answer };
+      setMessages([...updatedMessages, assistantMessage]);
     } catch (error) {
-      setResponse('Sorry, I encountered an error. Please try again.');
+      const errorMessage: Message = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
+      setMessages([...updatedMessages, errorMessage]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleQuickQuestion = async (quickQuestion: string) => {
-    setQuestion(quickQuestion);
+    setQuestion('');
     setLoading(true);
-    setResponse('');
+    
+    // Add user message to conversation
+    const userMessage: Message = { role: 'user', content: quickQuestion };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     
     try {
-      const answer = await askAI(quickQuestion);
-      setResponse(answer);
+      const answer = await askAI(quickQuestion, messages);
+      const assistantMessage: Message = { role: 'assistant', content: answer };
+      setMessages([...updatedMessages, assistantMessage]);
     } catch (error) {
-      setResponse('Sorry, I encountered an error. Please try again.');
+      const errorMessage: Message = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
+      setMessages([...updatedMessages, errorMessage]);
     } finally {
       setLoading(false);
     }
@@ -55,10 +73,10 @@ export default function AIScreen() {
   ];
 
   useEffect(() => {
-    if (response) {
+    if (messages.length > 0) {
       screenWrapperRef.current?.scrollToEnd({ animated: true });
     }
-  }, [response]);
+  }, [messages]);
 
   return (
     <View style={styles.container}>
@@ -70,17 +88,40 @@ export default function AIScreen() {
         showsVerticalScrollIndicator={false}
       >
         <ScreenHeader
-          title="AI Financial Advisor"
+          title="Penny Advisor"
           subtitle="Ask me anything about your finances"
+          titleFontFamily="GulfsDisplay-Normal"
+          titleLetterSpacing={0.5}
         />
 
-        {response ? (
-          <View style={styles.responseContainer}>
-            <View style={styles.responseHeader}>
-              <Ionicons name="chatbubble" size={20} color={colors.text} />
-              <Text style={styles.responseLabel}>Response</Text>
-            </View>
-            <Text style={styles.responseText}>{response}</Text>
+        {messages.length > 0 ? (
+          <View style={styles.messagesContainer}>
+            {messages.map((message, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.messageContainer,
+                  message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+                ]}
+              >
+                <View style={styles.messageHeader}>
+                  <Ionicons
+                    name={message.role === 'user' ? 'person' : 'chatbubble'}
+                    size={16}
+                    color={message.role === 'user' ? colors.primary : colors.text}
+                  />
+                  <Text style={styles.messageLabel}>
+                    {message.role === 'user' ? 'You' : 'Penny'}
+                  </Text>
+                </View>
+                <Text style={styles.messageText}>{message.content}</Text>
+              </View>
+            ))}
+            {loading && (
+              <View style={[styles.messageContainer, styles.assistantMessage]}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            )}
           </View>
         ) : (
           <View style={styles.emptyState}>
@@ -150,27 +191,40 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: 'center',
   },
-  responseContainer: {
-    backgroundColor: colors.surface,
+  messagesContainer: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    gap: 12,
+  },
+  messageContainer: {
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
-    marginHorizontal: 20,
-    marginBottom: 24,
   },
-  responseHeader: {
+  userMessage: {
+    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary + '40',
+    alignSelf: 'flex-end',
+    maxWidth: '85%',
+  },
+  assistantMessage: {
+    backgroundColor: colors.surface,
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+  },
+  messageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  responseLabel: {
+  messageLabel: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     fontWeight: '600',
   },
-  responseText: {
+  messageText: {
     ...typography.body,
     color: colors.text,
     lineHeight: 24,

@@ -10,6 +10,12 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { waitForFirebase, logoutUser, getUserEmail } from '../services/firebase';
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
+import {
+  isBiometricAvailable,
+  getBiometricType,
+  deleteBiometricCredentials,
+  hasBiometricCredentials,
+} from '../services/biometricService';
 
 const currencies = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -29,6 +35,8 @@ export default function SettingsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricType, setBiometricType] = useState('Biometric');
 
   const loadSettings = async () => {
     try {
@@ -36,6 +44,14 @@ export default function SettingsScreen() {
       await waitForFirebase();
       const userSettings = await getSettings();
       setSettings(userSettings);
+      
+      // Check biometric availability
+      const available = await isBiometricAvailable();
+      setBiometricAvailable(available);
+      if (available) {
+        const type = await getBiometricType();
+        setBiometricType(type);
+      }
     } catch (error) {
       console.error('Error loading settings:', error);
       Alert.alert('Error', 'Failed to load settings');
@@ -55,6 +71,25 @@ export default function SettingsScreen() {
     
     try {
       setSaving(true);
+      
+      // Handle biometric setting change
+      if (updates.enableBiometric !== undefined) {
+        if (!updates.enableBiometric) {
+          // If disabling biometric, delete saved credentials
+          await deleteBiometricCredentials();
+        } else {
+          // If enabling biometric, check if credentials exist
+          const hasCredentials = await hasBiometricCredentials();
+          if (!hasCredentials) {
+            Alert.alert(
+              'Biometric Login',
+              `To enable ${biometricType} login, please sign in with your email and password first. Your credentials will be saved securely for future ${biometricType} authentication.`,
+              [{ text: 'OK' }]
+            );
+          }
+        }
+      }
+      
       await updateSettings(updates);
       const updatedSettings = await getSettings();
       setSettings(updatedSettings);
@@ -349,6 +384,29 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Security Settings */}
+      {biometricAvailable && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Security</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.settingRow}>
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>{biometricType} Login</Text>
+                <Text style={styles.settingDescription}>
+                  Use {biometricType.toLowerCase()} to quickly sign in to your account
+                </Text>
+              </View>
+              <Switch
+                value={settings.enableBiometric}
+                onValueChange={(value) => handleUpdate({ enableBiometric: value })}
+                trackColor={{ false: '#E0E0E0', true: '#000000' }}
+                thumbColor={settings.enableBiometric ? '#FFFFFF' : '#000000'}
+              />
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Account Section */}
       <View style={styles.section}>

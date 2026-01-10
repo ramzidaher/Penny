@@ -18,7 +18,11 @@ export const getAccounts = async (): Promise<Account[]> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
-  return await cloudDb.cloudGetAccounts();
+  const accounts = await cloudDb.cloudGetAccounts();
+  
+  // Enrich TrueLayer accounts with on-demand balances (secure, no cloud persistence)
+  const { enrichAccountsWithBalances } = await import('../services/accountBalanceService');
+  return await enrichAccountsWithBalances(accounts);
 };
 
 export const addAccount = async (account: Omit<Account, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
@@ -43,11 +47,10 @@ export const deleteAccount = async (id: string): Promise<void> => {
 };
 
 // Transaction operations
+// Now uses secure encrypted cache with API fallback (no Firestore persistence)
 export const getTransactions = async (accountId?: string): Promise<Transaction[]> => {
-  if (!isFirebaseAvailable()) {
-    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
-  }
-  const transactions = await cloudDb.cloudGetTransactions();
+  const { getTransactions: getSecureTransactions } = await import('../services/transactionService');
+  const transactions = await getSecureTransactions();
   if (accountId) {
     return transactions.filter(t => t.accountId === accountId);
   }
@@ -175,5 +178,12 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
   return await cloudDb.syncTrueLayerAccounts(connectionId);
+};
+
+export const syncTrueLayerTransactions = async (connectionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.syncTrueLayerTransactions(connectionId);
 };
 

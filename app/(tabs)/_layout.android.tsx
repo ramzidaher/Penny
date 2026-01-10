@@ -30,18 +30,18 @@ const tabs: TabItem[] = [
     iconFilled: 'wallet',
   },
   {
-    name: 'subscriptions',
-    label: 'Subscriptions',
-    route: '/(tabs)/subscriptions',
-    icon: 'repeat-outline',
-    iconFilled: 'repeat',
-  },
-  {
     name: 'ai',
     label: 'Advisor',
     route: '/(tabs)/ai',
     icon: 'chatbubbles-outline',
     iconFilled: 'chatbubbles',
+  },
+  {
+    name: 'add',
+    label: 'Menu',
+    route: '/(tabs)/add',
+    icon: 'menu-outline',
+    iconFilled: 'menu',
   },
 ];
 
@@ -67,11 +67,11 @@ export default function TabLayout() {
     if (tabName === 'finance' || pathname.includes('/finance')) {
       return 'finance';
     }
-    if (tabName === 'subscriptions' || pathname.includes('/subscriptions')) {
-      return 'subscriptions';
-    }
     if (tabName === 'ai' || pathname.includes('/ai')) {
       return 'ai';
+    }
+    if (tabName === 'add' || pathname.includes('/add')) {
+      return 'add';
     }
     
     // Fallback to segments

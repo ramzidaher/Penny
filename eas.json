@@ -7,6 +7,12 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "android": {
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyAO7ksdNsD8Uwbg7BxfQaaXUMpc2hG4NMM",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "mefi-1ba18.firebaseapp.com",
@@ -16,7 +22,8 @@
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:424862893904:web:ed9a40244b715b790f0e55",
         "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-46F4L1B1Q3",
         "EXPO_PUBLIC_LOGO_DEV_KEY": "pk_WinkY0UARgipCtWGpa1HRg",
-        "EXPO_PUBLIC_TRUELAYER_ENV": "live"
+        "EXPO_PUBLIC_TRUELAYER_ENV": "live",
+        "EXPO_PUBLIC_TRUELAYER_CLIENT_ID": "myfinance-90e7c9"
       }
     },
     "preview": {
@@ -36,7 +43,8 @@
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:424862893904:web:ed9a40244b715b790f0e55",
         "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-46F4L1B1Q3",
         "EXPO_PUBLIC_LOGO_DEV_KEY": "pk_WinkY0UARgipCtWGpa1HRg",
-        "EXPO_PUBLIC_TRUELAYER_ENV": "live"
+        "EXPO_PUBLIC_TRUELAYER_ENV": "live",
+        "EXPO_PUBLIC_TRUELAYER_CLIENT_ID": "myfinance-90e7c9"
       }
     },
     "production": {
@@ -55,7 +63,8 @@
         "EXPO_PUBLIC_FIREBASE_APP_ID": "1:424862893904:web:ed9a40244b715b790f0e55",
         "EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID": "G-46F4L1B1Q3",
         "EXPO_PUBLIC_LOGO_DEV_KEY": "pk_WinkY0UARgipCtWGpa1HRg",
-        "EXPO_PUBLIC_TRUELAYER_ENV": "live"
+        "EXPO_PUBLIC_TRUELAYER_ENV": "live",
+        "EXPO_PUBLIC_TRUELAYER_CLIENT_ID": "myfinance-90e7c9"
       }
     }
   },
@@ -64,4 +73,3 @@
     "production": {}
   }
 }
-

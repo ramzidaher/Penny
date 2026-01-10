@@ -118,6 +118,7 @@ export const updateSettings = async (updates: Partial<AppSettings>): Promise<voi
       'enableNotifications',
       'enableSound',
       'enableBadge',
+      'enableBiometric',
       'theme',
     ];
     

@@ -1,18 +1,44 @@
-import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { getSubscriptions, getBudgets, getTransactions, getAccounts, getDebts } from '../database/db';
 import { getSettings } from './settingsService';
 import { format, addDays, differenceInDays, startOfMonth, endOfMonth, startOfDay, isToday } from 'date-fns';
 
+// Lazy load notifications module to avoid errors in Expo Go
+let Notifications: typeof import('expo-notifications') | null = null;
+let notificationsAvailable = false;
+
+// Try to load notifications module
+const loadNotifications = async (): Promise<boolean> => {
+  if (Platform.OS === 'web') {
+    return false;
+  }
+  
+  if (Notifications !== null) {
+    return notificationsAvailable;
+  }
+  
+  try {
+    Notifications = await import('expo-notifications');
+    notificationsAvailable = true;
+    return true;
+  } catch (error) {
+    console.warn('expo-notifications not available (likely running in Expo Go):', error);
+    notificationsAvailable = false;
+    return false;
+  }
+};
+
 // Configure notification handler (will be updated based on settings)
 const updateNotificationHandler = async () => {
   if (Platform.OS === 'web') return;
+  
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
   
   try {
     const settings = await getSettings();
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: settings.enableNotifications,
         shouldPlaySound: settings.enableSound,
         shouldSetBadge: settings.enableBadge,
         shouldShowBanner: settings.enableNotifications,
@@ -23,7 +49,6 @@ const updateNotificationHandler = async () => {
     // Default handler if settings not available
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
         shouldShowBanner: true,
@@ -33,8 +58,10 @@ const updateNotificationHandler = async () => {
   }
 };
 
-// Initialize notification handler
-updateNotificationHandler();
+// Initialize notification handler (non-blocking)
+updateNotificationHandler().catch(() => {
+  // Silently fail if notifications aren't available
+});
 
 export const requestPermissions = async () => {
   // Notifications API is not available on web
@@ -42,21 +69,31 @@ export const requestPermissions = async () => {
     return false;
   }
   
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync({
-      ios: {
-        allowAlert: true,
-        allowBadge: true,
-        allowSound: true,
-      },
-    });
-    finalStatus = status;
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) {
+    return false;
   }
   
-  return finalStatus === 'granted';
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+        },
+      });
+      finalStatus = status;
+    }
+    
+    return finalStatus === 'granted';
+  } catch (error) {
+    console.warn('Failed to request notification permissions:', error);
+    return false;
+  }
 };
 
 // Cancel all existing notifications and reschedule
@@ -65,39 +102,56 @@ export const cancelAllNotifications = async () => {
   if (Platform.OS === 'web') {
     return;
   }
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) {
+    return;
+  }
+  
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch (error) {
+    console.warn('Failed to cancel notifications:', error);
+  }
 };
 
 // Low balance alerts for accounts
 export const checkLowBalanceAlerts = async () => {
   if (Platform.OS === 'web') return;
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  
   const settings = await getSettings();
   if (!settings.enableLowBalanceAlerts) return;
   
-  const accounts = await getAccounts();
-  const lowBalanceThreshold = settings.lowBalanceThreshold;
-  
-  for (const account of accounts) {
-    if (account.balance < lowBalanceThreshold && account.balance >= 0) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Low Balance Alert',
-          body: `${account.name} balance is low: $${account.balance.toFixed(2)}. Consider adding funds.`,
-          data: { type: 'low_balance', accountId: account.id },
-        },
-        trigger: null, // Immediate
-      });
-    } else if (account.balance < 0) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Negative Balance Warning',
-          body: `${account.name} has a negative balance: $${account.balance.toFixed(2)}. Please add funds immediately.`,
-          data: { type: 'negative_balance', accountId: account.id },
-        },
-        trigger: null, // Immediate
-      });
+  try {
+    const accounts = await getAccounts();
+    const lowBalanceThreshold = settings.lowBalanceThreshold;
+    
+    for (const account of accounts) {
+      if (account.balance < lowBalanceThreshold && account.balance >= 0) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Low Balance Alert',
+            body: `${account.name} balance is low: $${account.balance.toFixed(2)}. Consider adding funds.`,
+            data: { type: 'low_balance', accountId: account.id },
+          },
+          trigger: null, // Immediate
+        });
+      } else if (account.balance < 0) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Negative Balance Warning',
+            body: `${account.name} has a negative balance: $${account.balance.toFixed(2)}. Please add funds immediately.`,
+            data: { type: 'negative_balance', accountId: account.id },
+          },
+          trigger: null, // Immediate
+        });
+      }
     }
+  } catch (error) {
+    console.warn('Failed to check low balance alerts:', error);
   }
 };
 
@@ -105,106 +159,120 @@ export const checkLowBalanceAlerts = async () => {
 export const scheduleDailyAccountUpdateReminder = async () => {
   if (Platform.OS === 'web') return;
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  
   const settings = await getSettings();
   if (!settings.enableDailyReminders) return;
   
-  // Parse time from settings (HH:mm format)
-  const [hours, minutes] = settings.dailyReminderTime.split(':').map(Number);
-  const targetHour = hours || 9;
-  const targetMinute = minutes || 0;
-  
-  // Use DailyTriggerInput format with type property
-  // This will automatically repeat daily
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Daily Account Update',
-      body: 'Don\'t forget to update your account balances today!',
-      data: { type: 'daily_update' },
-    },
-    trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
-      hour: targetHour,
-      minute: targetMinute,
-    },
-  });
+  try {
+    // Parse time from settings (HH:mm format)
+    const [hours, minutes] = settings.dailyReminderTime.split(':').map(Number);
+    const targetHour = hours || 9;
+    const targetMinute = minutes || 0;
+    
+    // Use DailyTriggerInput format with type property
+    // This will automatically repeat daily
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Daily Account Update',
+        body: 'Don\'t forget to update your account balances today!',
+        data: { type: 'daily_update' },
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: targetHour,
+        minute: targetMinute,
+      },
+    });
+  } catch (error) {
+    console.warn('Failed to schedule daily reminder:', error);
+  }
 };
 
 // Subscription payment reminders
 export const scheduleSubscriptionReminders = async () => {
   if (Platform.OS === 'web') return;
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  
   const settings = await getSettings();
   if (!settings.enableSubscriptionReminders) return;
   
-  const subscriptions = await getSubscriptions();
-  const now = new Date();
-  
-  // Cancel existing subscription notifications
-  const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notification of allNotifications) {
-    if (notification.content.data?.type === 'subscription') {
-      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
-    }
-  }
-  
-  const reminderDays = settings.subscriptionReminderDays || [3, 1, 0];
-  
-  for (const subscription of subscriptions) {
-    const nextBilling = new Date(subscription.nextBillingDate);
-    const daysUntil = differenceInDays(nextBilling, now);
+  try {
+    const subscriptions = await getSubscriptions();
+    const now = new Date();
     
-    // Schedule reminders based on settings
-    for (const daysBefore of reminderDays) {
-      if (daysUntil >= daysBefore && daysBefore > 0) {
-        const reminderDate = addDays(now, daysUntil - daysBefore);
-        reminderDate.setHours(10, 0, 0, 0);
-        
-        let title = '';
-        let body = '';
-        if (daysBefore === 3) {
-          title = 'Upcoming Subscription';
-          body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} in 3 days.`;
-        } else if (daysBefore === 1) {
-          title = 'Subscription Renewal Tomorrow';
-          body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} tomorrow.`;
-        } else {
-          title = 'Upcoming Subscription';
-          body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} in ${daysBefore} days.`;
-        }
-        
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title,
-            body,
-            data: { type: 'subscription', id: subscription.id, daysUntil: daysBefore },
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: reminderDate,
-          },
-        });
+    // Cancel existing subscription notifications
+    const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notification of allNotifications) {
+      if (notification.content.data?.type === 'subscription') {
+        await Notifications.cancelScheduledNotificationAsync(notification.identifier);
       }
     }
     
-    // Schedule reminder on the day (if 0 is in reminderDays)
-    if (reminderDays.includes(0) && daysUntil >= 0) {
-      const reminderDate = new Date(nextBilling);
-      reminderDate.setHours(9, 0, 0, 0);
+    const reminderDays = settings.subscriptionReminderDays || [3, 1, 0];
+    
+    for (const subscription of subscriptions) {
+      const nextBilling = new Date(subscription.nextBillingDate);
+      const daysUntil = differenceInDays(nextBilling, now);
       
-      if (reminderDate > now) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Subscription Payment Due Today',
-            body: `${subscription.name} will be charged $${subscription.amount.toFixed(2)} today.`,
-            data: { type: 'subscription', id: subscription.id, daysUntil: 0 },
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: reminderDate,
-          },
-        });
+      // Schedule reminders based on settings
+      for (const daysBefore of reminderDays) {
+        if (daysUntil >= daysBefore && daysBefore > 0) {
+          const reminderDate = addDays(now, daysUntil - daysBefore);
+          reminderDate.setHours(10, 0, 0, 0);
+          
+          let title = '';
+          let body = '';
+          if (daysBefore === 3) {
+            title = 'Upcoming Subscription';
+            body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} in 3 days.`;
+          } else if (daysBefore === 1) {
+            title = 'Subscription Renewal Tomorrow';
+            body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} tomorrow.`;
+          } else {
+            title = 'Upcoming Subscription';
+            body = `${subscription.name} will be charged $${subscription.amount.toFixed(2)} in ${daysBefore} days.`;
+          }
+          
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              data: { type: 'subscription', id: subscription.id, daysUntil: daysBefore },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: reminderDate,
+            },
+          });
+        }
+      }
+      
+      // Schedule reminder on the day (if 0 is in reminderDays)
+      if (reminderDays.includes(0) && daysUntil >= 0) {
+        const reminderDate = new Date(nextBilling);
+        reminderDate.setHours(9, 0, 0, 0);
+        
+        if (reminderDate > now) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Subscription Payment Due Today',
+              body: `${subscription.name} will be charged $${subscription.amount.toFixed(2)} today.`,
+              data: { type: 'subscription', id: subscription.id, daysUntil: 0 },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: reminderDate,
+            },
+          });
+        }
       }
     }
+  } catch (error) {
+    console.warn('Failed to schedule subscription reminders:', error);
   }
 };
 
@@ -212,58 +280,65 @@ export const scheduleSubscriptionReminders = async () => {
 export const checkBudgetAlerts = async () => {
   if (Platform.OS === 'web') return;
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  
   const settings = await getSettings();
   if (!settings.enableBudgetAlerts) return;
   
-  const budgets = await getBudgets();
-  const transactions = await getTransactions();
-  const now = new Date();
-  const startOfCurrentMonth = startOfMonth(now);
-  const endOfCurrentMonth = endOfMonth(now);
-  
-  const monthlyTransactions = transactions.filter(t => {
-    const date = new Date(t.date);
-    return date >= startOfCurrentMonth && date <= endOfCurrentMonth && t.type === 'expense';
-  });
-  
-  const thresholds = settings.budgetAlertThresholds || [80, 90, 100];
-  
-  for (const budget of budgets) {
-    const categorySpent = monthlyTransactions
-      .filter(t => t.category === budget.category)
-      .reduce((sum, t) => sum + t.amount, 0);
+  try {
+    const budgets = await getBudgets();
+    const transactions = await getTransactions();
+    const now = new Date();
+    const startOfCurrentMonth = startOfMonth(now);
+    const endOfCurrentMonth = endOfMonth(now);
     
-    const percentage = (categorySpent / budget.limit) * 100;
-    const remaining = budget.limit - categorySpent;
+    const monthlyTransactions = transactions.filter(t => {
+      const date = new Date(t.date);
+      return date >= startOfCurrentMonth && date <= endOfCurrentMonth && t.type === 'expense';
+    });
     
-    // Check each threshold
-    for (const threshold of thresholds.sort((a, b) => b - a)) {
-      if (percentage >= threshold) {
-        let title = '';
-        let body = '';
-        
-        if (threshold === 100) {
-          title = 'Budget Exceeded';
-          body = `You've exceeded your ${budget.category} budget by $${Math.abs(remaining).toFixed(2)}.`;
-        } else if (threshold === 90) {
-          title = 'Budget Warning';
-          body = `You've used ${percentage.toFixed(0)}% of your ${budget.category} budget. Only $${remaining.toFixed(2)} remaining.`;
-        } else {
-          title = 'Budget Alert';
-          body = `You've used ${percentage.toFixed(0)}% of your ${budget.category} budget. $${remaining.toFixed(2)} remaining.`;
+    const thresholds = settings.budgetAlertThresholds || [80, 90, 100];
+    
+    for (const budget of budgets) {
+      const categorySpent = monthlyTransactions
+        .filter(t => t.category === budget.category)
+        .reduce((sum, t) => sum + t.amount, 0);
+      
+      const percentage = (categorySpent / budget.limit) * 100;
+      const remaining = budget.limit - categorySpent;
+      
+      // Check each threshold
+      for (const threshold of thresholds.sort((a, b) => b - a)) {
+        if (percentage >= threshold) {
+          let title = '';
+          let body = '';
+          
+          if (threshold === 100) {
+            title = 'Budget Exceeded';
+            body = `You've exceeded your ${budget.category} budget by $${Math.abs(remaining).toFixed(2)}.`;
+          } else if (threshold === 90) {
+            title = 'Budget Warning';
+            body = `You've used ${percentage.toFixed(0)}% of your ${budget.category} budget. Only $${remaining.toFixed(2)} remaining.`;
+          } else {
+            title = 'Budget Alert';
+            body = `You've used ${percentage.toFixed(0)}% of your ${budget.category} budget. $${remaining.toFixed(2)} remaining.`;
+          }
+          
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              data: { type: 'budget', id: budget.id },
+            },
+            trigger: null, // Immediate
+          });
+          break; // Only send one alert per budget
         }
-        
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title,
-            body,
-            data: { type: 'budget', id: budget.id },
-          },
-          trigger: null, // Immediate
-        });
-        break; // Only send one alert per budget
       }
     }
+  } catch (error) {
+    console.warn('Failed to check budget alerts:', error);
   }
 };
 
@@ -271,79 +346,46 @@ export const checkBudgetAlerts = async () => {
 export const scheduleDebtReminders = async () => {
   if (Platform.OS === 'web') return;
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  
   const settings = await getSettings();
   if (!settings.enableSubscriptionReminders) return; // Use same setting for debt reminders
   
-  const debts = await getDebts();
-  const now = new Date();
-  const { getCurrencySymbol } = await import('../utils/currency');
-  const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
-  
-  // Cancel existing debt notifications
-  const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
-  for (const notification of allNotifications) {
-    if (notification.content.data?.type === 'debt') {
-      await Notifications.cancelScheduledNotificationAsync(notification.identifier);
-    }
-  }
-  
-  for (const debt of debts) {
-    if (debt.status !== 'active') continue;
+  try {
+    const debts = await getDebts();
+    const now = new Date();
+    const { getCurrencySymbol } = await import('../utils/currency');
+    const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
     
-    const dueDate = new Date(debt.dueDate);
-    const daysUntil = differenceInDays(dueDate, now);
-    
-    // Reminder 3 days before
-    if (daysUntil >= 3) {
-      const reminderDate = addDays(now, daysUntil - 3);
-      reminderDate.setHours(10, 0, 0, 0);
-      
-      const amountText = debt.minimumPayment 
-        ? `${currencySymbol}${debt.minimumPayment.toFixed(2)}` 
-        : 'minimum amount';
-      
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Debt Payment Due Soon',
-          body: `${debt.name} payment of ${amountText} is due in 3 days.`,
-          data: { type: 'debt', id: debt.id, daysUntil: 3 },
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: reminderDate,
-        },
-      });
+    // Cancel existing debt notifications
+    const allNotifications = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notification of allNotifications) {
+      if (notification.content.data?.type === 'debt') {
+        await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+      }
     }
     
-    // Reminder 1 day before
-    if (daysUntil >= 1) {
-      const reminderDate = addDays(now, daysUntil - 1);
-      reminderDate.setHours(10, 0, 0, 0);
+    for (const debt of debts) {
+      if (debt.status !== 'active') continue;
       
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Debt Payment Due Tomorrow',
-          body: `${debt.name} payment is due tomorrow.`,
-          data: { type: 'debt', id: debt.id, daysUntil: 1 },
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: reminderDate,
-        },
-      });
-    }
-    
-    // Reminder on due date
-    if (daysUntil >= 0) {
-      const reminderDate = new Date(dueDate);
-      reminderDate.setHours(9, 0, 0, 0);
+      const dueDate = new Date(debt.dueDate);
+      const daysUntil = differenceInDays(dueDate, now);
       
-      if (reminderDate > now) {
+      // Reminder 3 days before
+      if (daysUntil >= 3) {
+        const reminderDate = addDays(now, daysUntil - 3);
+        reminderDate.setHours(10, 0, 0, 0);
+        
+        const amountText = debt.minimumPayment 
+          ? `${currencySymbol}${debt.minimumPayment.toFixed(2)}` 
+          : 'minimum amount';
+        
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Debt Payment Due Today',
-            body: `${debt.name} payment is due today.`,
-            data: { type: 'debt', id: debt.id, daysUntil: 0 },
+            title: 'Debt Payment Due Soon',
+            body: `${debt.name} payment of ${amountText} is due in 3 days.`,
+            data: { type: 'debt', id: debt.id, daysUntil: 3 },
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -351,19 +393,59 @@ export const scheduleDebtReminders = async () => {
           },
         });
       }
+      
+      // Reminder 1 day before
+      if (daysUntil >= 1) {
+        const reminderDate = addDays(now, daysUntil - 1);
+        reminderDate.setHours(10, 0, 0, 0);
+        
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Debt Payment Due Tomorrow',
+            body: `${debt.name} payment is due tomorrow.`,
+            data: { type: 'debt', id: debt.id, daysUntil: 1 },
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: reminderDate,
+          },
+        });
+      }
+      
+      // Reminder on due date
+      if (daysUntil >= 0) {
+        const reminderDate = new Date(dueDate);
+        reminderDate.setHours(9, 0, 0, 0);
+        
+        if (reminderDate > now) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Debt Payment Due Today',
+              body: `${debt.name} payment is due today.`,
+              data: { type: 'debt', id: debt.id, daysUntil: 0 },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: reminderDate,
+            },
+          });
+        }
+      }
+      
+      // Overdue reminder
+      if (daysUntil < 0) {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Debt Payment Overdue',
+            body: `${debt.name} payment is ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} overdue!`,
+            data: { type: 'debt', id: debt.id, overdue: true },
+          },
+          trigger: null, // Immediate
+        });
+      }
     }
-    
-    // Overdue reminder
-    if (daysUntil < 0) {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Debt Payment Overdue',
-          body: `${debt.name} payment is ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} overdue!`,
-          data: { type: 'debt', id: debt.id, overdue: true },
-        },
-        trigger: null, // Immediate
-      });
-    }
+  } catch (error) {
+    console.warn('Failed to schedule debt reminders:', error);
   }
 };
 
@@ -463,55 +545,65 @@ export const sendTestNotification = async (type: 'low_balance' | 'subscription' 
     throw new Error('Notifications are not available on web');
   }
   
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) {
+    throw new Error('Notifications are not available. Please use a development build instead of Expo Go.');
+  }
+  
   const hasPermission = await requestPermissions();
   if (!hasPermission) {
     throw new Error('Notification permissions not granted');
   }
 
-  const { getCurrencySymbol } = await import('../utils/currency');
-  const settings = await getSettings();
-  const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
+  try {
+    const { getCurrencySymbol } = await import('../utils/currency');
+    const settings = await getSettings();
+    const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
 
-  let title = '';
-  let body = '';
+    let title = '';
+    let body = '';
 
-  switch (type) {
-    case 'low_balance':
-      title = 'Low Balance Alert';
-      body = `Test: Your account balance is below ${currencySymbol}${settings.lowBalanceThreshold}. Consider adding funds.`;
-      break;
-    case 'subscription':
-      title = 'Subscription Reminder';
-      body = `Test: Netflix subscription of ${currencySymbol}15.99 will be charged in 3 days.`;
-      break;
-    case 'budget':
-      title = 'Budget Alert';
-      body = `Test: You've used 85% of your Food & Dining budget. Only ${currencySymbol}50.00 remaining.`;
-      break;
-    case 'debt':
-      title = 'Debt Payment Due';
-      body = `Test: Credit Card payment of ${currencySymbol}100.00 is due in 3 days.`;
-      break;
-    case 'daily':
-      title = 'Daily Account Update';
-      body = "Test: Don't forget to update your account balances today!";
-      break;
-    case 'generic':
-    default:
-      title = 'Test Notification';
-      body = 'This is a test notification from Penny. If you see this, notifications are working!';
-      break;
+    switch (type) {
+      case 'low_balance':
+        title = 'Low Balance Alert';
+        body = `Test: Your account balance is below ${currencySymbol}${settings.lowBalanceThreshold}. Consider adding funds.`;
+        break;
+      case 'subscription':
+        title = 'Subscription Reminder';
+        body = `Test: Netflix subscription of ${currencySymbol}15.99 will be charged in 3 days.`;
+        break;
+      case 'budget':
+        title = 'Budget Alert';
+        body = `Test: You've used 85% of your Food & Dining budget. Only ${currencySymbol}50.00 remaining.`;
+        break;
+      case 'debt':
+        title = 'Debt Payment Due';
+        body = `Test: Credit Card payment of ${currencySymbol}100.00 is due in 3 days.`;
+        break;
+      case 'daily':
+        title = 'Daily Account Update';
+        body = "Test: Don't forget to update your account balances today!";
+        break;
+      case 'generic':
+      default:
+        title = 'Test Notification';
+        body = 'This is a test notification from Penny. If you see this, notifications are working!';
+        break;
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: { type: 'test', testType: type },
+        sound: true,
+      },
+      trigger: null, // Immediate
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Failed to send test notification:', error);
+    throw error;
   }
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      data: { type: 'test', testType: type },
-      sound: true,
-    },
-    trigger: null, // Immediate
-  });
-
-  return true;
 };

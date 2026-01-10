@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getTransactions, deleteTransaction } from '../database/db';
+import { refreshTransactions } from '../services/transactionService';
 import { Transaction } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -27,15 +28,18 @@ export default function TransactionsScreen() {
   const loadTransactions = async () => {
     try {
       setLoading(true);
-      await waitForFirebase();
+      console.log('[TransactionsScreen] Loading transactions...');
       const [trans, settings] = await Promise.all([
         getTransactions(),
         getSettings(),
       ]);
+      console.log(`[TransactionsScreen] Loaded ${trans.length} transactions`);
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
-    } catch (error) {
-      console.error('Error loading transactions:', error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[TransactionsScreen] Error loading transactions:', errorMessage);
+      setTransactions([]);
     } finally {
       setLoading(false);
     }
@@ -43,15 +47,19 @@ export default function TransactionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const timer = setTimeout(() => {
-        loadTransactions();
-      }, 100);
-      return () => clearTimeout(timer);
+      loadTransactions();
     }, [])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
+    try {
+      console.log('[TransactionsScreen] Starting refresh...');
+      await refreshTransactions();
+      console.log('[TransactionsScreen] Refresh complete, reloading transactions');
+    } catch (error: any) {
+      console.error('[TransactionsScreen] Error refreshing transactions:', error?.message || error);
+    }
     await loadTransactions();
     setRefreshing(false);
   };

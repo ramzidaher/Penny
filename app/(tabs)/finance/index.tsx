@@ -126,6 +126,8 @@ export default function FinanceHomeScreen() {
       <ScreenHeader
         subtitle="Manage your money"
         title="Finance"
+        titleFontFamily="GulfsDisplay-Normal"
+        titleLetterSpacing={0.5}
       />
 
       {/* Combined Overview Section */}
@@ -448,6 +450,15 @@ export default function FinanceHomeScreen() {
             <Ionicons name="card-outline" size={28} color={colors.primary} />
           </View>
           <Text style={styles.quickActionLabel}>Debts</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.quickActionButton}
+          onPress={() => router.push('/(tabs)/finance/subscriptions')}
+        >
+          <View style={styles.quickActionIcon}>
+            <Ionicons name="repeat-outline" size={28} color={colors.primary} />
+          </View>
+          <Text style={styles.quickActionLabel}>Subscriptions</Text>
         </TouchableOpacity>
       </View>
 
