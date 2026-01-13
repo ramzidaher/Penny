@@ -488,22 +488,19 @@ export const refreshAccessToken = async (connectionId: string): Promise<TrueLaye
     
     const errorCode = functionsError.code || '';
     const errorMsg = functionsError.message || errorMessage;
+    const errorStr = String(error);
     
     if (errorCode === 'unauthenticated' || errorMsg.toLowerCase().includes('unauthenticated')) {
       throw new Error('Authentication required. Please sign in and try again.');
     }
     
-    if (errorCode === 'unauthenticated' || errorMsg.toLowerCase().includes('reconnect')) {
+    if (errorMsg.toLowerCase().includes('reconnect')) {
       // Token refresh failed - likely revoked
       await clearTokens(connectionId);
-    throw new Error('Token refresh failed. Please reconnect your account.');
-    }
-    
-    if (errorCode === 'resource-exhausted' || errorMsg.toLowerCase().includes('rate limit')) {
-      throw new Error('Too many refresh requests. Please try again later.');
+      throw new Error('Token refresh failed. Please reconnect your account.');
     }
 
-    if (errorCode === 'invalid-argument') {
+    if (errorCode === 'invalid-argument' || errorMsg.toLowerCase().includes('invalid-argument')) {
       throw new Error('Invalid request. Please reconnect your account.');
     }
 
@@ -780,7 +777,8 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
 export const exchangeCodeForTokens = async (
   code: string,
   redirectUri?: string,
-  state?: string
+  state?: string,
+  retryCount: number = 0
 ): Promise<{ connectionId: string; accessToken: string; refreshToken: string }> => {
   // Validate OAuth code format
   if (!validateOAuthCode(code)) {
@@ -800,18 +798,20 @@ export const exchangeCodeForTokens = async (
     throw new Error('This authorization code has already been used. Please try connecting again.');
   }
   
-  // Validate state parameter (CSRF protection)
-  if (!state) {
-    throw new Error('Missing state parameter. OAuth flow may have been tampered with.');
-  }
-  
-  if (typeof state !== 'string' || state.length < 20 || state.length > 200) {
-    throw new Error('Invalid state parameter format.');
-  }
-  
-  const isValidState = await validateAndConsumeState(state);
-  if (!isValidState) {
-    throw new Error('Invalid or expired state parameter. OAuth flow may have been tampered with or expired. Please try again.');
+  // Validate state parameter (CSRF protection) - skip on retries since state is already consumed
+  if (retryCount === 0) {
+    if (!state) {
+      throw new Error('Missing state parameter. OAuth flow may have been tampered with.');
+    }
+    
+    if (typeof state !== 'string' || state.length < 20 || state.length > 200) {
+      throw new Error('Invalid state parameter format.');
+    }
+    
+    const isValidState = await validateAndConsumeState(state);
+    if (!isValidState) {
+      throw new Error('Invalid or expired state parameter. OAuth flow may have been tampered with or expired. Please try again.');
+    }
   }
   
   const functions = getFirebaseFunctions();
@@ -829,7 +829,7 @@ export const exchangeCodeForTokens = async (
     const result = await exchangeToken({
       code,
       redirectUri: uri,
-      state,
+      state: state || '', // State is validated on first call, required for API
     });
 
     const { connectionId, accessToken, refreshToken } = result.data;
@@ -879,10 +879,6 @@ export const exchangeCodeForTokens = async (
     if (errorCode === 'invalid-argument' || errorMsg.toLowerCase().includes('invalid-argument')) {
       throw new Error(errorMsg || 'Invalid request. Please try connecting again.');
     }
-    
-    if (errorCode === 'resource-exhausted' || errorMsg.toLowerCase().includes('resource-exhausted')) {
-      throw new Error('Too many requests. Please try again later.');
-    }
 
     if (errorCode === 'unavailable' || errorCode === 'deadline-exceeded' || 
         errorMsg.toLowerCase().includes('unavailable') || errorMsg.toLowerCase().includes('deadline-exceeded')) {
@@ -897,6 +893,21 @@ export const exchangeCodeForTokens = async (
         '3. Server configuration issue\n\n' +
         'Please check Firebase Functions logs for details.'
       );
+    }
+
+    // Check for rate limit errors and retry with exponential backoff
+    const isRateLimit = 
+      errorCode === 'resource-exhausted' || 
+      errorMsg.toLowerCase().includes('resource-exhausted') ||
+      errorMsg.toLowerCase().includes('rate limit') ||
+      errorStr.toLowerCase().includes('rate limit');
+    
+    if (isRateLimit && retryCount < 3) {
+      // Exponential backoff: 2s, 4s, 8s
+      const delayMs = Math.pow(2, retryCount + 1) * 1000;
+      console.log(`[truelayerService] Rate limit hit, retrying in ${delayMs}ms (attempt ${retryCount + 1}/3)`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return exchangeCodeForTokens(code, redirectUri, state, retryCount + 1);
     }
 
     throw new Error(errorMsg || 'Failed to exchange authorization code');
@@ -1049,12 +1060,6 @@ export const getAccounts = async (connectionId: string): Promise<TrueLayerAccoun
     throw new Error('Invalid connection ID format');
   }
   
-  // Client-side rate limiting (10 requests per minute)
-  const withinRateLimit = await checkClientRateLimit('getAccounts', 10, 60 * 1000);
-  if (!withinRateLimit) {
-    throw new Error('Rate limit exceeded. Please try again later.');
-  }
-  
   return makeApiCallWithRetry(connectionId, async (accessToken) => {
     const client = createApiClient(accessToken);
     const response = await client.get<TrueLayerAccountsResponse>('/data/v1/accounts');
@@ -1073,12 +1078,6 @@ export const getAccountBalance = async (
   
   if (!validateAccountId(accountId)) {
     throw new Error('Invalid account ID format');
-  }
-  
-  // Client-side rate limiting (20 requests per minute)
-  const withinRateLimit = await checkClientRateLimit('getAccountBalance', 20, 60 * 1000);
-  if (!withinRateLimit) {
-    throw new Error('Rate limit exceeded. Please try again later.');
   }
   
   return makeApiCallWithRetry(connectionId, async (accessToken) => {
