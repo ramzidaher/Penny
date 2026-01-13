@@ -77,10 +77,29 @@ export default function FinanceHomeScreen() {
   const startOfCurrentMonth = startOfMonth(now);
   const endOfCurrentMonth = endOfMonth(now);
   
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:76',message:'Monthly calculation entry',data:{now:now.toISOString(),currentDay:now.getDate(),startOfMonth:startOfCurrentMonth.toISOString(),endOfMonth:endOfCurrentMonth.toISOString(),totalTransactions:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
+  
   const monthlyTransactions = transactions.filter(t => {
     const date = new Date(t.date);
-    return date >= startOfCurrentMonth && date <= endOfCurrentMonth;
+    const isInRange = date >= startOfCurrentMonth && date <= endOfCurrentMonth;
+    
+    // #region agent log
+    if (t.type === 'income') {
+      const dayOfMonth = date.getDate();
+      if (dayOfMonth >= 20 || dayOfMonth <= 5) {
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:85',message:'Income transaction in monthly filter',data:{transactionId:t.id,transactionDate:t.date,parsedDate:date.toISOString(),dayOfMonth,isInRange,description:t.description?.substring(0,50),amount:t.amount,category:t.category},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      }
+    }
+    // #endregion
+    
+    return isInRange;
   });
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:95',message:'Monthly transactions filtered',data:{monthlyTransactionCount:monthlyTransactions.length,incomeCount:monthlyTransactions.filter(t=>t.type==='income').length,expenseCount:monthlyTransactions.filter(t=>t.type==='expense').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
   
   const monthlyIncome = monthlyTransactions
     .filter(t => t.type === 'income')
@@ -89,6 +108,10 @@ export default function FinanceHomeScreen() {
   const monthlyExpenses = monthlyTransactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:103',message:'Monthly totals calculated',data:{monthlyIncome,monthlyExpenses,net:monthlyIncome-monthlyExpenses,incomeTransactionCount:monthlyTransactions.filter(t=>t.type==='income').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+  // #endregion
 
   const activeBudgets = budgets.length;
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);

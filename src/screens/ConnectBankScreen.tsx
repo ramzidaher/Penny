@@ -5,12 +5,12 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Alert,
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -27,6 +27,7 @@ import {
 import { syncTrueLayerAccounts } from '../database/db';
 import { refreshTransactions } from '../services/transactionService';
 import { formatDistanceToNow } from 'date-fns';
+import { setOAuthFlowActive } from '../services/oAuthFlowService';
 
 // Module-level tracking to persist across component mounts/unmounts
 const processedCodesGlobal = new Set<string>();
@@ -34,6 +35,7 @@ const processingGlobal = { current: false };
 
 export default function ConnectBankScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const { code, state, error } = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [connections, setConnections] = useState<TrueLayerConnection[]>([]);
   const [loading, setLoading] = useState(false);
@@ -102,6 +104,9 @@ export default function ConnectBankScreen() {
 
   const handleConnect = async () => {
     try {
+      // Mark OAuth flow as active to prevent lock screen interference
+      setOAuthFlowActive(true);
+      
       setConnecting(true);
       processingRef.current = true;
       processingGlobal.current = true;
@@ -116,6 +121,8 @@ export default function ConnectBankScreen() {
       processingGlobal.current = false;
       
       if (result?.error) {
+        // Clear OAuth flow flag on error
+        setOAuthFlowActive(false);
         if (result.error !== 'Authentication cancelled by user' && result.error !== 'Authentication dismissed') {
           showError(`Connection failed: ${result.error}`);
         }
@@ -126,6 +133,7 @@ export default function ConnectBankScreen() {
         // Check if we've already processed this code (shouldn't happen, but safety check)
         if (processedCodesGlobal.has(result.code)) {
           console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring');
+          setOAuthFlowActive(false);
           return;
         }
         
@@ -135,13 +143,17 @@ export default function ConnectBankScreen() {
         // Process the OAuth callback directly with state parameter
         // Don't set connecting to true again - handleOAuthCallback will show its own loading
         await handleOAuthCallback(result.code, result.state);
+      } else {
+        // If no result, it means we're using Linking fallback and deep link handler will process it
+        // OAuth flow flag will be cleared by deep link handler
       }
-      // If no result, it means we're using Linking fallback and deep link handler will process it
     } catch (error: any) {
       console.error('Error opening auth URL:', error);
       setConnecting(false);
       processingRef.current = false;
       processingGlobal.current = false;
+      // Clear OAuth flow flag on error
+      setOAuthFlowActive(false);
       showError(error.message || 'Failed to open TrueLayer authentication');
     }
   };
@@ -198,11 +210,16 @@ export default function ConnectBankScreen() {
       setConnecting(false);
       processingRef.current = false;
       processingGlobal.current = false;
+      // Clear OAuth flow flag after callback is processed
+      // Add a small delay to ensure navigation completes
+      setTimeout(() => {
+        setOAuthFlowActive(false);
+      }, 1000);
     }
   };
 
   const handleDisconnect = async (connectionId: string) => {
-    Alert.alert(
+    await dialog.showDialog(
       'Disconnect Account',
       'Are you sure you want to disconnect this account? You will need to reconnect to sync data again.',
       [

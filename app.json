@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pennyfinance.app",
-      "buildNumber": "2",
+      "buildNumber": "4",
       "associatedDomains": [],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

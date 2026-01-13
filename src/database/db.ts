@@ -1,4 +1,4 @@
-import { Account, Transaction, Budget, Subscription, Debt } from './schema';
+import { Account, Transaction, Budget, Subscription, Debt, ChatThread } from './schema';
 import { isFirebaseAvailable } from '../services/firebase';
 import * as cloudDb from '../services/cloudDb';
 
@@ -64,11 +64,25 @@ export const addTransaction = async (transaction: Omit<Transaction, 'id' | 'crea
   return await cloudDb.cloudAddTransaction(transaction);
 };
 
+export const updateTransaction = async (id: string, updates: Partial<Transaction>): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudUpdateTransaction(id, updates);
+};
+
 export const deleteTransaction = async (id: string): Promise<void> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
   return await cloudDb.cloudDeleteTransaction(id);
+};
+
+export const untagTransaction = async (id: string, untagType: 'subscription' | 'debt' | 'budget' | 'all'): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudUntagTransaction(id, untagType);
 };
 
 // Budget operations
@@ -185,5 +199,41 @@ export const syncTrueLayerTransactions = async (connectionId: string): Promise<v
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
   return await cloudDb.syncTrueLayerTransactions(connectionId);
+};
+
+// Chat Thread operations
+export const getChatThreads = async (): Promise<ChatThread[]> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudGetChatThreads();
+};
+
+export const getChatThread = async (id: string): Promise<ChatThread | null> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudGetChatThread(id);
+};
+
+export const addChatThread = async (thread: Omit<ChatThread, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudAddChatThread(thread);
+};
+
+export const updateChatThread = async (id: string, updates: Partial<ChatThread>): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudUpdateChatThread(id, updates);
+};
+
+export const deleteChatThread = async (id: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudDeleteChatThread(id);
 };
 

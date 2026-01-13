@@ -1,13 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useDialog } from '../contexts/DialogContext';
 import { colors } from '../theme/colors';
 import { getUserEmail, getCurrentUser, logoutUser } from '../services/firebase';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const dialog = useDialog();
   const insets = useSafeAreaInsets();
   const userEmail = getUserEmail();
   const currentUser = getCurrentUser();
@@ -23,6 +25,14 @@ export default function ProfileScreen() {
     router.push('/(tabs)/finance/settings');
   };
 
+  const handleHelp = () => {
+    router.push('/(tabs)/finance/help');
+  };
+
+  const handleAbout = () => {
+    router.push('/(tabs)/finance/about');
+  };
+
   const handleSignOut = async () => {
     // Use web-compatible confirmation
     const confirmSignOut = (): Promise<boolean> => {
@@ -31,24 +41,22 @@ export default function ProfileScreen() {
           typeof window !== 'undefined' && window.confirm('Are you sure you want to sign out?')
         );
       } else {
-        return new Promise<boolean>((resolve) => {
-          Alert.alert(
-            'Sign Out',
-            'Are you sure you want to sign out?',
-            [
-              { 
-                text: 'Cancel', 
-                style: 'cancel',
-                onPress: () => resolve(false)
-              },
-              {
-                text: 'Sign Out',
-                style: 'destructive',
-                onPress: () => resolve(true),
-              },
-            ],
-            { cancelable: true, onDismiss: () => resolve(false) }
-          );
+        return dialog.showDialog(
+          'Sign Out',
+          'Are you sure you want to sign out?',
+          [
+            { 
+              text: 'Cancel', 
+              style: 'cancel',
+            },
+            {
+              text: 'Sign Out',
+              style: 'destructive',
+            },
+          ]
+        ).then((buttonText) => {
+          // Return true if "Sign Out" was pressed, false otherwise
+          return buttonText === 'Sign Out';
         });
       }
     };
@@ -66,7 +74,7 @@ export default function ProfileScreen() {
         if (Platform.OS === 'web' && typeof window !== 'undefined') {
           window.alert(error.message || 'Failed to sign out. Please try again.');
         } else {
-          Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
+          dialog.alert('Error', error.message || 'Failed to sign out. Please try again.');
         }
       }
     } else {
@@ -123,7 +131,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Settings Section */}
+        {/* Account Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Account</Text>
           <TouchableOpacity
@@ -136,7 +144,43 @@ export default function ProfileScreen() {
                 <View style={styles.actionIconContainer}>
                   <Ionicons name="settings-outline" size={20} color={colors.text} />
                 </View>
-                <Text style={styles.actionCardTitle}>Settings</Text>
+                <View style={styles.actionCardTextContainer}>
+                  <Text style={styles.actionCardTitle}>Settings</Text>
+                  <Text style={styles.actionCardSubtitle}>Preferences, security, and more</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionCard, styles.actionCardWithMargin]}
+            onPress={handleHelp}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionCardContent}>
+              <View style={styles.actionCardLeft}>
+                <View style={styles.actionIconContainer}>
+                  <Ionicons name="help-circle-outline" size={20} color={colors.text} />
+                </View>
+                <Text style={styles.actionCardTitle}>Help & Support</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionCard, styles.actionCardWithMargin]}
+            onPress={handleAbout}
+            activeOpacity={0.7}
+          >
+            <View style={styles.actionCardContent}>
+              <View style={styles.actionCardLeft}>
+                <View style={styles.actionIconContainer}>
+                  <Ionicons name="information-circle-outline" size={20} color={colors.text} />
+                </View>
+                <View style={styles.actionCardTextContainer}>
+                  <Text style={styles.actionCardTitle}>About</Text>
+                  <Text style={styles.actionCardSubtitle}>Version, terms, privacy</Text>
+                </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </View>
@@ -261,10 +305,21 @@ const styles = StyleSheet.create({
   actionIconContainer: {
     marginRight: 12,
   },
+  actionCardTextContainer: {
+    flex: 1,
+  },
   actionCardTitle: {
     fontSize: 16,
     fontWeight: '400',
     color: colors.text,
+  },
+  actionCardSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  actionCardWithMargin: {
+    marginTop: 12,
   },
   signOutCard: {
     backgroundColor: colors.surface,

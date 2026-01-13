@@ -75,3 +75,6 @@ After deployment, **rotate the client secret** since it was exposed in version c
 2. Update Firebase Functions config with new secret
 3. Redeploy function
 
+
+
+

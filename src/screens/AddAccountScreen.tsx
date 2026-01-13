@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { addAccount, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
@@ -10,6 +11,7 @@ import { typography } from '../theme/typography';
 
 export default function AddAccountScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const [name, setName] = useState('');
   const [type, setType] = useState<'bank' | 'card' | 'cash' | 'investment'>('bank');
   const [balance, setBalance] = useState('');
@@ -35,31 +37,31 @@ export default function AddAccountScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Error', 'Please enter an account name');
+      dialog.alert('Error', 'Please enter an account name');
       return;
     }
 
     // For cards, require linking to a bank account
     if (type === 'card' && !linkedAccountId) {
-      Alert.alert('Error', 'Please select a bank account to link this card to');
+      dialog.alert('Error', 'Please select a bank account to link this card to');
       return;
     }
 
     // For cards, require card number and PIN
     if (type === 'card') {
       if (!cardNumber.trim() || cardNumber.trim().length < 4) {
-        Alert.alert('Error', 'Please enter a valid card number');
+        dialog.alert('Error', 'Please enter a valid card number');
         return;
       }
       if (!cardPin.trim() || cardPin.trim().length !== 4) {
-        Alert.alert('Error', 'Please enter the last 4 digits of your card');
+        dialog.alert('Error', 'Please enter the last 4 digits of your card');
         return;
       }
     }
 
     const balanceNum = parseFloat(balance);
     if (isNaN(balanceNum) || balanceNum < 0) {
-      Alert.alert('Error', 'Please enter a valid balance');
+      dialog.alert('Error', 'Please enter a valid balance');
       return;
     }
 
@@ -88,7 +90,7 @@ export default function AddAccountScreen() {
       await scheduleAllNotifications();
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add account');
+      dialog.alert('Error', 'Failed to add account');
     }
   };
 

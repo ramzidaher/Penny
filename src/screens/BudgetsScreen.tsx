@@ -1,22 +1,27 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getBudgets, deleteBudget } from '../database/db';
-import { Budget } from '../database/schema';
+import { getBudgets, deleteBudget, getTransactions } from '../database/db';
+import { Budget, Transaction } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { SkeletonList } from '../components/SkeletonLoader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
+import { format } from 'date-fns';
 
 export default function BudgetsScreen() {
   const navigation = useNavigation();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
@@ -25,11 +30,13 @@ export default function BudgetsScreen() {
     try {
       setLoading(true);
       await waitForFirebase();
-      const [buds, settings] = await Promise.all([
+      const [buds, trans, settings] = await Promise.all([
         getBudgets(),
+        getTransactions(),
         getSettings(),
       ]);
       setBudgets(buds);
+      setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
     } catch (error) {
       console.error('Error loading budgets:', error);
@@ -68,6 +75,17 @@ export default function BudgetsScreen() {
     return colors.primary;
   };
 
+  const getBudgetTransactions = (budget: Budget): Transaction[] => {
+    return transactions.filter(t => 
+      t.type === 'expense' && 
+      t.category === budget.category
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  const toggleExpand = (budgetId: string) => {
+    setExpandedBudgetId(expandedBudgetId === budgetId ? null : budgetId);
+  };
+
   if (loading && !refreshing) {
     return (
       <View style={styles.container}>
@@ -93,18 +111,38 @@ export default function BudgetsScreen() {
         renderItem={({ item }) => {
           const percentage = getProgressPercentage(item);
           const progressColor = getProgressColor(percentage);
+          const budgetTransactions = getBudgetTransactions(item);
+          const isExpanded = expandedBudgetId === item.id;
           
           return (
             <View style={styles.budgetCard}>
-              <View style={styles.budgetHeader}>
-                <Text style={styles.budgetCategory}>{item.category}</Text>
-                <TouchableOpacity
-                  onPress={() => handleDelete(item.id)}
-                  style={styles.deleteButton}
-                >
-                  <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                onPress={() => toggleExpand(item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.budgetHeader}>
+                  <Text style={styles.budgetCategory}>{item.category}</Text>
+                  <View style={styles.budgetHeaderRight}>
+                    <Text style={styles.transactionCount}>
+                      {budgetTransactions.length} transaction{budgetTransactions.length !== 1 ? 's' : ''}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        handleDelete(item.id);
+                      }}
+                      style={styles.deleteButton}
+                    >
+                      <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <Ionicons 
+                      name={isExpanded ? "chevron-up" : "chevron-down"} 
+                      size={20} 
+                      color={colors.textSecondary} 
+                    />
+                  </View>
+                </View>
+              </TouchableOpacity>
               <View style={styles.budgetAmounts}>
                 <Text style={styles.budgetSpent}>{formatCurrencySync(item.currentSpent, currencyCode)}</Text>
                 <Text style={styles.budgetLimit}>/ {formatCurrencySync(item.limit, currencyCode)}</Text>
@@ -113,6 +151,39 @@ export default function BudgetsScreen() {
                 <View style={[styles.progressBar, { width: `${percentage}%`, backgroundColor: progressColor }]} />
               </View>
               <Text style={styles.budgetPeriod}>{item.period}</Text>
+              
+              {isExpanded && (
+                <View style={styles.transactionsContainer}>
+                  {budgetTransactions.length === 0 ? (
+                    <Text style={styles.noTransactionsText}>No transactions yet</Text>
+                  ) : (
+                    budgetTransactions.slice(0, 5).map((transaction) => (
+                      <TouchableOpacity
+                        key={transaction.id}
+                        style={styles.transactionRow}
+                        onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
+                      >
+                        <View style={styles.transactionLeft}>
+                          <Text style={styles.transactionDescription} numberOfLines={1}>
+                            {transaction.description || 'Transaction'}
+                          </Text>
+                          <Text style={styles.transactionDate}>
+                            {format(new Date(transaction.date), 'MMM dd, yyyy')}
+                          </Text>
+                        </View>
+                        <Text style={styles.transactionAmount}>
+                          {formatCurrencySync(transaction.amount, currencyCode)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                  {budgetTransactions.length > 5 && (
+                    <Text style={styles.moreTransactionsText}>
+                      +{budgetTransactions.length - 5} more transactions
+                    </Text>
+                  )}
+                </View>
+              )}
             </View>
           );
         }}
@@ -150,12 +221,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  budgetHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   budgetCategory: {
     ...typography.h3,
     color: colors.text,
+    flex: 1,
+  },
+  transactionCount: {
+    ...typography.caption,
+    color: colors.textSecondary,
   },
   deleteButton: {
     padding: 4,
+  },
+  transactionsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  transactionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  transactionLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  transactionDescription: {
+    ...typography.body,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  transactionDate: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  transactionAmount: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  noTransactionsText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  moreTransactionsText: {
+    ...typography.caption,
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: 8,
   },
   budgetAmounts: {
     flexDirection: 'row',

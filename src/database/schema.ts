@@ -29,6 +29,10 @@ export interface Transaction {
   date: string;
   createdAt: string;
   truelayerTransactionId?: string;
+  subscriptionId?: string; // Link to subscription if this transaction is a subscription payment
+  debtId?: string; // Link to debt if this transaction is a debt payment
+  budgetId?: string; // Link to budget if this transaction is explicitly linked to a budget
+  descriptionHash?: string; // SHA-256 hash of raw description for GDPR compliance and transaction matching
 }
 
 export interface Budget {
@@ -66,6 +70,20 @@ export interface Debt {
   budgetCategory?: string; // Budget category this debt affects
   type: 'loan' | 'credit_card' | 'buy_now_pay_later' | 'personal' | 'other';
   status: 'active' | 'paid_off' | 'overdue';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface ChatThread {
+  id: string;
+  title: string; // First message or user-provided title
+  messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;
 }

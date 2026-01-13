@@ -1,21 +1,24 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useDialog } from '../contexts/DialogContext';
 import { getSettings, updateSettings } from '../services/settingsService';
 import { AppSettings } from '../database/settingsSchema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { waitForFirebase, logoutUser, getUserEmail } from '../services/firebase';
+import { waitForFirebase, getUserEmail, verifyPassword, getCurrentUser } from '../services/firebase';
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 import {
   isBiometricAvailable,
   getBiometricType,
   deleteBiometricCredentials,
   hasBiometricCredentials,
+  saveBiometricCredentials,
 } from '../services/biometricService';
+import { hasPIN, setPIN, deletePIN, validatePIN } from '../services/pinService';
 
 const currencies = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -30,6 +33,7 @@ const currencies = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const insets = useSafeAreaInsets();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,6 +41,14 @@ export default function SettingsScreen() {
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [showPINModal, setShowPINModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinConfirm, setPinConfirm] = useState('');
+  const [pinSet, setPinSet] = useState(false);
+  const [settingPIN, setSettingPIN] = useState(false);
 
   const loadSettings = async () => {
     try {
@@ -52,9 +64,13 @@ export default function SettingsScreen() {
         const type = await getBiometricType();
         setBiometricType(type);
       }
+      
+      // Check if PIN is set
+      const hasPin = await hasPIN();
+      setPinSet(hasPin);
     } catch (error) {
       console.error('Error loading settings:', error);
-      Alert.alert('Error', 'Failed to load settings');
+      dialog.alert('Error', 'Failed to load settings');
     } finally {
       setLoading(false);
     }
@@ -81,11 +97,29 @@ export default function SettingsScreen() {
           // If enabling biometric, check if credentials exist
           const hasCredentials = await hasBiometricCredentials();
           if (!hasCredentials) {
-            Alert.alert(
-              'Biometric Login',
-              `To enable ${biometricType} login, please sign in with your email and password first. Your credentials will be saved securely for future ${biometricType} authentication.`,
-              [{ text: 'OK' }]
-            );
+            // Check if user is logged in
+            const user = getCurrentUser();
+            const userEmail = getUserEmail();
+            
+            if (!user || !userEmail) {
+              // User is not logged in
+              dialog.showDialog(
+                'Biometric Login',
+                `To enable ${biometricType} login, please sign in with your email and password first. Your credentials will be saved securely for future ${biometricType} authentication.`,
+                [{ text: 'OK' }]
+              );
+              // Don't update the setting if user is not logged in
+              setSaving(false);
+              return;
+            }
+            
+            // User is logged in but no credentials saved - prompt for password
+            // Store the pending update so we can apply it after password verification
+            setShowPasswordModal(true);
+            // Don't update the setting yet - wait for password verification
+            // Return early to prevent the setting from being updated
+            setSaving(false);
+            return;
           }
         }
       }
@@ -103,7 +137,7 @@ export default function SettingsScreen() {
       }
     } catch (error) {
       console.error('Error updating settings:', error);
-      Alert.alert('Error', 'Failed to update settings');
+      dialog.alert('Error', 'Failed to update settings');
     } finally {
       setSaving(false);
     }
@@ -121,12 +155,99 @@ export default function SettingsScreen() {
     await handleUpdate({ lowBalanceThreshold: threshold });
   };
 
+  const handlePasswordVerification = async () => {
+    if (!passwordInput.trim()) {
+      dialog.alert('Error', 'Please enter your password');
+      return;
+    }
+
+    try {
+      setVerifyingPassword(true);
+      const userEmail = getUserEmail();
+      
+      if (!userEmail) {
+        dialog.alert('Error', 'User not logged in');
+        setShowPasswordModal(false);
+        setPasswordInput('');
+        return;
+      }
+
+      // Verify password
+      const isValid = await verifyPassword(passwordInput);
+      
+      if (!isValid) {
+        dialog.alert('Error', 'Incorrect password. Please try again.');
+        setPasswordInput('');
+        setVerifyingPassword(false);
+        return;
+      }
+
+      // Check if we're setting up biometric or PIN based on what triggered the modal
+      // If biometric is already enabled, we're setting up PIN
+      const isBiometricSetup = settings && !settings.enableBiometric && biometricAvailable;
+      
+      if (isBiometricSetup) {
+        // Save credentials for biometric
+        await saveBiometricCredentials(userEmail, passwordInput);
+        
+        // Now update the setting
+        await updateSettings({ enableBiometric: true });
+        const updatedSettings = await getSettings();
+        setSettings(updatedSettings);
+        
+        // Close modal and clear password
+        setShowPasswordModal(false);
+        setPasswordInput('');
+        
+        dialog.alert('Success', `${biometricType} unlock has been enabled.`);
+      } else {
+        // Password verified for PIN setup - show PIN modal
+        setShowPasswordModal(false);
+        setPasswordInput('');
+        setShowPINModal(true);
+      }
+    } catch (error: any) {
+      console.error('Error verifying password:', error);
+      dialog.alert('Error', error.message || 'Failed to verify password. Please try again.');
+    } finally {
+      setVerifyingPassword(false);
+    }
+  };
+
+  const handlePINSetup = async () => {
+    if (!pinInput.trim() || pinInput.length !== 6) {
+      dialog.alert('Error', 'PIN must be exactly 6 digits');
+      return;
+    }
+
+    if (pinInput !== pinConfirm) {
+      dialog.alert('Error', 'PINs do not match. Please try again.');
+      setPinInput('');
+      setPinConfirm('');
+      return;
+    }
+
+    try {
+      setSettingPIN(true);
+      await setPIN(pinInput);
+      
+      setPinSet(true);
+      setShowPINModal(false);
+      setPinInput('');
+      setPinConfirm('');
+      
+      dialog.alert('Success', pinSet ? 'PIN has been updated.' : 'PIN has been set. You can now use it to unlock the app.');
+    } catch (error: any) {
+      console.error('Error setting PIN:', error);
+      dialog.alert('Error', error.message || 'Failed to set PIN. Please try again.');
+    } finally {
+      setSettingPIN(false);
+    }
+  };
+
   if (loading || !settings) {
     return (
       <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-          <Text style={styles.title}>Settings</Text>
-        </View>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Loading settings...</Text>
         </View>
@@ -135,13 +256,7 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-        <Text style={styles.title}>Settings</Text>
-        <Text style={styles.subtitle}>Manage your app preferences</Text>
-      </View>
-
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
       {/* Currency Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Currency</Text>
@@ -201,7 +316,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Low Balance Alerts</Text>
+              <Text style={styles.settingLabel}>Low Balances</Text>
               <Text style={styles.settingDescription}>
                 Get notified when account balance is low
               </Text>
@@ -217,7 +332,7 @@ export default function SettingsScreen() {
           {settings.enableLowBalanceAlerts && (
             <View style={styles.thresholdContainer}>
               <Text style={styles.thresholdLabel}>
-                Alert when balance is below: {settings.lowBalanceThreshold}
+                when balance is below: {settings.lowBalanceThreshold}
               </Text>
               <View style={styles.thresholdButtons}>
                 {[50, 100, 200, 500].map((amount) => (
@@ -281,7 +396,7 @@ export default function SettingsScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Budget Alerts</Text>
+              <Text style={styles.settingLabel}>Budgets</Text>
               <Text style={styles.settingDescription}>
                 Get notified when approaching budget limits
               </Text>
@@ -369,13 +484,13 @@ export default function SettingsScreen() {
               try {
                 const hasPermission = await requestPermissions();
                 if (!hasPermission) {
-                  Alert.alert('Permission Required', 'Please enable notification permissions in your device settings.');
+                  dialog.alert('Permission Required', 'Please enable notification permissions in your device settings.');
                   return;
                 }
                 await sendTestNotification('generic');
-                Alert.alert('Success', 'Test notification sent! Check your notification tray.');
+                dialog.alert('Success', 'Test notification sent! Check your notification tray.');
               } catch (error: any) {
-                Alert.alert('Error', error.message || 'Failed to send test notification');
+                dialog.alert('Error', error.message || 'Failed to send test notification');
               }
             }}
           >
@@ -385,28 +500,103 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* AI Tone Settings */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>AI Tone</Text>
+        <View style={styles.sectionCard}>
+          <Text style={styles.settingDescription}>
+            Choose how Penny's AI talks to you. You can change this anytime.
+          </Text>
+          <View style={styles.toneOptionsContainer}>
+            {[
+              { value: 'friendly' as const, label: 'Friendly & Supportive', description: 'Warm, encouraging, gentle guidance', icon: 'heart-outline' },
+              { value: 'professional' as const, label: 'Professional & Calm', description: 'Formal, measured, professional advice', icon: 'briefcase-outline' },
+              { value: 'direct' as const, label: 'Direct & No-Nonsense', description: 'Straightforward, no sugar-coating, casual language', icon: 'chatbubble-outline' },
+              { value: 'harsh' as const, label: 'Harsh & Brutally Honest', description: 'Uses strong language, very direct, tough love approach', icon: 'flame-outline' },
+            ].map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.toneOptionCard,
+                  settings.aiTone === option.value && styles.toneOptionCardSelected,
+                ]}
+                onPress={async () => {
+                  await handleUpdate({ aiTone: option.value });
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.toneOptionHeader}>
+                  <Ionicons 
+                    name={option.icon as any} 
+                    size={20} 
+                    color={settings.aiTone === option.value ? colors.primary : colors.textSecondary} 
+                  />
+                  <View style={styles.toneOptionTextContainer}>
+                    <Text style={[
+                      styles.toneOptionLabel,
+                      settings.aiTone === option.value && styles.toneOptionLabelSelected,
+                    ]}>
+                      {option.label}
+                    </Text>
+                    <Text style={styles.toneOptionDescription}>{option.description}</Text>
+                  </View>
+                  {settings.aiTone === option.value && (
+                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </View>
+
       {/* Security Settings */}
-      {biometricAvailable && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Security</Text>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Security</Text>
+        
+        {biometricAvailable && (
           <View style={styles.sectionCard}>
             <View style={styles.settingRow}>
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>{biometricType} Login</Text>
+                <Text style={styles.settingLabel}>{biometricType} Unlock</Text>
                 <Text style={styles.settingDescription}>
-                  Use {biometricType.toLowerCase()} to quickly sign in to your account
+                  Use {biometricType.toLowerCase()} to unlock the app
                 </Text>
               </View>
               <Switch
                 value={settings.enableBiometric}
-                onValueChange={(value) => handleUpdate({ enableBiometric: value })}
+                onValueChange={async (value) => {
+                  await handleUpdate({ enableBiometric: value });
+                }}
                 trackColor={{ false: '#E0E0E0', true: '#000000' }}
                 thumbColor={settings.enableBiometric ? '#FFFFFF' : '#000000'}
               />
             </View>
           </View>
+        )}
+        
+        <View style={styles.sectionCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>PIN Code</Text>
+              <Text style={styles.settingDescription}>
+                {pinSet ? 'Change your PIN code' : 'Set a PIN code to unlock the app'}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.pinButton}
+              onPress={() => {
+                // Always show password modal first to verify identity
+                setShowPasswordModal(true);
+              }}
+            >
+              <Text style={styles.pinButtonText}>
+                {pinSet ? 'Change PIN' : 'Set PIN'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      )}
+      </View>
 
       {/* Account Section */}
       <View style={styles.section}>
@@ -421,69 +611,139 @@ export default function SettingsScreen() {
             </View>
           </View>
         </View>
-
-        <View style={styles.sectionCard}>
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={async () => {
-              console.log('Sign out button clicked!');
-              
-              // Use web-compatible confirmation
-              const confirmSignOut = () => {
-                if (Platform.OS === 'web') {
-                  return window.confirm('Are you sure you want to sign out?');
-                } else {
-                  return new Promise<boolean>((resolve) => {
-                    Alert.alert(
-                      'Sign Out',
-                      'Are you sure you want to sign out?',
-                      [
-                        { 
-                          text: 'Cancel', 
-                          style: 'cancel',
-                          onPress: () => resolve(false)
-                        },
-                        {
-                          text: 'Sign Out',
-                          style: 'destructive',
-                          onPress: () => resolve(true),
-                        },
-                      ],
-                      { cancelable: true, onDismiss: () => resolve(false) }
-                    );
-                  });
-                }
-              };
-
-              const shouldSignOut = await confirmSignOut();
-              
-              if (shouldSignOut) {
-                try {
-                  console.log('Signing out...');
-                  await logoutUser();
-                  console.log('Sign out successful - App.tsx should handle navigation');
-                  // Navigation will be handled by App.tsx auth state listener
-                } catch (error: any) {
-                  console.error('Sign out error:', error);
-                  if (Platform.OS === 'web') {
-                    window.alert(error.message || 'Failed to sign out. Please try again.');
-                  } else {
-                    Alert.alert('Error', error.message || 'Failed to sign out. Please try again.');
-                  }
-                }
-              } else {
-                console.log('Sign out cancelled');
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="log-out-outline" size={20} color={colors.background} />
-            <Text style={styles.logoutButtonText}>Sign Out</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
       <View style={styles.bottomPadding} />
+      
+      {/* Password Verification Modal */}
+      <Modal
+        visible={showPasswordModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowPasswordModal(false);
+          setPasswordInput('');
+        }}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {settings && !settings.enableBiometric ? `Enable ${biometricType} Unlock` : pinSet ? 'Change PIN' : 'Set PIN'}
+            </Text>
+            <Text style={styles.modalDescription}>
+              {settings && !settings.enableBiometric 
+                ? `Enter your password to securely save your credentials for ${biometricType.toLowerCase()} authentication.`
+                : 'Enter your password to verify your identity before setting up PIN.'}
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Password"
+              placeholderTextColor={colors.textLight}
+              value={passwordInput}
+              onChangeText={setPasswordInput}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              editable={!verifyingPassword}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowPasswordModal(false);
+                  setPasswordInput('');
+                  // Reload settings to ensure switch state is correct
+                  loadSettings();
+                }}
+                disabled={verifyingPassword}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm, verifyingPassword && styles.modalButtonDisabled]}
+                onPress={handlePasswordVerification}
+                disabled={verifyingPassword}
+              >
+                <Text style={styles.modalButtonConfirmText}>
+                  {verifyingPassword ? 'Verifying...' : 'Enable'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+      
+      {/* PIN Setup Modal */}
+      <Modal
+        visible={showPINModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowPINModal(false);
+          setPinInput('');
+          setPinConfirm('');
+        }}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{pinSet ? 'Change PIN' : 'Set PIN'}</Text>
+            <Text style={styles.modalDescription}>
+              Enter a 6-digit PIN code. You'll use this to unlock the app.
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              placeholder="Enter 6-digit PIN"
+              placeholderTextColor={colors.textLight}
+              value={pinInput}
+              onChangeText={(text) => setPinInput(text.replace(/[^0-9]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              autoFocus
+              editable={!settingPIN}
+            />
+            <TextInput
+              style={[styles.modalInput, { marginTop: 12 }]}
+              placeholder="Confirm 6-digit PIN"
+              placeholderTextColor={colors.textLight}
+              value={pinConfirm}
+              onChangeText={(text) => setPinConfirm(text.replace(/[^0-9]/g, '').slice(0, 6))}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              editable={!settingPIN}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowPINModal(false);
+                  setPinInput('');
+                  setPinConfirm('');
+                }}
+                disabled={settingPIN}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm, settingPIN && styles.modalButtonDisabled]}
+                onPress={handlePINSetup}
+                disabled={settingPIN}
+              >
+                <Text style={styles.modalButtonConfirmText}>
+                  {settingPIN ? 'Setting...' : pinSet ? 'Update' : 'Set PIN'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -492,22 +752,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    padding: 20,
-    paddingBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -1,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
@@ -519,21 +763,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.textSecondary,
   },
+  scrollContent: {
+    paddingTop: 8,
+  },
   section: {
     paddingHorizontal: 20,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 16,
-    letterSpacing: -0.5,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   sectionCard: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -659,22 +907,130 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.background,
   },
-  logoutButton: {
+  bottomPadding: {
+    height: 40,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  modalInput: {
+    backgroundColor: colors.background,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    fontSize: 16,
+    color: colors.text,
+    marginBottom: 20,
+  },
+  modalButtons: {
     flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    padding: 16,
-    gap: 8,
   },
-  logoutButtonText: {
+  modalButtonCancel: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonConfirm: {
+    backgroundColor: colors.primary,
+  },
+  modalButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalButtonCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  modalButtonConfirmText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,
   },
-  bottomPadding: {
-    height: 40,
+  pinButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+  },
+  pinButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  toneOptionsContainer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  toneOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  toneOptionCardSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  toneOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  toneOptionTextContainer: {
+    flex: 1,
+  },
+  toneOptionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  toneOptionLabelSelected: {
+    color: colors.primary,
+  },
+  toneOptionDescription: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
 });
 

@@ -11,7 +11,7 @@
  * - Premium: 4 syncs per day (configurable)
  */
 
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { getAllConnections } from './truelayerService';
 import { syncTrueLayerAccounts } from './cloudDb';
 import { refreshTransactions } from './transactionService';
@@ -75,7 +75,21 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
         console.log(`[autoSync] Successfully synced connection ${connection.id.substring(0, 8)}...`);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`[autoSync] Error syncing connection:`, errorMessage);
+        
+        // Check if it's an authentication error (401 or reconnect required)
+        const isAuthError = 
+          errorMessage.includes('401') ||
+          errorMessage.includes('Authentication failed') ||
+          errorMessage.includes('reconnect') ||
+          errorMessage.includes('Token refresh failed') ||
+          errorMessage.includes('Unauthorized');
+        
+        if (isAuthError) {
+          console.log(`[autoSync] Connection ${connection.id.substring(0, 8)}... requires reconnection, skipping`);
+          // Continue with other connections - this one needs user action
+        } else {
+          console.error(`[autoSync] Error syncing connection ${connection.id.substring(0, 8)}...:`, errorMessage);
+        }
         // Continue with other connections even if one fails
       }
     }

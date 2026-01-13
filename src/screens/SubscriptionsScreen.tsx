@@ -1,12 +1,14 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useRouter } from 'expo-router';
+import { useDialog } from '../contexts/DialogContext';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions } from '../database/db';
+import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions, getTransactions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
-import { Subscription } from '../database/schema';
+import { Subscription, Transaction } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
@@ -20,8 +22,12 @@ import { formatCurrencySync } from '../utils/currency';
 
 export default function SubscriptionsScreen() {
   const navigation = useNavigation();
+  const router = useRouter();
+  const dialog = useDialog();
   const insets = useSafeAreaInsets();
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [expandedSubscriptionId, setExpandedSubscriptionId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
@@ -38,11 +44,25 @@ export default function SubscriptionsScreen() {
         console.error('Error processing due subscriptions:', error);
       }
       
-      const [subs, settings] = await Promise.all([
+      // Backfill subscription links for existing transactions (one-time, runs silently)
+      try {
+        const { backfillSubscriptionLinks } = await import('../services/backfillService');
+        const result = await backfillSubscriptionLinks();
+        if (result.linked > 0) {
+          console.log(`[SubscriptionsScreen] Backfilled ${result.linked} subscription links`);
+        }
+      } catch (error) {
+        // Silent fail - backfill is optional
+        console.error('Error backfilling subscription links:', error);
+      }
+      
+      const [subs, trans, settings] = await Promise.all([
         getSubscriptions(),
+        getTransactions(),
         getSettings(),
       ]);
       setSubscriptions(subs);
+      setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
     } catch (error) {
       console.error('Error loading subscriptions:', error);
@@ -81,7 +101,7 @@ export default function SubscriptionsScreen() {
       await loadSubscriptions();
     } catch (error) {
       console.error('Error marking subscription as paid:', error);
-      Alert.alert('Error', 'Failed to mark subscription as paid');
+      dialog.alert('Error', 'Failed to mark subscription as paid');
     }
   };
 
@@ -92,6 +112,78 @@ export default function SubscriptionsScreen() {
     return days;
   };
 
+  const getSubscriptionTransactions = (subscription: Subscription): Transaction[] => {
+    const filtered = transactions.filter(t => {
+      // Match by subscriptionId (direct link) - highest priority
+      if (t.subscriptionId === subscription.id) {
+        return true;
+      }
+      
+      // Fallback: Match by category and description/merchant name
+      // This handles cases where user categorized as "Subscription" but auto-linking didn't find a match
+      if (t.category === 'Subscription' && t.description) {
+        const subscriptionNameLower = subscription.name.toLowerCase().trim();
+        const transactionDescLower = t.description.toLowerCase().trim();
+        
+        // Extract merchant name from transaction description (multiple methods)
+        const cleanDesc = t.description
+          .replace(/^Subscription:\s*/i, '')
+          .replace(/^Payment\s+to\s+/i, '')
+          .replace(/^Payment\s+/i, '')
+          .trim();
+        
+        const merchantName = cleanDesc.split(/[,\s-]/)[0].trim().toLowerCase();
+        const firstTwoWords = cleanDesc.split(/\s+/).slice(0, 2).join(' ').toLowerCase();
+        
+        // Multiple matching strategies for better accuracy
+        const matches = 
+          // Direct name match
+          subscriptionNameLower === merchantName ||
+          subscriptionNameLower === firstTwoWords ||
+          // Contains match (more flexible)
+          subscriptionNameLower.includes(merchantName) || 
+          merchantName.includes(subscriptionNameLower) ||
+          subscriptionNameLower.includes(firstTwoWords) ||
+          firstTwoWords.includes(subscriptionNameLower) ||
+          // Full description match
+          transactionDescLower.includes(subscriptionNameLower) ||
+          subscriptionNameLower.includes(transactionDescLower);
+        
+        return matches;
+      }
+      
+      return false;
+    });
+    
+    // Debug logging (only in development)
+    if (__DEV__ && filtered.length > 0) {
+      console.log(`[SubscriptionsScreen] Found ${filtered.length} transaction(s) for subscription "${subscription.name}"`);
+      filtered.forEach(t => {
+        console.log(`  - ${t.description} (${t.category}) - subscriptionId: ${t.subscriptionId || 'none'}`);
+      });
+    }
+    
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  // Get unlinked subscription transactions (categorized as Subscription but not linked to any subscription)
+  const getUnlinkedSubscriptionTransactions = (): Transaction[] => {
+    return transactions
+      .filter(t => t.category === 'Subscription' && !t.subscriptionId)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  const toggleExpand = (subscriptionId: string) => {
+    setExpandedSubscriptionId(expandedSubscriptionId === subscriptionId ? null : subscriptionId);
+  };
+
+  // Calculate stats including both subscriptions and unlinked subscription transactions
+  const unlinkedTransactions = getUnlinkedSubscriptionTransactions();
+  
+  // Count active subscriptions + unlinked transactions
+  const activeCount = subscriptions.length + unlinkedTransactions.length;
+  
+  // Calculate monthly cost from subscriptions
   const totalMonthlyCost = subscriptions
     .filter(s => s.frequency === 'monthly')
     .reduce((sum, s) => sum + s.amount, 0);
@@ -99,6 +191,11 @@ export default function SubscriptionsScreen() {
   const totalYearlyCost = subscriptions
     .filter(s => s.frequency === 'yearly')
     .reduce((sum, s) => sum + s.amount, 0);
+  
+  // Add monthly cost from unlinked transactions (estimate as monthly)
+  const unlinkedMonthlyCost = unlinkedTransactions.reduce((sum, t) => sum + t.amount, 0);
+  
+  const totalMonthlyCostWithTransactions = totalMonthlyCost + (totalYearlyCost / 12) + unlinkedMonthlyCost;
 
   const upcomingSubscriptions = subscriptions
     .filter(s => {
@@ -142,7 +239,7 @@ export default function SubscriptionsScreen() {
             <View style={styles.statIconContainer}>
               <Ionicons name="repeat" size={24} color={colors.primary} />
             </View>
-            <Text style={styles.statValue}>{subscriptions.length}</Text>
+            <Text style={styles.statValue}>{activeCount}</Text>
             <Text style={styles.statLabel}>Active</Text>
           </View>
           <View style={styles.statCard}>
@@ -157,7 +254,7 @@ export default function SubscriptionsScreen() {
               <Ionicons name="cash" size={24} color={colors.primary} />
             </View>
             <Text style={styles.statValue}>
-              {formatCurrencySync(totalMonthlyCost + totalYearlyCost / 12, currencyCode)}
+              {formatCurrencySync(totalMonthlyCostWithTransactions, currencyCode)}
             </Text>
             <Text style={styles.statLabel}>Monthly</Text>
           </View>
@@ -212,6 +309,60 @@ export default function SubscriptionsScreen() {
           </View>
         )}
 
+        {/* Unlinked Subscription Transactions */}
+        {(() => {
+          const unlinkedTransactions = getUnlinkedSubscriptionTransactions();
+          if (unlinkedTransactions.length > 0) {
+            return (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Subscription Transactions</Text>
+                  <Text style={styles.sectionSubtitle}>{unlinkedTransactions.length} transaction{unlinkedTransactions.length !== 1 ? 's' : ''}</Text>
+                </View>
+                <View style={styles.subscriptionsList}>
+                  {unlinkedTransactions.map((transaction, index) => (
+                    <TouchableOpacity
+                      key={transaction.id}
+                      style={[
+                        styles.subscriptionCard,
+                        index === unlinkedTransactions.length - 1 && styles.subscriptionCardLast
+                      ]}
+                      onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.subscriptionContent}>
+                        <View style={styles.subscriptionLeft}>
+                          <CompanyLogo
+                            name={transaction.description || 'Subscription'}
+                            type="subscription"
+                            size={56}
+                          />
+                          <View style={styles.subscriptionInfo}>
+                            <Text style={styles.subscriptionName} numberOfLines={1}>
+                              {transaction.description || 'No description'}
+                            </Text>
+                            <View style={styles.subscriptionMeta}>
+                              <Text style={styles.subscriptionFrequency}>
+                                {format(new Date(transaction.date), 'MMM dd, yyyy')}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                        <View style={styles.subscriptionRight}>
+                          <Text style={styles.subscriptionAmount}>
+                            {formatCurrencySync(transaction.amount, currencyCode)}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            );
+          }
+          return null;
+        })()}
+
         {/* All Subscriptions */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -233,8 +384,11 @@ export default function SubscriptionsScreen() {
                 const isUpcoming = daysUntil <= 7 && daysUntil >= 0;
                 const isDueToday = daysUntil === 0;
                 
+                const subscriptionTransactions = getSubscriptionTransactions(subscription);
+                const isExpanded = expandedSubscriptionId === subscription.id;
+                
                 return (
-                  <TouchableOpacity 
+                  <View
                     key={subscription.id}
                     style={[
                       styles.subscriptionCard,
@@ -242,63 +396,113 @@ export default function SubscriptionsScreen() {
                       isUpcoming && styles.subscriptionCardUpcoming,
                       isDueToday && styles.subscriptionCardDue
                     ]}
-                    activeOpacity={0.7}
                   >
-                    <View style={styles.subscriptionContent}>
-                      <View style={styles.subscriptionLeft}>
-                        <CompanyLogo
-                          name={subscription.name}
-                          type="subscription"
-                          size={56}
-                        />
-                        <View style={styles.subscriptionInfo}>
-                          <Text style={styles.subscriptionName}>{subscription.name}</Text>
-                          <View style={styles.subscriptionMeta}>
-                            <Text style={styles.subscriptionFrequency}>
-                              {subscription.frequency.charAt(0).toUpperCase() + subscription.frequency.slice(1)}
-                            </Text>
-                            {isDueToday && (
-                              <View style={styles.dueTodayBadge}>
-                                <Text style={styles.dueTodayText}>Due Today</Text>
-                              </View>
-                            )}
+                    <TouchableOpacity
+                      onPress={() => toggleExpand(subscription.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={styles.subscriptionContent}>
+                        <View style={styles.subscriptionLeft}>
+                          <CompanyLogo
+                            name={subscription.name}
+                            type="subscription"
+                            size={56}
+                          />
+                          <View style={styles.subscriptionInfo}>
+                            <Text style={styles.subscriptionName}>{subscription.name}</Text>
+                            <View style={styles.subscriptionMeta}>
+                              <Text style={styles.subscriptionFrequency}>
+                                {subscription.frequency.charAt(0).toUpperCase() + subscription.frequency.slice(1)}
+                              </Text>
+                              {isDueToday && (
+                                <View style={styles.dueTodayBadge}>
+                                  <Text style={styles.dueTodayText}>Due Today</Text>
+                                </View>
+                              )}
+                              <Text style={styles.transactionCount}>
+                                {subscriptionTransactions.length} payment{subscriptionTransactions.length !== 1 ? 's' : ''}
+                              </Text>
+                            </View>
                           </View>
                         </View>
+                        <View style={styles.subscriptionRight}>
+                          <Ionicons 
+                            name={isExpanded ? "chevron-up" : "chevron-down"} 
+                            size={20} 
+                            color={colors.textSecondary} 
+                          />
+                          <Text style={styles.subscriptionAmount}>
+                            {formatCurrencySync(subscription.amount, currencyCode)}
+                          </Text>
+                          <Text style={styles.subscriptionDate}>
+                            {format(new Date(subscription.nextBillingDate), 'MMM dd, yyyy')}
+                          </Text>
+                          {daysUntil >= 0 && daysUntil <= 7 && (
+                            <Text style={[
+                              styles.subscriptionDays,
+                              isDueToday && styles.subscriptionDaysDue
+                            ]}>
+                              {isDueToday ? 'Due today' : `${daysUntil} day${daysUntil !== 1 ? 's' : ''} left`}
+                            </Text>
+                          )}
+                          {(isDueToday || daysUntil < 0) && (
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleMarkAsPaid(subscription.id);
+                              }}
+                              style={styles.markPaidButton}
+                            >
+                              <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                              <Text style={styles.markPaidText}>Mark as Paid</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                      <View style={styles.subscriptionRight}>
-                        <Text style={styles.subscriptionAmount}>
-                          {formatCurrencySync(subscription.amount, currencyCode)}
-                        </Text>
-                        <Text style={styles.subscriptionDate}>
-                          {format(new Date(subscription.nextBillingDate), 'MMM dd, yyyy')}
-                        </Text>
-                        {daysUntil >= 0 && daysUntil <= 7 && (
-                          <Text style={[
-                            styles.subscriptionDays,
-                            isDueToday && styles.subscriptionDaysDue
-                          ]}>
-                            {isDueToday ? 'Due today' : `${daysUntil} day${daysUntil !== 1 ? 's' : ''} left`}
+                    </TouchableOpacity>
+                    <View style={styles.subscriptionActions}>
+                      <TouchableOpacity
+                        onPress={() => handleDelete(subscription.id)}
+                        style={styles.deleteButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    {isExpanded && (
+                      <View style={styles.transactionsContainer}>
+                        {subscriptionTransactions.length === 0 ? (
+                          <Text style={styles.noTransactionsText}>No payments yet</Text>
+                        ) : (
+                          subscriptionTransactions.slice(0, 5).map((transaction) => (
+                            <TouchableOpacity
+                              key={transaction.id}
+                              style={styles.transactionRow}
+                              onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
+                            >
+                              <View style={styles.transactionLeft}>
+                                <Text style={styles.transactionDescription} numberOfLines={1}>
+                                  {transaction.description || 'Payment'}
+                                </Text>
+                                <Text style={styles.transactionDate}>
+                                  {format(new Date(transaction.date), 'MMM dd, yyyy')}
+                                </Text>
+                              </View>
+                              <Text style={styles.transactionAmount}>
+                                {formatCurrencySync(transaction.amount, currencyCode)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                        {subscriptionTransactions.length > 5 && (
+                          <Text style={styles.moreTransactionsText}>
+                            +{subscriptionTransactions.length - 5} more payments
                           </Text>
                         )}
-                        {(isDueToday || daysUntil < 0) && (
-                          <TouchableOpacity
-                            onPress={() => handleMarkAsPaid(subscription.id)}
-                            style={styles.markPaidButton}
-                          >
-                            <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-                            <Text style={styles.markPaidText}>Mark as Paid</Text>
-                          </TouchableOpacity>
-                        )}
                       </View>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => handleDelete(subscription.id)}
-                      style={styles.deleteButton}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  </TouchableOpacity>
+                    )}
+                  </View>
                 );
               })}
             </View>
@@ -475,6 +679,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexWrap: 'wrap',
+  },
+  transactionCount: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  subscriptionActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+  },
+  transactionsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  transactionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  transactionLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  transactionDescription: {
+    ...typography.body,
+    color: colors.text,
+    marginBottom: 4,
+  },
+  transactionDate: {
+    ...typography.caption,
+    color: colors.textSecondary,
+  },
+  transactionAmount: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  noTransactionsText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: 16,
+  },
+  moreTransactionsText: {
+    ...typography.caption,
+    color: colors.primary,
+    textAlign: 'center',
+    marginTop: 8,
   },
   subscriptionFrequency: {
     fontSize: 13,

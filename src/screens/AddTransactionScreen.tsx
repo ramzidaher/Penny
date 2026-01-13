@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { addTransaction, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';
@@ -25,6 +26,7 @@ const categories = [
 
 export default function AddTransactionScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState('');
@@ -47,13 +49,13 @@ export default function AddTransactionScreen() {
 
   const handleSave = async () => {
     if (!accountId) {
-      Alert.alert('Error', 'Please select an account');
+      dialog.alert('Error', 'Please select an account');
       return;
     }
 
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid amount');
+      dialog.alert('Error', 'Please enter a valid amount');
       return;
     }
 
@@ -70,7 +72,7 @@ export default function AddTransactionScreen() {
       await scheduleAllNotifications();
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add transaction');
+      dialog.alert('Error', 'Failed to add transaction');
     }
   };
 

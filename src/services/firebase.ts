@@ -1,5 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
-import { getFirestore, Firestore, enableNetwork, disableNetwork } from 'firebase/firestore';
+import { getFirestore, Firestore, enableNetwork, disableNetwork, doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { getFunctions, Functions, httpsCallable } from 'firebase/functions';
 import { 
   getAuth as getFirebaseAuth,
@@ -16,7 +16,10 @@ import {
   updateProfile,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  fetchSignInMethodsForEmail
 } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -199,17 +202,253 @@ export const setFirebaseNetworkEnabled = async (enabled: boolean): Promise<void>
   }
 };
 
+// Validate username format (security: prevent injection)
+const validateUsernameFormat = (username: string): boolean => {
+  // Alphanumeric and underscores only, 3-20 characters
+  const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+  return usernameRegex.test(username);
+};
+
+// Check if email is already registered
+export const isEmailAvailable = async (email: string): Promise<boolean> => {
+  // Ensure Firebase is initialized
+  if (!functions) {
+    await initFirebase();
+  }
+  if (!functions) {
+    throw new Error('Firebase not initialized');
+  }
+  
+  // Validate email format first (client-side)
+  const sanitized = email.toLowerCase().trim();
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  if (!emailRegex.test(sanitized)) {
+    throw new Error('Invalid email format');
+  }
+  
+  try {
+    // Use Cloud Function for secure email checking (with rate limiting)
+    const checkEmailFunction = httpsCallable(functions, 'checkEmail');
+    const result = await checkEmailFunction({ email: sanitized });
+    const data = result.data as { available: boolean };
+    console.log('[isEmailAvailable] Email:', sanitized, 'Available:', data.available);
+    return data.available;
+  } catch (error: any) {
+    console.error('[isEmailAvailable] Error checking email availability:', error);
+    
+    // Handle rate limiting errors
+    if (error.code === 'functions/resource-exhausted' || error.message?.includes('Too many email checks')) {
+      throw new Error('Too many email checks. Please wait a moment and try again.');
+    }
+    
+    // Handle invalid argument errors
+    if (error.code === 'functions/invalid-argument') {
+      throw new Error(error.message || 'Invalid email format');
+    }
+    
+    // For other errors, don't reveal specific error details (security: prevent information leakage)
+    throw new Error('Unable to check email availability');
+  }
+};
+
+// Check if username is available via Cloud Function (secure with rate limiting)
+export const isUsernameAvailable = async (username: string): Promise<boolean> => {
+  // Ensure Firebase is initialized
+  if (!app) {
+    await initFirebase();
+  }
+  
+  if (!functions) {
+    // Initialize functions if not already done
+    if (!app) {
+      throw new Error('Firebase not initialized');
+    }
+    functions = getFunctions(app);
+  }
+  
+  // Validate username format first (client-side validation)
+  const sanitized = username.toLowerCase().trim();
+  if (!validateUsernameFormat(sanitized)) {
+    throw new Error('Invalid username format');
+  }
+  
+  try {
+    // Call Cloud Function for secure username checking with rate limiting
+    const checkUsernameFunction = httpsCallable<{ username: string }, { available: boolean; message?: string }>(
+      functions,
+      'checkUsername'
+    );
+    
+    const result = await checkUsernameFunction({ username: sanitized });
+    
+    if (!result.data.available && result.data.message) {
+      // If username is taken or invalid, throw error with message
+      throw new Error(result.data.message);
+    }
+    
+    return result.data.available;
+  } catch (error: any) {
+    // Handle Firebase Functions errors
+    if (error.code === 'functions/resource-exhausted' || error.code === 'resource-exhausted') {
+      throw new Error('Too many requests. Please try again later.');
+    }
+    if (error.code === 'functions/invalid-argument' || error.code === 'invalid-argument') {
+      throw new Error('Invalid username format');
+    }
+    if (error.message && !error.message.includes('Firebase')) {
+      throw error; // Re-throw with original message if it's user-friendly
+    }
+    // Don't reveal specific error details (security: prevent information leakage)
+    throw new Error('Unable to check username availability');
+  }
+};
+
 // Authentication functions
-export const registerUser = async (email: string, password: string, displayName?: string): Promise<User> => {
+export interface RegisterUserData {
+  email: string;
+  password: string;
+  displayName?: string;
+  username?: string;
+  dateOfBirth?: Date;
+}
+
+export const registerUser = async (
+  email: string, 
+  password: string, 
+  displayName?: string,
+  username?: string,
+  dateOfBirth?: Date
+): Promise<User> => {
   if (!auth) {
     throw new Error('Firebase not initialized');
   }
   
-  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  if (!db) {
+    await waitForFirebase();
+  }
+  if (!db) {
+    throw new Error('Firebase not initialized');
+  }
+  
+  // Security: Input validation and sanitization
+  const sanitizedEmail = email.toLowerCase().trim();
+  if (!sanitizedEmail || sanitizedEmail.length > 254) {
+    throw new Error('Invalid email address');
+  }
+  
+  // Validate email format
+  const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  if (!emailRegex.test(sanitizedEmail)) {
+    throw new Error('Invalid email address');
+  }
+  
+  // Validate password length (Firebase has min 6, we enforce 8+)
+  if (!password || password.length < 8 || password.length > 128) {
+    throw new Error('Password must be between 8 and 128 characters');
+  }
+  
+  // Sanitize display name
+  const sanitizedDisplayName = displayName ? displayName.trim().slice(0, 100) : '';
+  
+  // Validate and sanitize username if provided
+  let sanitizedUsername: string | undefined;
+  if (username) {
+    sanitizedUsername = username.toLowerCase().trim();
+    if (!validateUsernameFormat(sanitizedUsername)) {
+      throw new Error('Invalid username format');
+    }
+    
+    // Check username availability (with format validation)
+    const available = await isUsernameAvailable(sanitizedUsername);
+    if (!available) {
+      throw new Error('Username is already taken');
+    }
+  }
+  
+  // Validate date of birth (security: age verification)
+  if (dateOfBirth) {
+    const today = new Date();
+    const age = today.getFullYear() - dateOfBirth.getFullYear();
+    const monthDiff = today.getMonth() - dateOfBirth.getMonth();
+    const dayDiff = today.getDate() - dateOfBirth.getDate();
+    const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
+    
+    if (actualAge < 18) {
+      throw new Error('You must be at least 18 years old');
+    }
+    if (dateOfBirth > today) {
+      throw new Error('Invalid date of birth');
+    }
+  }
+  
+  // Create user account
+  const userCredential = await createUserWithEmailAndPassword(auth, sanitizedEmail, password);
   
   // Update display name if provided
-  if (displayName && userCredential.user) {
-    await updateProfile(userCredential.user, { displayName });
+  if (sanitizedDisplayName && userCredential.user) {
+    await updateProfile(userCredential.user, { displayName: sanitizedDisplayName });
+  }
+  
+  // Create user profile document in Firestore
+  const userId = userCredential.user.uid;
+  const userProfileRef = doc(db, 'users', userId);
+  
+  const profileData: any = {
+    email: sanitizedEmail,
+    displayName: sanitizedDisplayName,
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  
+  if (dateOfBirth) {
+    profileData.dateOfBirth = Timestamp.fromDate(dateOfBirth);
+  }
+  
+  // Write user profile first
+  await setDoc(userProfileRef, profileData);
+  
+  // Store username mapping for uniqueness checking (after profile is written)
+  // This ensures auth state is fully propagated
+  if (sanitizedUsername) {
+    profileData.username = sanitizedUsername;
+    // Update profile with username
+    await updateDoc(userProfileRef, { username: sanitizedUsername });
+    
+    // Store username mapping with retry logic
+    const usernameRef = doc(db, 'usernames', sanitizedUsername);
+    let retries = 3;
+    let lastError: any = null;
+    
+    while (retries > 0) {
+      try {
+        await setDoc(usernameRef, {
+          userId: userId,
+          createdAt: Timestamp.now(),
+        });
+        // Success - break out of retry loop
+        break;
+      } catch (error: any) {
+        lastError = error;
+        retries--;
+        
+        // If it's a permissions error and we have retries left, wait a bit and retry
+        if (error.code === 'permission-denied' && retries > 0) {
+          // Wait 200ms before retrying (auth state propagation delay)
+          await new Promise(resolve => setTimeout(resolve, 200));
+          continue;
+        }
+        
+        // If it's not a permissions error or we're out of retries, log and break
+        console.error('Failed to store username mapping:', error);
+        break;
+      }
+    }
+    
+    // If all retries failed, log the error but don't throw
+    // Username is stored in profile, can be checked there
+    if (retries === 0 && lastError) {
+      console.error('Failed to store username mapping after retries:', lastError);
+    }
   }
   
   currentUser = userCredential.user;
@@ -223,6 +462,18 @@ export const loginUser = async (email: string, password: string): Promise<User> 
   
   const userCredential = await signInWithEmailAndPassword(auth, email, password);
   currentUser = userCredential.user;
+  
+  // Sync PIN from Firestore after successful login
+  try {
+    const { hasPIN } = await import('./pinService');
+    // This will automatically sync PIN from Firestore if not in local storage
+    await hasPIN();
+    console.log('[firebase] PIN synced after login');
+  } catch (error) {
+    console.error('[firebase] Error syncing PIN after login:', error);
+    // Don't block login if PIN sync fails
+  }
+  
   return userCredential.user;
 };
 
@@ -236,6 +487,16 @@ export const logoutUser = async (): Promise<void> => {
   
   // Set flag to prevent auto-restore
   isSigningOut = true;
+  
+  // Clear local PIN before signing out (for security)
+  try {
+    const { deletePIN } = await import('./pinService');
+    await deletePIN();
+    console.log('[firebase] Cleared local PIN on logout');
+  } catch (error) {
+    console.error('[firebase] Error clearing PIN on logout:', error);
+    // Don't block logout if PIN clearing fails
+  }
   
   // Sign out from Firebase
   await signOut(auth);
@@ -309,5 +570,23 @@ export const isAuthenticated = (): boolean => {
 // Get user email
 export const getUserEmail = (): string | null => {
   return currentUser?.email || null;
+};
+
+// Verify user password by attempting to reauthenticate
+export const verifyPassword = async (password: string): Promise<boolean> => {
+  if (!auth || !currentUser || !currentUser.email) {
+    throw new Error('User not authenticated');
+  }
+  
+  try {
+    const credential = EmailAuthProvider.credential(currentUser.email, password);
+    await reauthenticateWithCredential(currentUser, credential);
+    return true;
+  } catch (error: any) {
+    if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+      return false;
+    }
+    throw error;
+  }
 };
 

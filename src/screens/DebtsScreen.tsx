@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { getDebts, deleteDebt } from '../database/db';
 import { Debt } from '../database/schema';
 import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import { SkeletonList } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
@@ -17,6 +16,7 @@ import { formatCurrencySync } from '../utils/currency';
 
 export default function DebtsScreen() {
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [debts, setDebts] = useState<Debt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -143,7 +143,18 @@ export default function DebtsScreen() {
                   </View>
                   <View style={styles.debtInfo}>
                     <Text style={styles.debtName}>{item.name}</Text>
-                    <Text style={styles.debtType}>{item.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
+                    <View style={styles.debtMeta}>
+                      <Text style={styles.debtType}>{item.type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</Text>
+                      {item.budgetCategory && (
+                        <>
+                          <Text style={styles.debtMetaSeparator}>•</Text>
+                          <View style={styles.budgetBadge}>
+                            <Ionicons name="wallet-outline" size={12} color={colors.primary} />
+                            <Text style={styles.budgetBadgeText}>{item.budgetCategory}</Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
                   </View>
                 </View>
                 <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
@@ -305,6 +316,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     textTransform: 'capitalize',
+  },
+  debtMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  debtMetaSeparator: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  budgetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: colors.primary + '15',
+  },
+  budgetBadgeText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: '600',
   },
   statusBadge: {
     paddingHorizontal: 12,

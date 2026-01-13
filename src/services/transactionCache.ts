@@ -31,8 +31,10 @@ import {
   getAllConnections,
 } from './truelayerService';
 import { TrueLayerTransaction } from '../types/truelayer';
-// Map TrueLayer transaction to internal format (duplicated to avoid circular dependency)
-const mapTrueLayerCategory = (tlCategory: string): string => {
+import { getCategoryMetadata, getDefaultCategory } from '../utils/categories';
+
+// Map TrueLayer transaction to internal format using unified category system
+const mapTrueLayerCategory = (tlCategory: string, transactionType?: 'income' | 'expense'): string => {
   const categoryMap: Record<string, string> = {
     'general': 'Other',
     'entertainment': 'Entertainment',
@@ -40,7 +42,7 @@ const mapTrueLayerCategory = (tlCategory: string): string => {
     'expenses': 'Other',
     'transport': 'Transport',
     'cash': 'Cash',
-    'bills': 'Bills',
+    'bills': 'Bills & Utilities',
     'groceries': 'Groceries',
     'shopping': 'Shopping',
     'holidays': 'Travel',
@@ -51,14 +53,23 @@ const mapTrueLayerCategory = (tlCategory: string): string => {
     'food_and_drink': 'Food & Dining',
     'recreation': 'Entertainment',
     'service': 'Other',
-    'utilities': 'Bills',
+    'utilities': 'Bills & Utilities',
     'healthcare': 'Healthcare',
     'transfer': 'Transfer',
-    'income': 'Income',
+    'income': transactionType === 'income' ? 'Salary' : 'Other Income',
   };
   
   const normalized = tlCategory.toLowerCase().replace(/\s+/g, '_');
-  return categoryMap[normalized] || 'Other';
+  const mappedCategory = categoryMap[normalized] || 'Other';
+  
+  // Validate mapped category exists in our system
+  const categoryMeta = getCategoryMetadata(mappedCategory);
+  if (categoryMeta) {
+    return mappedCategory;
+  }
+  
+  // Fallback to default category for the transaction type
+  return getDefaultCategory(transactionType || 'expense');
 };
 
 const mapTrueLayerTransaction = (
@@ -70,7 +81,7 @@ const mapTrueLayerTransaction = (
   
   const type: 'income' | 'expense' = isCredit ? 'income' : 'expense';
   const amount = Math.abs(tlTransaction.amount);
-  const category = mapTrueLayerCategory(tlTransaction.transaction_category || 'general');
+  const category = mapTrueLayerCategory(tlTransaction.transaction_category || 'general', type);
   const description = tlTransaction.merchant_name || tlTransaction.description || 'Transaction';
   
   let date: string;

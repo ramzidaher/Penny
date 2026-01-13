@@ -18,6 +18,8 @@ export interface AppSettings {
   enableBadge: boolean;
   // Security settings
   enableBiometric: boolean;
+  // AI settings
+  aiTone: 'friendly' | 'professional' | 'direct' | 'harsh';
   // Other settings
   theme: 'light' | 'dark' | 'auto';
   createdAt: string;
@@ -38,6 +40,7 @@ export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 
   enableSound: true,
   enableBadge: true,
   enableBiometric: false,
+  aiTone: 'professional',
   theme: 'light',
 };
 

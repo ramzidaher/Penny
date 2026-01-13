@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { addBudget } from '../database/db';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -25,6 +26,7 @@ const periods = [
 
 export default function AddBudgetScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const [category, setCategory] = useState(categories[0]);
   const [limit, setLimit] = useState('');
   const [period, setPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
@@ -32,7 +34,7 @@ export default function AddBudgetScreen() {
   const handleSave = async () => {
     const limitNum = parseFloat(limit);
     if (isNaN(limitNum) || limitNum <= 0) {
-      Alert.alert('Error', 'Please enter a valid budget limit');
+      dialog.alert('Error', 'Please enter a valid budget limit');
       return;
     }
 
@@ -44,7 +46,7 @@ export default function AddBudgetScreen() {
       });
       navigation.goBack();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add budget');
+      dialog.alert('Error', 'Failed to add budget');
     }
   };
 

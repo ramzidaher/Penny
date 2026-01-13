@@ -6,6 +6,35 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    // Security data (PIN) - users can only access their own
+    match /users/{userId}/security/{document} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // User profile - users can read/write their own, anyone can read for username checking
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Usernames collection
+    // SECURITY: Username checking is now done via Cloud Function (checkUsername)
+    // This prevents username enumeration attacks with server-side rate limiting
+    match /usernames/{username} {
+      // No public read - username checking must go through Cloud Function
+      // Only allow read if the user is checking their own username (after auth)
+      allow read: if request.auth != null && 
+                     resource != null && 
+                     resource.data.userId == request.auth.uid;
+      // Allow write by authenticated users during registration
+      // User can only write their own username mapping (userId must match auth.uid)
+      allow create: if request.auth != null && 
+                      request.resource.data.userId == request.auth.uid;
+      allow update: if request.auth != null && 
+                      request.resource.data.userId == request.auth.uid;
+      allow delete: if false; // Usernames should not be deleted (for data integrity)
+    }
+    
     // Security events - only system can write, users can read their own
     match /security_events/{eventId} {
       allow read: if request.auth != null;

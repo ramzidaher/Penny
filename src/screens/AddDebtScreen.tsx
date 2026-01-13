@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { addDebt, getAccounts, getBudgets } from '../database/db';
 import { Debt, Account, Budget } from '../database/schema';
 import { colors } from '../theme/colors';
@@ -19,6 +20,7 @@ const debtTypes: { value: Debt['type']; label: string }[] = [
 
 export default function AddDebtScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [name, setName] = useState('');
@@ -50,19 +52,19 @@ export default function AddDebtScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Error', 'Please enter a debt name');
+      dialog.alert('Error', 'Please enter a debt name');
       return;
     }
     if (!totalAmount || parseFloat(totalAmount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid total amount');
+      dialog.alert('Error', 'Please enter a valid total amount');
       return;
     }
     if (!remainingAmount || parseFloat(remainingAmount) <= 0) {
-      Alert.alert('Error', 'Please enter a valid remaining amount');
+      dialog.alert('Error', 'Please enter a valid remaining amount');
       return;
     }
     if (parseFloat(remainingAmount) > parseFloat(totalAmount)) {
-      Alert.alert('Error', 'Remaining amount cannot be greater than total amount');
+      dialog.alert('Error', 'Remaining amount cannot be greater than total amount');
       return;
     }
 
@@ -86,7 +88,7 @@ export default function AddDebtScreen() {
       navigation.goBack();
     } catch (error) {
       console.error('Error adding debt:', error);
-      Alert.alert('Error', 'Failed to add debt');
+      dialog.alert('Error', 'Failed to add debt');
     }
   };
 

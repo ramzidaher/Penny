@@ -125,6 +125,12 @@ const fetchBalanceFromAPI = async (
       throw error; // Re-throw so accountBalanceService can handle it
     }
     
+    // Handle authentication errors - token refresh should have been attempted
+    if (errorMessage.includes('Authentication failed') || errorMessage.includes('reconnect')) {
+      console.log('[balanceCache] Authentication failed, connection may need to be reconnected');
+      throw error; // Re-throw so caller can handle reconnection
+    }
+    
     console.error('[balanceCache] Error fetching balance from API:', errorMessage);
     throw error;
   }

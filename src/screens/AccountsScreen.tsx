@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useNavigation } from '../utils/navigation';
+import { useDialog } from '../contexts/DialogContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, deleteAccount } from '../database/db';
@@ -19,6 +20,7 @@ import { getAllConnections } from '../services/truelayerService';
 
 export default function AccountsScreen() {
   const navigation = useNavigation();
+  const dialog = useDialog();
   const insets = useSafeAreaInsets();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -113,7 +115,7 @@ export default function AccountsScreen() {
       if (!connectionExists) {
         // Connection was deleted or doesn't exist
         // Show user-friendly message and suggest reconnecting
-        Alert.alert(
+        dialog.alert(
           'Connection Not Found',
           `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
           [{ text: 'OK' }]
@@ -139,14 +141,14 @@ export default function AccountsScreen() {
       
       // Handle "Connection not found" errors gracefully
       if (errorMessage.includes('Connection not found')) {
-        Alert.alert(
+        dialog.alert(
           'Connection Not Found',
           `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
           [{ text: 'OK' }]
         );
       } else {
         // For other errors, show generic error message
-        Alert.alert(
+        dialog.alert(
           'Sync Failed',
           `Failed to sync "${account.name}". Please try again.`,
           [{ text: 'OK' }]

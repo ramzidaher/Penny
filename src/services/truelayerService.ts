@@ -978,6 +978,71 @@ const createApiClient = (accessToken: string): AxiosInstance => {
   });
 };
 
+/**
+ * Helper function to make API calls with automatic 401 retry logic
+ * If a 401 error occurs, it will:
+ * 1. Force token refresh by marking the token as expired
+ * 2. Get a fresh token
+ * 3. Retry the request once
+ * 4. If it still fails, throw an appropriate error
+ */
+const makeApiCallWithRetry = async <T>(
+  connectionId: string,
+  apiCall: (accessToken: string) => Promise<T>,
+  retryCount: number = 0
+): Promise<T> => {
+  try {
+    const accessToken = await getValidAccessToken(connectionId);
+    return await apiCall(accessToken);
+  } catch (error: unknown) {
+    // Check if it's a 401 error
+    const is401 = error && typeof error === 'object' && 'response' in error
+      ? (error as { response?: { status?: number } }).response?.status === 401
+      : false;
+    
+    // Also check error message for 401
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const is401InMessage = errorMessage.includes('401') || errorMessage.includes('Unauthorized');
+    
+    if ((is401 || is401InMessage) && retryCount === 0) {
+      // 401 error - token might be invalid even if not expired
+      // Force refresh by marking the token as expired
+      console.log('[truelayerService] Got 401 error, forcing token refresh and retrying...');
+      
+      try {
+        // Get the current connection to access refresh token
+        const connection = await getTokens(connectionId);
+        if (!connection) {
+          throw new Error('Connection not found');
+        }
+        
+        // Force expiration by setting expiresAt to past (1 second ago)
+        // This will make isTokenExpired return true
+        const expiredConnection: TrueLayerConnection = {
+          ...connection,
+          expiresAt: Date.now() - 1000, // 1 second ago
+        };
+        await secureTokenSet(getTokenKey(connectionId), JSON.stringify(expiredConnection));
+        
+        // Get a fresh token (will trigger refresh since it's now expired)
+        const freshToken = await getValidAccessToken(connectionId);
+        
+        // Retry the request once
+        return await apiCall(freshToken);
+      } catch (refreshError) {
+        // Token refresh failed - clear tokens and throw error
+        const refreshErrorMessage = refreshError instanceof Error ? refreshError.message : 'Unknown error';
+        console.error('[truelayerService] Token refresh failed after 401:', refreshErrorMessage);
+        await clearTokens(connectionId);
+        throw new Error('Authentication failed. Please reconnect your account.');
+      }
+    }
+    
+    // Re-throw the error if it's not a 401 or we've already retried
+    throw error;
+  }
+};
+
 export const getAccounts = async (connectionId: string): Promise<TrueLayerAccountsResponse> => {
   // Validate connection ID
   if (!validateConnectionId(connectionId)) {
@@ -990,10 +1055,11 @@ export const getAccounts = async (connectionId: string): Promise<TrueLayerAccoun
     throw new Error('Rate limit exceeded. Please try again later.');
   }
   
-  const accessToken = await getValidAccessToken(connectionId);
-  const client = createApiClient(accessToken);
-  const response = await client.get<TrueLayerAccountsResponse>('/data/v1/accounts');
-  return response.data;
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
+    const response = await client.get<TrueLayerAccountsResponse>('/data/v1/accounts');
+    return response.data;
+  });
 };
 
 export const getAccountBalance = async (
@@ -1015,10 +1081,11 @@ export const getAccountBalance = async (
     throw new Error('Rate limit exceeded. Please try again later.');
   }
   
-  const accessToken = await getValidAccessToken(connectionId);
-  const client = createApiClient(accessToken);
-  const response = await client.get<TrueLayerBalanceResponse>(`/data/v1/accounts/${accountId}/balance`);
-  return response.data;
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
+    const response = await client.get<TrueLayerBalanceResponse>(`/data/v1/accounts/${accountId}/balance`);
+    return response.data;
+  });
 };
 
 export const getAccountTransactions = async (
@@ -1045,90 +1112,63 @@ export const getAccountTransactions = async (
     throw new Error('Invalid to date format. Expected YYYY-MM-DD');
   }
   
-  const accessToken = await getValidAccessToken(connectionId);
-  if (!accessToken) {
-    throw new Error('No access token available');
-  }
-  
-  const client = createApiClient(accessToken);
-  
   const params: Record<string, string> = {};
   if (from) params.from = from;
   if (to) params.to = to;
 
-  try {
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
     const response = await client.get<TrueLayerTransactionsResponse>(
       `/data/v1/accounts/${accountId}/transactions`,
       { params }
     );
     return response.data;
-  } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'response' in error) {
-      const axiosError = error as { response?: { status?: number; statusText?: string } };
-      const status = axiosError.response?.status;
-      const statusText = axiosError.response?.statusText;
-      throw new Error(`TrueLayer API error: ${status} ${statusText || 'Unknown error'}`);
-    }
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Failed to fetch transactions: ${errorMessage}`);
-  }
+  });
 };
 
 export const getAccountPendingTransactions = async (
   connectionId: string,
   accountId: string
 ): Promise<TrueLayerTransactionsResponse> => {
-  const accessToken = await getValidAccessToken(connectionId);
-  if (!accessToken) {
-    throw new Error('No access token available');
-  }
-  
-  const client = createApiClient(accessToken);
-  
-  try {
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
     const response = await client.get<TrueLayerTransactionsResponse>(
       `/data/v1/accounts/${accountId}/transactions/pending`
     );
     return response.data;
-  } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'response' in error) {
-      const axiosError = error as { response?: { status?: number; statusText?: string } };
-      const status = axiosError.response?.status;
-      const statusText = axiosError.response?.statusText;
-      throw new Error(`TrueLayer API error: ${status} ${statusText || 'Unknown error'}`);
-    }
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error(`Failed to fetch pending transactions: ${errorMessage}`);
-  }
+  });
 };
 
 export const getCards = async (connectionId: string): Promise<TrueLayerCardsResponse> => {
-  const accessToken = await getValidAccessToken(connectionId);
-  const client = createApiClient(accessToken);
-  const response = await client.get<TrueLayerCardsResponse>('/data/v1/cards');
-  return response.data;
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
+    const response = await client.get<TrueLayerCardsResponse>('/data/v1/cards');
+    return response.data;
+  });
 };
 
 export const getCardBalance = async (
   connectionId: string,
   cardId: string
 ): Promise<TrueLayerBalanceResponse> => {
-  const accessToken = await getValidAccessToken(connectionId);
-  const client = createApiClient(accessToken);
-  const response = await client.get<TrueLayerBalanceResponse>(`/data/v1/cards/${cardId}/balance`);
-  return response.data;
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
+    const response = await client.get<TrueLayerBalanceResponse>(`/data/v1/cards/${cardId}/balance`);
+    return response.data;
+  });
 };
 
 export const getCardTransactions = async (
   connectionId: string,
   cardId: string
 ): Promise<TrueLayerTransactionsResponse> => {
-  const accessToken = await getValidAccessToken(connectionId);
-  const client = createApiClient(accessToken);
-  const response = await client.get<TrueLayerTransactionsResponse>(
-    `/data/v1/cards/${cardId}/transactions`
-  );
-  return response.data;
+  return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    const client = createApiClient(accessToken);
+    const response = await client.get<TrueLayerTransactionsResponse>(
+      `/data/v1/cards/${cardId}/transactions`
+    );
+    return response.data;
+  });
 };
 
 // Helper to get API base URLs (exported for use in other files)

@@ -9,7 +9,6 @@
  * - OAuth state parameter validation (CSRF protection)
  * - Code replay protection (tracks used codes in Firestore)
  * - Strict input validation
- * - Rate limiting per user
  * - Error sanitization (no sensitive data in responses)
  * - Audit logging (no sensitive data)
  */
@@ -91,35 +90,6 @@ const checkCodeReplay = async (code: string, userId: string): Promise<boolean> =
   return false;
 };
 
-const checkRateLimit = async (userId: string): Promise<boolean> => {
-  try {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    const attempts = await db.collection('token_exchange_attempts')
-      .where('userId', '==', userId)
-      .where('timestamp', '>', oneHourAgo)
-      .get();
-    
-    const maxAttempts = 5;
-    if (attempts.size >= maxAttempts) {
-      return false;
-    }
-    
-    await db.collection('token_exchange_attempts').add({
-      userId,
-      timestamp: Date.now(),
-    });
-    
-    return true;
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes('index') || errorMessage.includes('FAILED_PRECONDITION')) {
-      console.error('Firestore index missing for rate limiting. Allowing request but index should be created.');
-      return true;
-    }
-    throw error;
-  }
-};
-
 const logSecurityEvent = async (
   eventType: string,
   userId: string,
@@ -180,12 +150,6 @@ export const exchangeTrueLayerToken = functions.https.onCall(
     if (isReplay) {
       await logSecurityEvent('token_exchange_attempt', userId, false, 'code_replay');
       throw new functions.https.HttpsError('invalid-argument', 'Code has already been used');
-    }
-
-    const withinRateLimit = await checkRateLimit(userId);
-    if (!withinRateLimit) {
-      await logSecurityEvent('token_exchange_attempt', userId, false, 'rate_limit_exceeded');
-      throw new functions.https.HttpsError('resource-exhausted', 'Rate limit exceeded. Please try again later.');
     }
 
     const config = getConfig();

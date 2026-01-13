@@ -97,7 +97,8 @@ export const getBiometricType = async (): Promise<string> => {
  * Authenticate using biometrics
  */
 export const authenticateWithBiometric = async (
-  reason?: string
+  reason?: string,
+  options?: { disableDeviceFallback?: boolean; cancelLabel?: string }
 ): Promise<{ success: boolean; error?: string }> => {
   try {
     const authModule = getLocalAuthentication();
@@ -126,9 +127,9 @@ export const authenticateWithBiometric = async (
     const biometricType = await getBiometricType();
     const result = await authModule.authenticateAsync({
       promptMessage: reason || `Authenticate with ${biometricType}`,
-      cancelLabel: 'Cancel',
-      disableDeviceFallback: false,
-      fallbackLabel: 'Use Password',
+      cancelLabel: options?.cancelLabel || 'Cancel',
+      disableDeviceFallback: options?.disableDeviceFallback ?? false,
+      fallbackLabel: options?.disableDeviceFallback ? 'Use PIN' : 'Use Password',
     });
 
     if (result.success) {
@@ -146,6 +147,16 @@ export const authenticateWithBiometric = async (
       error: error.message || 'Biometric authentication failed',
     };
   }
+};
+
+/**
+ * Authenticate using biometrics for lock screen (non-cancellable)
+ */
+export const authenticateWithBiometricForLock = async (): Promise<{ success: boolean; error?: string }> => {
+  return authenticateWithBiometric('Unlock to continue', {
+    disableDeviceFallback: true,
+    cancelLabel: '', // Empty to make it harder to cancel
+  });
 };
 
 /**

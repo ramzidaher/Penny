@@ -1,79 +1,61 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useDialog } from '../contexts/DialogContext';
 import { loginUser, resetPassword, initFirebase } from '../services/firebase';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import {
+  saveBiometricCredentials,
   isBiometricAvailable,
+  hasBiometricCredentials,
   getBiometricType,
   performBiometricLogin,
-  saveBiometricCredentials,
-  hasBiometricCredentials,
 } from '../services/biometricService';
-import { getSettings, waitForFirebase } from '../services/settingsService';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const dialog = useDialog();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [showBiometricLogin, setShowBiometricLogin] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
-  const [hasSavedCredentials, setHasSavedCredentials] = useState(false);
 
-  // Check biometric availability and settings on mount
+  // Check if biometric login is available on mount
   useEffect(() => {
-    const checkBiometric = async () => {
+    const checkBiometricLogin = async () => {
       try {
         const available = await isBiometricAvailable();
-        setBiometricAvailable(available);
+        const hasCredentials = await hasBiometricCredentials();
         
-        if (available) {
+        if (available && hasCredentials) {
           const type = await getBiometricType();
           setBiometricType(type);
-          
-          // Check if user has enabled biometric in settings
-          try {
-            await waitForFirebase();
-            const settings = await getSettings();
-            setBiometricEnabled(settings.enableBiometric);
-            
-            // Check if credentials are saved
-            const hasCredentials = await hasBiometricCredentials();
-            setHasSavedCredentials(hasCredentials);
-            
-            // Auto-trigger biometric login if enabled and credentials exist
-            if (settings.enableBiometric && hasCredentials) {
-              // Small delay to let UI render first
-              setTimeout(() => {
-                handleBiometricLogin();
-              }, 500);
-            }
-          } catch (error) {
-            console.error('Error checking biometric settings:', error);
-          }
+          setShowBiometricLogin(true);
         }
       } catch (error) {
-        console.error('Error checking biometric availability:', error);
+        console.error('Error checking biometric login:', error);
+        // Don't show biometric login if check fails
+        setShowBiometricLogin(false);
       }
     };
     
-    checkBiometric();
+    checkBiometricLogin();
   }, []);
 
   const handleBiometricLogin = async () => {
     try {
       setLoading(true);
       await performBiometricLogin();
-      // Navigation will be handled by App.tsx auth state listener
+      // Navigation will be handled by auth state change listener
     } catch (error: any) {
       console.error('Biometric login error:', error);
-      if (error.message !== 'Authentication cancelled') {
-        Alert.alert('Biometric Login Failed', error.message || 'Failed to authenticate. Please try again.');
+      // Only show error if not cancelled by user
+      if (!error.message?.includes('cancelled') && !error.message?.includes('Authentication cancelled')) {
+        dialog.alert('Biometric Login Failed', 'Please use your email and password to sign in.');
       }
     } finally {
       setLoading(false);
@@ -82,11 +64,11 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email');
+      dialog.alert('Error', 'Please enter your email');
       return;
     }
     if (!password.trim()) {
-      Alert.alert('Error', 'Please enter your password');
+      dialog.alert('Error', 'Please enter your password');
       return;
     }
 
@@ -95,18 +77,42 @@ export default function LoginScreen() {
       await initFirebase();
       await loginUser(email.trim(), password);
       
-      // Save credentials for biometric login if biometric is enabled
-      if (biometricEnabled && biometricAvailable) {
-        try {
-          await saveBiometricCredentials(email.trim(), password);
-          setHasSavedCredentials(true);
-        } catch (error) {
-          console.error('Error saving biometric credentials:', error);
-          // Don't show error to user, login was successful
-        }
+      // Ask user if they want to enable biometric login (security best practice)
+      // Don't auto-save credentials - require user consent
+      const biometricAvailable = await isBiometricAvailable();
+      const hasCredentials = await hasBiometricCredentials();
+      
+      if (biometricAvailable && !hasCredentials) {
+        // Ask user for consent to save credentials for biometric login
+        dialog.showDialog(
+          'Enable Biometric Login?',
+          `You can use ${await getBiometricType()} to sign in quickly next time. Your credentials are stored securely on this device only.`,
+          [
+            {
+              text: 'Not Now',
+              style: 'cancel',
+              onPress: () => {
+                // User declined - that's fine, continue without saving
+              }
+            },
+            {
+              text: 'Enable',
+              onPress: async () => {
+                try {
+                  await saveBiometricCredentials(email.trim(), password);
+                  console.log('Biometric credentials saved with user consent');
+                } catch (error) {
+                  console.error('Error saving biometric credentials:', error);
+                  // Don't show error to user - login was successful, just biometric save failed
+                }
+              }
+            }
+          ]
+        );
       }
       
-      // Navigation will be handled by App.tsx auth state listener
+      // Check if PIN is set - if not, PIN setup screen will be shown by _layout.tsx
+      // Navigation will be handled by auth state listener and _layout.tsx PIN check
     } catch (error: any) {
       console.error('Login error:', error);
       let errorMessage = 'Failed to login. Please try again.';
@@ -123,7 +129,7 @@ export default function LoginScreen() {
         errorMessage = error.message;
       }
       
-      Alert.alert('Login Failed', errorMessage);
+      dialog.alert('Login Failed', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -131,14 +137,14 @@ export default function LoginScreen() {
 
   const handleForgotPassword = async () => {
     if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email address first');
+      dialog.alert('Error', 'Please enter your email address first');
       return;
     }
 
     try {
       await initFirebase();
       await resetPassword(email.trim());
-      Alert.alert('Password Reset', 'Password reset email sent! Check your inbox.');
+      dialog.alert('Password Reset', 'Password reset email sent! Check your inbox.');
     } catch (error: any) {
       console.error('Password reset error:', error);
       let errorMessage = 'Failed to send reset email.';
@@ -149,7 +155,7 @@ export default function LoginScreen() {
         errorMessage = 'Invalid email address.';
       }
       
-      Alert.alert('Error', errorMessage);
+      dialog.alert('Error', errorMessage);
     }
   };
 
@@ -239,29 +245,22 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
 
-            {/* Biometric Login Button */}
-            {biometricAvailable && biometricEnabled && hasSavedCredentials && (
-              <>
-                <View style={styles.divider}>
-                  <View style={styles.dividerLine} />
-                  <Text style={styles.dividerText}>OR</Text>
-                  <View style={styles.dividerLine} />
-                </View>
-                <TouchableOpacity
-                  style={[styles.biometricButton, loading && styles.biometricButtonDisabled]}
-                  onPress={handleBiometricLogin}
-                  disabled={loading}
-                >
-                  <Ionicons 
-                    name={Platform.OS === 'ios' ? 'finger-print-outline' : 'finger-print'} 
-                    size={24} 
-                    color={colors.background} 
-                  />
-                  <Text style={styles.biometricButtonText}>
-                    {loading ? 'Authenticating...' : `Sign in with ${biometricType}`}
-                  </Text>
-                </TouchableOpacity>
-              </>
+            {/* Biometric Login Button - Show if credentials are saved */}
+            {showBiometricLogin && (
+              <TouchableOpacity
+                style={[styles.biometricButton, loading && styles.biometricButtonDisabled]}
+                onPress={handleBiometricLogin}
+                disabled={loading}
+              >
+                <Ionicons 
+                  name={Platform.OS === 'ios' ? 'finger-print-outline' : 'finger-print'} 
+                  size={24} 
+                  color={colors.primary} 
+                />
+                <Text style={styles.biometricButtonText}>
+                  {loading ? 'Signing in...' : `Use ${biometricType}`}
+                </Text>
+              </TouchableOpacity>
             )}
 
             <View style={styles.signupContainer}>
@@ -379,39 +378,27 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: '500',
-  },
   biometricButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: 'transparent',
     borderRadius: 12,
-    height: 56,
-    gap: 12,
-    marginBottom: 24,
+    height: 48,
+    gap: 8,
+    width: '100%',
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   biometricButtonDisabled: {
     opacity: 0.6,
   },
   biometricButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.background,
+    fontSize: 16,
+    fontWeight: '500',
+    color: colors.primary,
   },
 });
 
