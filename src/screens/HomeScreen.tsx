@@ -24,6 +24,7 @@ import { getSettings } from '../services/settingsService';
 import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
 import { suggestCategory, learnFromCategorization } from '../services/categoryService';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
+import { convertAmountsToCurrency } from '../services/currencyConversionService';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -43,6 +44,9 @@ export default function HomeScreen() {
   const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
   const [debtDialogVisible, setDebtDialogVisible] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [convertedTotalBalance, setConvertedTotalBalance] = useState<number | null>(null);
+  const [convertedPeriodIncome, setConvertedPeriodIncome] = useState<number | null>(null);
+  const [convertedPeriodExpenses, setConvertedPeriodExpenses] = useState<number | null>(null);
   const hasLoadedRef = useRef(false);
 
   const loadData = async (showLoading = false) => {
@@ -89,12 +93,69 @@ export default function HomeScreen() {
     setRefreshing(false);
   };
 
+  // Calculate totals with currency conversion
   const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
   
   // Filter transactions by selected period
   const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
   const periodIncome = filteredData.income;
   const periodExpenses = filteredData.expenses;
+
+  // Convert balances and transactions to default currency
+  React.useEffect(() => {
+    const convertTotals = async () => {
+      // Don't convert if currencyCode is not set
+      if (!currencyCode) {
+        console.warn('[HomeScreen] Currency code not set, skipping conversion');
+        return;
+      }
+      
+      try {
+        // Convert account balances
+        const accountAmounts = accounts.map(acc => ({
+          amount: acc.balance,
+          currency: acc.currency || currencyCode || 'USD',
+        }));
+        const convertedBalance = await convertAmountsToCurrency(accountAmounts, currencyCode);
+        setConvertedTotalBalance(convertedBalance);
+
+        // Convert transaction amounts
+        const incomeTransactions = filteredData.transactions.filter(t => t.type === 'income');
+        const expenseTransactions = filteredData.transactions.filter(t => t.type === 'expense');
+        
+        const incomeAmounts = incomeTransactions.map(t => {
+          const account = accounts.find(a => a.id === t.accountId);
+          return {
+            amount: t.amount,
+            currency: account?.currency || currencyCode || 'USD',
+          };
+        });
+        const expenseAmounts = expenseTransactions.map(t => {
+          const account = accounts.find(a => a.id === t.accountId);
+          return {
+            amount: t.amount,
+            currency: account?.currency || currencyCode || 'USD',
+          };
+        });
+
+        const convertedIncome = await convertAmountsToCurrency(incomeAmounts, currencyCode);
+        const convertedExpenses = await convertAmountsToCurrency(expenseAmounts, currencyCode);
+        
+        setConvertedPeriodIncome(convertedIncome);
+        setConvertedPeriodExpenses(convertedExpenses);
+      } catch (error) {
+        console.error('[HomeScreen] Error converting currencies:', error);
+        // Fallback to original values if conversion fails
+        setConvertedTotalBalance(null);
+        setConvertedPeriodIncome(null);
+        setConvertedPeriodExpenses(null);
+      }
+    };
+
+    if ((accounts.length > 0 || filteredData.transactions.length > 0) && currencyCode) {
+      convertTotals();
+    }
+  }, [accounts, transactions, filterPeriod, currencyCode]);
   
   const recentTransactions = filteredData.transactions.slice(0, 5);
   const now = new Date();
@@ -309,16 +370,22 @@ export default function HomeScreen() {
             ))}
           </View>
         </View>
-        <Text style={styles.balanceAmount}>{formatCurrencySync(totalBalance, currencyCode)}</Text>
+        <Text style={styles.balanceAmount}>
+          {formatCurrencySync(convertedTotalBalance ?? totalBalance, currencyCode)}
+        </Text>
         <View style={styles.balanceFooter}>
           <View style={styles.balanceStat}>
             <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Income</Text>
-            <Text style={styles.balanceStatValue}>{formatCurrencySync(periodIncome, currencyCode)}</Text>
+            <Text style={styles.balanceStatValue}>
+              {formatCurrencySync(convertedPeriodIncome ?? periodIncome, currencyCode)}
+            </Text>
           </View>
           <View style={styles.balanceDivider} />
           <View style={styles.balanceStat}>
             <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Expenses</Text>
-            <Text style={styles.balanceStatValue}>{formatCurrencySync(periodExpenses, currencyCode)}</Text>
+            <Text style={styles.balanceStatValue}>
+              {formatCurrencySync(convertedPeriodExpenses ?? periodExpenses, currencyCode)}
+            </Text>
           </View>
         </View>
       </View>

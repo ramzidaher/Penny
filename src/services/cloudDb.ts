@@ -102,6 +102,7 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     // Include TrueLayer-specific fields if present
     if (account.truelayerConnectionId) accountData.truelayerConnectionId = account.truelayerConnectionId;
     if (account.truelayerAccountId) accountData.truelayerAccountId = account.truelayerAccountId;
+    if (account.truelayerProviderName) accountData.truelayerProviderName = account.truelayerProviderName;
     if (account.isSynced !== undefined) accountData.isSynced = account.isSynced;
     if (account.lastSyncedAt) accountData.lastSyncedAt = account.lastSyncedAt;
     if (account.truelayerAccountType) accountData.truelayerAccountType = account.truelayerAccountType;
@@ -1794,12 +1795,16 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
     const now = new Date().toISOString();
 
     // Get existing accounts to check for updates
+    // Use composite key (connectionId + accountId) to ensure uniqueness across different connections
     const existingAccounts = await cloudGetAccounts();
     const truelayerAccountMap = new Map(
       existingAccounts
-        .filter(acc => acc.truelayerConnectionId === connectionId)
-        .map(acc => [acc.truelayerAccountId || '', acc])
+        .filter(acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId)
+        .map(acc => [`${acc.truelayerConnectionId}_${acc.truelayerAccountId}`, acc])
     );
+
+    console.log(`[syncTrueLayerAccounts] Found ${truelayerAccounts.length} account(s) from TrueLayer API`);
+    console.log(`[syncTrueLayerAccounts] Found ${truelayerAccountMap.size} existing account(s) for connection ${connectionId}`);
 
     // Process each TrueLayer account
     for (const tlAccount of truelayerAccounts) {
@@ -1808,8 +1813,11 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         const balanceResponse = await getAccountBalance(connectionId, tlAccount.account_id);
         const balance = balanceResponse.results[0];
 
-        // Check if account already exists
-        const existingAccount = truelayerAccountMap.get(tlAccount.account_id);
+        // Check if account already exists using composite key
+        const compositeKey = `${connectionId}_${tlAccount.account_id}`;
+        const existingAccount = truelayerAccountMap.get(compositeKey);
+        
+        console.log(`[syncTrueLayerAccounts] Processing account: ${tlAccount.display_name} (${tlAccount.account_id}) from ${tlAccount.provider?.display_name || 'Unknown'}, exists: ${!!existingAccount}`);
 
         // For TrueLayer accounts, don't store balance in Firestore (security: minimize persisted financial data)
         // Balance will be fetched on-demand from TrueLayer API and cached locally
@@ -1820,6 +1828,7 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
           currency: tlAccount.currency,
           truelayerConnectionId: connectionId,
           truelayerAccountId: tlAccount.account_id,
+          truelayerProviderName: tlAccount.provider?.display_name,
           isSynced: true,
           lastSyncedAt: now,
           truelayerAccountType: tlAccount.account_type,
@@ -1828,9 +1837,11 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
 
         if (existingAccount) {
           // Update existing account - ensure all TrueLayer fields are included
+          console.log(`[syncTrueLayerAccounts] Updating existing account: ${existingAccount.id} (${accountData.name})`);
           await cloudUpdateAccount(existingAccount.id, accountData);
         } else {
           // Create new account
+          console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}`);
           await cloudAddAccount({
             name: accountData.name!,
             type: accountData.type!,
@@ -1838,18 +1849,31 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
             currency: accountData.currency!,
             truelayerConnectionId: accountData.truelayerConnectionId,
             truelayerAccountId: accountData.truelayerAccountId,
+            truelayerProviderName: accountData.truelayerProviderName,
             isSynced: accountData.isSynced,
             lastSyncedAt: accountData.lastSyncedAt,
             truelayerAccountType: accountData.truelayerAccountType,
           });
         }
       } catch (error) {
-        console.error(`Error syncing account:`, error);
+        console.error(`[syncTrueLayerAccounts] Error syncing account ${tlAccount.account_id}:`, error);
         // Continue with other accounts even if one fails
       }
     }
 
-    console.log(`Successfully synced ${truelayerAccounts.length} account(s) from TrueLayer`);
+    // Verify final state
+    const finalAccounts = await cloudGetAccounts();
+    const syncedAccountsForConnection = finalAccounts.filter(
+      acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId
+    );
+    
+    console.log(`[syncTrueLayerAccounts] Sync complete. TrueLayer returned ${truelayerAccounts.length} account(s), database now has ${syncedAccountsForConnection.length} account(s) for this connection`);
+    
+    if (syncedAccountsForConnection.length !== truelayerAccounts.length) {
+      console.warn(`[syncTrueLayerAccounts] Mismatch: Expected ${truelayerAccounts.length} accounts, but found ${syncedAccountsForConnection.length} in database`);
+      console.log(`[syncTrueLayerAccounts] Account IDs from TrueLayer:`, truelayerAccounts.map(a => a.account_id));
+      console.log(`[syncTrueLayerAccounts] Account IDs in database:`, syncedAccountsForConnection.map(a => `${a.truelayerAccountId} (${a.name})`));
+    }
   } catch (error) {
     console.error('Error syncing TrueLayer accounts:', error);
     throw error;
@@ -1887,6 +1911,7 @@ export const createOrUpdateTrueLayerAccount = async (
     currency: truelayerAccount.currency,
     truelayerConnectionId: connectionId,
     truelayerAccountId: truelayerAccount.account_id,
+    truelayerProviderName: truelayerAccount.provider?.display_name,
     isSynced: true,
     lastSyncedAt: now,
     truelayerAccountType: truelayerAccount.account_type,
@@ -1904,6 +1929,7 @@ export const createOrUpdateTrueLayerAccount = async (
       currency: accountData.currency!,
       truelayerConnectionId: accountData.truelayerConnectionId,
       truelayerAccountId: accountData.truelayerAccountId,
+      truelayerProviderName: accountData.truelayerProviderName,
       isSynced: accountData.isSynced,
       lastSyncedAt: accountData.lastSyncedAt,
       truelayerAccountType: accountData.truelayerAccountType,

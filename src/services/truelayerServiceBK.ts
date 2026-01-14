@@ -53,8 +53,6 @@ const getConnectionsKey = (): string => 'truelayer_connections';
 const getStateKey = (state: string): string => `oauth_state_${state}`;
 const getUsedCodeKey = (code: string): string => `used_oauth_code_${code}`;
 const getEncryptionKeyKey = (): string => 'token_encryption_key';
-const getRateLimitKey = (endpoint: string): string => `rate_limit_${endpoint}`;
-const getMostRecentStateKey = (): string => 'oauth_most_recent_state';
 
 // Generate or retrieve device-specific encryption key
 const getEncryptionKey = async (): Promise<string> => {
@@ -152,31 +150,11 @@ const decryptToken = async (ciphertext: string): Promise<string> => {
 // Tokens are encrypted with an additional layer before storage
 const secureTokenSet = async (key: string, value: string): Promise<void> => {
   try {
-    // Check original value size first - if it's already large, it will be too large after encryption
-    // OAuth state and tokens should be small (< 500 bytes), so this check prevents issues
-    if (value.length > 1500) {
-      console.warn(`[truelayerService] Value for ${key} is ${value.length} bytes, may exceed SecureStore limit after encryption.`);
-      // For OAuth state/tokens, this should never happen - log warning but try anyway
-    }
-    
     // Apply additional encryption layer
     const encrypted = await encryptToken(value);
-    
-    // SecureStore has a 2048 byte limit - check size after encryption
-    // Base64 encoding increases size by ~33%, so we check at 2000 bytes to be safe
-    if (encrypted.length > 2000) {
-      console.warn(`[truelayerService] Encrypted value for ${key} is ${encrypted.length} bytes, may exceed SecureStore limit.`);
-      // Try to store anyway - SecureStore will warn but may still work
-      // For OAuth state/tokens, this should never happen
-    }
-    
     await SecureStore.setItemAsync(key, encrypted);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    // Check if error is about size limit
-    if (errorMessage.includes('2048') || errorMessage.includes('too large') || errorMessage.includes('exceed')) {
-      throw new Error(`Value too large for SecureStore. OAuth state/tokens should be small. Key: ${key}, Size: ${value.length} bytes`);
-    }
     throw new Error(`SecureStore unavailable. Cannot store sensitive tokens securely: ${errorMessage}`);
   }
 };
@@ -509,19 +487,22 @@ export const refreshAccessToken = async (connectionId: string): Promise<TrueLaye
     
     const errorCode = functionsError.code || '';
     const errorMsg = functionsError.message || errorMessage;
-    const errorStr = String(error);
     
     if (errorCode === 'unauthenticated' || errorMsg.toLowerCase().includes('unauthenticated')) {
       throw new Error('Authentication required. Please sign in and try again.');
     }
     
-    if (errorMsg.toLowerCase().includes('reconnect')) {
+    if (errorCode === 'unauthenticated' || errorMsg.toLowerCase().includes('reconnect')) {
       // Token refresh failed - likely revoked
       await clearTokens(connectionId);
-      throw new Error('Token refresh failed. Please reconnect your account.');
+    throw new Error('Token refresh failed. Please reconnect your account.');
+    }
+    
+    if (errorCode === 'resource-exhausted' || errorMsg.toLowerCase().includes('rate limit')) {
+      throw new Error('Too many refresh requests. Please try again later.');
     }
 
-    if (errorCode === 'invalid-argument' || errorMsg.toLowerCase().includes('invalid-argument')) {
+    if (errorCode === 'invalid-argument') {
       throw new Error('Invalid request. Please reconnect your account.');
     }
 
@@ -597,51 +578,7 @@ const storeOAuthState = async (state: string): Promise<void> => {
     createdAt: Date.now(),
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
   };
-  const stateDataStr = JSON.stringify(stateData);
-  
-  // Log size for debugging (OAuth state should be small)
-  if (stateDataStr.length > 500) {
-    console.warn(`[truelayerService] OAuth state data is unexpectedly large: ${stateDataStr.length} bytes`);
-  }
-  
-  await secureTokenSet(stateKey, stateDataStr);
-  
-  // Also store as most recent state for iOS production builds where state might be lost in URL
-  // This allows us to retrieve it even if the state parameter is missing from the callback URL
-  const mostRecentStateData = {
-    state,
-    createdAt: Date.now(),
-    expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
-  };
-  const mostRecentStateDataStr = JSON.stringify(mostRecentStateData);
-  await secureTokenSet(getMostRecentStateKey(), mostRecentStateDataStr);
-};
-
-// Retrieve the most recent OAuth state (for iOS production builds where state might be lost)
-const getMostRecentState = async (): Promise<string | null> => {
-  try {
-    const stateDataStr = await secureTokenGet(getMostRecentStateKey());
-    if (!stateDataStr) {
-      return null;
-    }
-    
-    const stateData = JSON.parse(stateDataStr);
-    
-    // Check expiration
-    if (Date.now() > stateData.expiresAt) {
-      // Clean up expired state
-      try {
-        await secureTokenDelete(getMostRecentStateKey());
-      } catch {
-        // Ignore cleanup errors
-      }
-      return null;
-    }
-    
-    return stateData.state;
-  } catch {
-    return null;
-  }
+  await secureTokenSet(stateKey, JSON.stringify(stateData));
 };
 
 // Validate and consume OAuth state (one-time use)
@@ -780,29 +717,12 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
   const url = await buildAuthUrl();
   const redirectUri = getRedirectUri();
   
-  // On iOS, use system browser (Safari) instead of in-app browser
-  // This provides better OAuth flow when going through multiple apps (bank app, Chrome, etc.)
-  // On Android, we can use WebBrowser for better integration
-  if (Platform.OS === 'ios') {
+  // On mobile, use WebBrowser for better OAuth handling
+  // WebBrowser properly handles the redirect back to the app
+  if (Platform.OS !== 'web') {
     try {
-      // Use system browser (Safari) on iOS
-      // The deep link handler will process the callback when user returns to app
-      console.log('[truelayerService] Opening OAuth URL in system browser (iOS)');
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-        // Return null - deep link handler will process the callback
-        return null;
-      } else {
-        throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
-      }
-    } catch (error: any) {
-      console.error('Error opening URL in system browser:', error);
-      throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
-    }
-  } else if (Platform.OS === 'android') {
-    // On Android, use WebBrowser for better OAuth handling
-    try {
+      // Use WebBrowser which handles OAuth redirects properly on mobile
+      // This will open the auth URL and wait for the redirect
       const result = await WebBrowser.openAuthSessionAsync(url, redirectUri);
       
       if (result.type === 'success' && result.url) {
@@ -822,15 +742,7 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
         if (code && state) {
           return { code, state };
         } else if (code) {
-          // State missing from URL - try to retrieve from storage
-          console.log('[truelayerService] State missing from URL, attempting to retrieve from storage...');
-          const storedState = await getMostRecentState();
-          if (storedState) {
-            console.log('[truelayerService] Retrieved state from storage');
-            return { code, state: storedState };
-          } else {
-            return { error: 'Missing state parameter. OAuth flow may have been tampered with.' };
-          }
+          return { error: 'Missing state parameter. OAuth flow may have been tampered with.' };
         } else {
           return { error: 'No authorization code received' };
         }
@@ -867,8 +779,7 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
 export const exchangeCodeForTokens = async (
   code: string,
   redirectUri?: string,
-  state?: string,
-  retryCount: number = 0
+  state?: string
 ): Promise<{ connectionId: string; accessToken: string; refreshToken: string }> => {
   // Validate OAuth code format
   if (!validateOAuthCode(code)) {
@@ -888,53 +799,18 @@ export const exchangeCodeForTokens = async (
     throw new Error('This authorization code has already been used. Please try connecting again.');
   }
   
-  // Validate state parameter (CSRF protection) - skip on retries since state is already consumed
-  if (retryCount === 0) {
-    let stateToValidate = state;
-    
-    // If state is missing, try to retrieve from storage (iOS production build workaround)
-    if (!stateToValidate) {
-      console.log('[truelayerService] State missing, attempting to retrieve from storage...');
-      const retrievedState = await getMostRecentState();
-      stateToValidate = retrievedState || undefined;
-      
-      if (!stateToValidate) {
-        // For iOS production builds, allow flow to continue without state validation
-        // The backend will still validate the code
-        if (Platform.OS === 'ios') {
-          console.warn('[truelayerService] iOS production build: Skipping state validation (state lost in multi-app OAuth flow)');
-          // Continue without state validation - backend will validate the code
-        } else {
-          throw new Error('Missing state parameter. OAuth flow may have been tampered with.');
-        }
-      }
-    }
-    
-    // Only validate state if we have it
-    if (stateToValidate) {
-      if (typeof stateToValidate !== 'string' || stateToValidate.length < 20 || stateToValidate.length > 200) {
-        throw new Error('Invalid state parameter format.');
-      }
-      
-      const isValidState = await validateAndConsumeState(stateToValidate);
-      if (!isValidState) {
-        // For iOS production builds, allow flow to continue even if state validation fails
-        // This handles the case where state was lost in the multi-app OAuth flow
-        if (Platform.OS === 'ios') {
-          console.warn('[truelayerService] iOS production build: State validation failed, but allowing flow to continue');
-          // Continue without state validation - backend will validate the code
-        } else {
-          throw new Error('Invalid or expired state parameter. OAuth flow may have been tampered with or expired. Please try again.');
-        }
-      } else {
-        // State was validated and consumed - also clean up the most recent state to prevent reuse
-        try {
-          await secureTokenDelete(getMostRecentStateKey());
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-    }
+  // Validate state parameter (CSRF protection)
+  if (!state) {
+    throw new Error('Missing state parameter. OAuth flow may have been tampered with.');
+  }
+  
+  if (typeof state !== 'string' || state.length < 20 || state.length > 200) {
+    throw new Error('Invalid state parameter format.');
+  }
+  
+  const isValidState = await validateAndConsumeState(state);
+  if (!isValidState) {
+    throw new Error('Invalid or expired state parameter. OAuth flow may have been tampered with or expired. Please try again.');
   }
   
   const functions = getFirebaseFunctions();
@@ -949,12 +825,10 @@ export const exchangeCodeForTokens = async (
       'exchangeTrueLayerToken'
     );
 
-    // Use the state if available, otherwise use empty string (backend will validate code)
-    const stateForApi = state || '';
     const result = await exchangeToken({
       code,
       redirectUri: uri,
-      state: stateForApi, // State is validated on first call if available
+      state,
     });
 
     const { connectionId, accessToken, refreshToken } = result.data;
@@ -1004,6 +878,21 @@ export const exchangeCodeForTokens = async (
     if (errorCode === 'invalid-argument' || errorMsg.toLowerCase().includes('invalid-argument')) {
       throw new Error(errorMsg || 'Invalid request. Please try connecting again.');
     }
+    
+    // Check for rate limiting errors (from backend or TrueLayer API)
+    if (errorCode === 'resource-exhausted' || 
+        errorMsg.toLowerCase().includes('resource-exhausted') ||
+        errorMsg.toLowerCase().includes('rate limit') ||
+        errorMsg.toLowerCase().includes('rate limit exceeded')) {
+      // Rate limit could be from TrueLayer API or Firebase Functions
+      // Provide helpful message and suggest retry
+      throw new Error(
+        'Too many connection attempts. This may be due to:\n' +
+        '1. Multiple rapid connection attempts\n' +
+        '2. TrueLayer API rate limiting\n\n' +
+        'Please wait a few minutes and try again.'
+      );
+    }
 
     if (errorCode === 'unavailable' || errorCode === 'deadline-exceeded' || 
         errorMsg.toLowerCase().includes('unavailable') || errorMsg.toLowerCase().includes('deadline-exceeded')) {
@@ -1020,59 +909,8 @@ export const exchangeCodeForTokens = async (
       );
     }
 
-    // Check for rate limit errors and retry with exponential backoff
-    const isRateLimit = 
-      errorCode === 'resource-exhausted' || 
-      errorMsg.toLowerCase().includes('resource-exhausted') ||
-      errorMsg.toLowerCase().includes('rate limit') ||
-      errorStr.toLowerCase().includes('rate limit');
-    
-    if (isRateLimit && retryCount < 3) {
-      // Exponential backoff: 2s, 4s, 8s
-      const delayMs = Math.pow(2, retryCount + 1) * 1000;
-      console.log(`[truelayerService] Rate limit hit, retrying in ${delayMs}ms (attempt ${retryCount + 1}/3)`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      return exchangeCodeForTokens(code, redirectUri, state, retryCount + 1);
-    }
-
     throw new Error(errorMsg || 'Failed to exchange authorization code');
   }
-};
-
-// Client-side rate limiting
-interface RateLimitData {
-  count: number;
-  resetAt: number;
-}
-
-const checkClientRateLimit = async (endpoint: string, maxRequests: number, windowMs: number): Promise<boolean> => {
-  const rateLimitKey = getRateLimitKey(endpoint);
-  const rateLimitStr = await storageGetItem(rateLimitKey);
-  
-  const now = Date.now();
-  let rateLimit: RateLimitData;
-  
-  if (rateLimitStr) {
-    try {
-      rateLimit = JSON.parse(rateLimitStr);
-      // Reset if window expired
-      if (now > rateLimit.resetAt) {
-        rateLimit = { count: 0, resetAt: now + windowMs };
-      }
-    } catch {
-      rateLimit = { count: 0, resetAt: now + windowMs };
-    }
-  } else {
-    rateLimit = { count: 0, resetAt: now + windowMs };
-  }
-  
-  if (rateLimit.count >= maxRequests) {
-    return false; // Rate limit exceeded
-  }
-  
-  rateLimit.count++;
-  await storageSetItem(rateLimitKey, JSON.stringify(rateLimit));
-  return true;
 };
 
 // Deep link security validation

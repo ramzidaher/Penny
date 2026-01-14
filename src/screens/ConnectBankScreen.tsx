@@ -51,20 +51,9 @@ export default function ConnectBankScreen() {
   useEffect(() => {
     // Handle OAuth callback from deep link (mobile)
     // This is a fallback - WebBrowser should handle it directly
-    // Only process if we're not already processing a WebBrowser result
-
-    // Prevent duplicate processing (check both local and global)
-    if (processingRef.current || processingGlobal.current) {
-      console.log('[ConnectBankScreen] Already processing OAuth callback, ignoring duplicate');
-      return;
-    }
-
-    // Only process if we're not currently connecting via WebBrowser
-    if (connecting) {
-      console.log('[ConnectBankScreen] WebBrowser is handling OAuth, ignoring deep link');
-      return; // WebBrowser is handling it, ignore deep link
-    }
-
+    // On iOS production, WebBrowser might not return properly when OAuth goes through multiple apps
+    // So we process deep link callbacks even if processing flags are set (after a short delay)
+    
     if (error) {
       // Only show error if we haven't processed it already
       const errorKey = `error_${error}`;
@@ -82,13 +71,39 @@ export default function ConnectBankScreen() {
         return;
       }
 
-      // Mark as processed immediately to prevent duplicate processing
-      processedCodesGlobal.add(code);
-      
-      // Process the callback from deep link (fallback scenario) with state parameter
-      handleOAuthCallback(code, state);
+      // On iOS production, WebBrowser might hang when OAuth goes through multiple apps
+      // Give WebBrowser a chance to return (2 seconds), then process the deep link
+      // This ensures we process the callback even if WebBrowser.openAuthSessionAsync() doesn't return
+      const processCallback = () => {
+        // Reset processing flags if they're still set (WebBrowser didn't return)
+        if (processingRef.current || processingGlobal.current) {
+          console.log('[ConnectBankScreen] WebBrowser did not return, processing deep link callback');
+          processingRef.current = false;
+          processingGlobal.current = false;
+          setConnecting(false);
+        }
+
+        // Mark as processed immediately to prevent duplicate processing
+        processedCodesGlobal.add(code);
+        
+        // Process the callback from deep link (fallback scenario) with state parameter
+        // Pass forceProcess=true to allow processing even if flags are set (iOS production workaround)
+        handleOAuthCallback(code, state, true);
+      };
+
+      // If processing flags are set, wait a bit for WebBrowser to return
+      // Otherwise, process immediately
+      if (processingRef.current || processingGlobal.current || connecting) {
+        console.log('[ConnectBankScreen] Waiting for WebBrowser to return, will process deep link if it doesn\'t...');
+        const timeout = setTimeout(processCallback, 2000);
+        return () => clearTimeout(timeout);
+      } else {
+        // No processing flags set, process immediately
+        processedCodesGlobal.add(code);
+        handleOAuthCallback(code, state, false);
+      }
     }
-  }, [code, error, connecting]);
+  }, [code, error, connecting, state]);
 
   const loadConnections = async () => {
     try {
@@ -111,11 +126,22 @@ export default function ConnectBankScreen() {
       processingRef.current = true;
       processingGlobal.current = true;
       
-      // On mobile, WebBrowser will handle the OAuth flow
-      // It returns the result directly with the code
+      // On iOS, openAuthUrl uses system browser and returns null
+      // On Android, it uses WebBrowser and returns a result
       const result = await openAuthUrl();
       
-      // Always reset connecting state when WebBrowser returns
+      if (result === null) {
+        // On iOS, system browser was opened
+        // The deep link handler will process the callback when user returns to app
+        console.log('[ConnectBankScreen] Opened system browser (iOS), waiting for deep link callback...');
+        // Keep connecting state true and OAuth flow active
+        // Don't reset processing flags - let deep link handler process it
+        // The deep link handler will reset these when it processes the callback
+        return;
+      }
+      
+      // Android path: WebBrowser returned a result
+      // Reset connecting state since WebBrowser handled it
       setConnecting(false);
       processingRef.current = false;
       processingGlobal.current = false;
@@ -143,9 +169,6 @@ export default function ConnectBankScreen() {
         // Process the OAuth callback directly with state parameter
         // Don't set connecting to true again - handleOAuthCallback will show its own loading
         await handleOAuthCallback(result.code, result.state);
-      } else {
-        // If no result, it means we're using Linking fallback and deep link handler will process it
-        // OAuth flow flag will be cleared by deep link handler
       }
     } catch (error: any) {
       console.error('Error opening auth URL:', error);
@@ -158,11 +181,30 @@ export default function ConnectBankScreen() {
     }
   };
 
-  const handleOAuthCallback = async (code: string, state?: string) => {
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      // Reset processing flags on unmount to prevent blocking
+      processingRef.current = false;
+      processingGlobal.current = false;
+    };
+  }, []);
+
+  const handleOAuthCallback = async (code: string, state?: string, forceProcess: boolean = false) => {
     // Prevent duplicate processing (check both local and global)
-    if (processingRef.current || processingGlobal.current) {
+    // But allow processing if forceProcess is true (deep link callback on iOS production)
+    if ((processingRef.current || processingGlobal.current) && !forceProcess) {
       console.log('[ConnectBankScreen] OAuth callback already being processed, ignoring duplicate');
       return;
+    }
+    
+    // If processing flags are set but we're forcing processing (deep link callback), reset them
+    // This handles the case where WebBrowser.openAuthSessionAsync() hung on iOS production
+    if ((processingRef.current || processingGlobal.current) && forceProcess) {
+      console.log('[ConnectBankScreen] Processing deep link callback, resetting flags');
+      processingRef.current = false;
+      processingGlobal.current = false;
+      setConnecting(false);
     }
 
     try {

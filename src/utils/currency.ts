@@ -9,6 +9,20 @@ const currencies: Record<string, { symbol: string; code: string }> = {
   AUD: { symbol: 'A$', code: 'AUD' },
   CHF: { symbol: 'CHF', code: 'CHF' },
   CNY: { symbol: '¥', code: 'CNY' },
+  SEK: { symbol: 'kr', code: 'SEK' },
+  ILS: { symbol: '₪', code: 'ILS' },
+  NZD: { symbol: 'NZ$', code: 'NZD' },
+  SGD: { symbol: 'S$', code: 'SGD' },
+  HKD: { symbol: 'HK$', code: 'HKD' },
+  NOK: { symbol: 'kr', code: 'NOK' },
+  DKK: { symbol: 'kr', code: 'DKK' },
+  PLN: { symbol: 'zł', code: 'PLN' },
+  MXN: { symbol: '$', code: 'MXN' },
+  BRL: { symbol: 'R$', code: 'BRL' },
+  INR: { symbol: '₹', code: 'INR' },
+  ZAR: { symbol: 'R', code: 'ZAR' },
+  TRY: { symbol: '₺', code: 'TRY' },
+  RUB: { symbol: '₽', code: 'RUB' },
 };
 
 // Get currency symbol and code from settings

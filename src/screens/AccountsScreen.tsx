@@ -17,6 +17,37 @@ import { formatCurrencySync } from '../utils/currency';
 import CompanyLogo from '../components/CompanyLogo';
 import { formatDistanceToNow } from 'date-fns';
 import { getAllConnections } from '../services/truelayerService';
+import { convertCurrency } from '../services/currencyConversionService';
+
+// Helper function to format TrueLayer account types for display
+const formatAccountType = (accountType?: string): string => {
+  if (!accountType) return '';
+  
+  // Convert common TrueLayer account types to readable format
+  const typeMap: Record<string, string> = {
+    'SAVINGS': 'Savings',
+    'CURRENT_ACCOUNT': 'Current',
+    'CURRENT': 'Current',
+    'CHECKING': 'Checking',
+    'CHECKING_ACCOUNT': 'Checking',
+    'CREDIT_CARD': 'Credit Card',
+    'CREDIT': 'Credit Card',
+    'PREPAID': 'Prepaid',
+    'PREPAID_CARD': 'Prepaid',
+    'BUSINESS': 'Business',
+    'BUSINESS_ACCOUNT': 'Business',
+    'INVESTMENT': 'Investment',
+    'LOAN': 'Loan',
+    'MORTGAGE': 'Mortgage',
+    'TRANSACTION': 'Transaction',
+    'TRANSACTION_ACCOUNT': 'Transaction',
+  };
+  
+  const upperType = accountType.toUpperCase();
+  return typeMap[upperType] || accountType.split('_').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+  ).join(' ');
+};
 
 export default function AccountsScreen() {
   const navigation = useNavigation();
@@ -28,6 +59,8 @@ export default function AccountsScreen() {
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
   const [activeConnectionIds, setActiveConnectionIds] = useState<Set<string>>(new Set());
+  const [showConvertedAmounts, setShowConvertedAmounts] = useState<boolean>(false);
+  const [convertedBalances, setConvertedBalances] = useState<Map<string, number>>(new Map());
 
   const loadAccounts = async () => {
     try {
@@ -46,11 +79,43 @@ export default function AccountsScreen() {
       setActiveConnectionIds(activeIds);
       
       setAccounts(accs);
-      setCurrencyCode(settings.defaultCurrency);
+      const defaultCurrency = settings.defaultCurrency || 'USD';
+      setCurrencyCode(defaultCurrency);
+      
+      // Pre-convert all account balances if conversion is enabled
+      if (showConvertedAmounts && defaultCurrency) {
+        await convertAllBalances(accs, defaultCurrency);
+      }
     } catch (error) {
       console.error('Error loading accounts:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const convertAllBalances = async (accs: Account[], targetCurrency: string) => {
+    // Don't convert if target currency is not set
+    if (!targetCurrency) {
+      console.warn('[AccountsScreen] Target currency not set, skipping conversion');
+      return;
+    }
+    
+    try {
+      const conversions = new Map<string, number>();
+      await Promise.all(
+        accs.map(async (account) => {
+          const accountCurrency = account.currency || currencyCode || 'USD';
+          if (accountCurrency !== targetCurrency) {
+            const converted = await convertCurrency(account.balance, accountCurrency, targetCurrency);
+            conversions.set(account.id, converted);
+          } else {
+            conversions.set(account.id, account.balance);
+          }
+        })
+      );
+      setConvertedBalances(conversions);
+    } catch (error) {
+      console.error('Error converting balances:', error);
     }
   };
 
@@ -235,8 +300,35 @@ export default function AccountsScreen() {
               </View>
             </View>
             {accounts.length > 0 && (
-              <View style={styles.summarySection}>
-                <View style={styles.summaryCard}>
+              <>
+                <View style={styles.convertSection}>
+                  <TouchableOpacity
+                    style={styles.convertButton}
+                    onPress={async () => {
+                      const newState = !showConvertedAmounts;
+                      setShowConvertedAmounts(newState);
+                      if (newState && currencyCode) {
+                        await convertAllBalances(accounts, currencyCode);
+                      } else {
+                        setConvertedBalances(new Map());
+                      }
+                    }}
+                  >
+                    <Ionicons 
+                      name={showConvertedAmounts ? "checkmark-circle" : "swap-horizontal"} 
+                      size={18} 
+                      color={showConvertedAmounts ? colors.primary : colors.textSecondary} 
+                    />
+                    <Text style={[
+                      styles.convertButtonText,
+                      showConvertedAmounts && styles.convertButtonTextActive
+                    ]}>
+                      {showConvertedAmounts ? 'Showing Converted' : 'Convert All to ' + currencyCode}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.summarySection}>
+                  <View style={styles.summaryCard}>
                   <Text style={styles.summaryLabel}>Total Balance</Text>
                   <Text style={styles.summaryAmount}>
                     {formatCurrencySync(calculateTotalBalance(), currencyCode)}
@@ -246,6 +338,7 @@ export default function AccountsScreen() {
                   </Text>
                 </View>
               </View>
+              </>
             )}
             {accounts.length > 0 && (
               <View style={styles.accountsSection}>
@@ -315,38 +408,83 @@ export default function AccountsScreen() {
                 </View>
                 <View style={styles.accountInfo}>
                   <View style={styles.accountNameRow}>
-                    <Text style={styles.accountName}>{item.name}</Text>
-                    {item.isSynced && (
+                    <View style={styles.accountNameContainer}>
+                      <Text style={styles.accountName}>
+                        {item.truelayerProviderName
+                          ? item.truelayerAccountType && 
+                            item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
+                            item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT'
+                            ? `${item.truelayerProviderName} ${formatAccountType(item.truelayerAccountType)}`
+                            : item.truelayerProviderName
+                          : item.name}
+                      </Text>
+                      {item.truelayerAccountType && 
+                       item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
+                       item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && 
+                       !item.truelayerProviderName && (
+                        <View style={styles.accountTypeBadge}>
+                          <Text style={styles.accountTypeBadgeText}>
+                            {formatAccountType(item.truelayerAccountType)}
+                          </Text>
+                        </View>
+                      )}
+                      {item.isSynced && (
+                        <>
+                          {item.truelayerConnectionId && activeConnectionIds.has(item.truelayerConnectionId) ? (
+                            <View style={styles.syncBadge}>
+                              <Ionicons name="sync" size={12} color={colors.primary} />
+                              <Text style={styles.syncBadgeText}>Synced</Text>
+                            </View>
+                          ) : item.truelayerConnectionId ? (
+                            <TouchableOpacity
+                              style={styles.reconnectBadge}
+                              onPress={() => navigation.navigate('ConnectBank' as never)}
+                            >
+                              <Ionicons name="refresh" size={12} color={colors.error} />
+                              <Text style={styles.reconnectBadgeText}>Reconnect</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <View style={styles.syncBadge}>
+                              <Ionicons name="sync" size={12} color={colors.primary} />
+                              <Text style={styles.syncBadgeText}>Synced</Text>
+                            </View>
+                          )}
+                        </>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.accountMetaRow}>
+                    {item.truelayerProviderName && (
                       <>
-                        {item.truelayerConnectionId && activeConnectionIds.has(item.truelayerConnectionId) ? (
-                          <View style={styles.syncBadge}>
-                            <Ionicons name="sync" size={12} color={colors.primary} />
-                            <Text style={styles.syncBadgeText}>Synced</Text>
-                          </View>
-                        ) : item.truelayerConnectionId ? (
-                          <TouchableOpacity
-                            style={styles.reconnectBadge}
-                            onPress={() => navigation.navigate('ConnectBank' as never)}
-                          >
-                            <Ionicons name="refresh" size={12} color={colors.error} />
-                            <Text style={styles.reconnectBadgeText}>Reconnect</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <View style={styles.syncBadge}>
-                            <Ionicons name="sync" size={12} color={colors.primary} />
-                            <Text style={styles.syncBadgeText}>Synced</Text>
-                          </View>
+                        <Text style={styles.accountType}>{item.truelayerProviderName}</Text>
+                        {item.currency && (
+                          <>
+                            <Text style={styles.accountTypeSeparator}>•</Text>
+                            <Text style={styles.accountType}>{item.currency}</Text>
+                          </>
+                        )}
+                        {item.truelayerAccountType && 
+                         item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
+                         item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && (
+                          <>
+                            <Text style={styles.accountTypeSeparator}>•</Text>
+                            <Text style={styles.accountType}>{formatAccountType(item.truelayerAccountType)}</Text>
+                          </>
                         )}
                       </>
                     )}
-                  </View>
-                  <View style={styles.accountMetaRow}>
-                    <Text style={styles.accountType}>{item.type}</Text>
-                    {item.truelayerAccountType && (
-                      <>
-                        <Text style={styles.accountTypeSeparator}>•</Text>
-                        <Text style={styles.accountType}>{item.truelayerAccountType}</Text>
-                      </>
+                    {!item.truelayerProviderName && item.currency && (
+                      <Text style={styles.accountType}>{item.currency}</Text>
+                    )}
+                    {!item.truelayerProviderName && !item.currency && item.truelayerAccountType && 
+                     item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
+                     item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && (
+                      <Text style={styles.accountType}>{formatAccountType(item.truelayerAccountType)}</Text>
+                    )}
+                    {!item.truelayerProviderName && !item.currency && (!item.truelayerAccountType || 
+                      item.truelayerAccountType.toUpperCase() === 'TRANSACTION' || 
+                      item.truelayerAccountType.toUpperCase() === 'TRANSACTION_ACCOUNT') && (
+                      <Text style={styles.accountType}>{item.type}</Text>
                     )}
                     {item.lastSyncedAt && (
                       <>
@@ -361,25 +499,17 @@ export default function AccountsScreen() {
               </View>
               <View style={styles.accountRight}>
                 <Text style={styles.accountBalance}>
-                  {formatCurrencySync(
-                    item.balance,
-                    item.currency || currencyCode
-                  )}
+                  {showConvertedAmounts && convertedBalances.has(item.id)
+                    ? formatCurrencySync(convertedBalances.get(item.id)!, currencyCode)
+                    : formatCurrencySync(item.balance, item.currency || currencyCode)
+                  }
                 </Text>
+                {showConvertedAmounts && item.currency && item.currency !== currencyCode && (
+                  <Text style={styles.originalBalance}>
+                    {formatCurrencySync(item.balance, item.currency)}
+                  </Text>
+                )}
                 <View style={styles.accountActions}>
-                  {item.isSynced && item.truelayerConnectionId && (
-                    <TouchableOpacity
-                      onPress={() => handleSyncAccount(item)}
-                      style={styles.syncButton}
-                      disabled={syncingAccountId === item.id}
-                    >
-                      {syncingAccountId === item.id ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <Ionicons name="refresh" size={18} color={colors.primary} />
-                      )}
-                    </TouchableOpacity>
-                  )}
                   <TouchableOpacity
                     onPress={() => handleDelete(item.id)}
                     style={styles.deleteButton}
@@ -497,13 +627,14 @@ const styles = StyleSheet.create({
   accountCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     backgroundColor: colors.surface,
-    padding: 20,
+    padding: 16,
     borderRadius: 20,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 80,
   },
   accountLeft: {
     flexDirection: 'row',
@@ -521,23 +652,66 @@ const styles = StyleSheet.create({
   },
   accountInfo: {
     flex: 1,
+    minWidth: 0,
+    marginRight: 8,
   },
   accountNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
     flexWrap: 'wrap',
+  },
+  accountNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    flex: 1,
+    minWidth: 0,
   },
   accountName: {
     ...typography.body,
     color: colors.text,
     fontWeight: '600',
-    marginRight: 8,
+    marginRight: 6,
+    flexShrink: 1,
+  },
+  accountTypeBadge: {
+    backgroundColor: colors.background,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignSelf: 'flex-start',
+    marginLeft: 6,
+  },
+  accountTypeBadgeText: {
+    ...typography.caption,
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  currencyBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+    marginLeft: 6,
+  },
+  currencyBadgeText: {
+    ...typography.caption,
+    color: colors.background,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   accountMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
+    marginTop: 2,
   },
   accountType: {
     ...typography.caption,
@@ -553,12 +727,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
     marginLeft: 8,
     borderWidth: 1,
     borderColor: colors.primary,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
   },
   syncBadgeText: {
     ...typography.caption,
@@ -571,12 +747,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.background,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
     marginLeft: 8,
     borderWidth: 1,
     borderColor: colors.error,
+    alignSelf: 'flex-start',
+    flexShrink: 0,
   },
   reconnectBadgeText: {
     ...typography.caption,
@@ -592,11 +770,14 @@ const styles = StyleSheet.create({
   },
   accountRight: {
     alignItems: 'flex-end',
+    marginLeft: 12,
+    minWidth: 100,
   },
   accountBalance: {
     ...typography.h3,
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 6,
+    textAlign: 'right',
   },
   loadingBalance: {
     ...typography.caption,
@@ -631,6 +812,37 @@ const styles = StyleSheet.create({
   emptySubtext: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+  },
+  convertSection: {
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  convertButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    justifyContent: 'center',
+  },
+  convertButtonText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  convertButtonTextActive: {
+    color: colors.primary,
+  },
+  originalBalance: {
+    ...typography.caption,
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+    opacity: 0.7,
   },
   // Card-specific styles
   cardAccountCard: {
