@@ -20,6 +20,8 @@ export interface AppSettings {
   enableBiometric: boolean;
   // AI settings
   aiTone: 'friendly' | 'professional' | 'direct' | 'harsh';
+  // Transaction preferences
+  swipeDirection: 'right-income-left-expense' | 'right-expense-left-income';
   // Other settings
   theme: 'light' | 'dark' | 'auto';
   createdAt: string;
@@ -41,6 +43,7 @@ export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 
   enableBadge: true,
   enableBiometric: false,
   aiTone: 'professional',
+  swipeDirection: 'right-income-left-expense',
   theme: 'light',
 };
 

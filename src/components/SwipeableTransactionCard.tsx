@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { format } from 'date-fns';
 import { getTransactionIcon } from '../utils/icons';
 import CompanyLogo from './CompanyLogo';
 import { formatCurrencySync } from '../utils/currency';
+import { getSettings } from '../services/settingsService';
 
 interface SwipeableTransactionCardProps {
   transaction: Transaction;
@@ -32,6 +33,19 @@ export default function SwipeableTransactionCard({
   showTagBadges = false,
 }: SwipeableTransactionCardProps) {
   const swipeableRef = useRef<Swipeable>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>('right-income-left-expense');
+  
+  useEffect(() => {
+    const loadSwipeDirection = async () => {
+      try {
+        const settings = await getSettings();
+        setSwipeDirection(settings.swipeDirection);
+      } catch (error) {
+        console.error('Error loading swipe direction:', error);
+      }
+    };
+    loadSwipeDirection();
+  }, []);
   
   const iconInfo = getTransactionIcon(transaction.category, transaction.description);
   
@@ -44,7 +58,11 @@ export default function SwipeableTransactionCard({
     companyName = cleanDesc.split(/[,\s-]/)[0].trim();
   }
   
-  // Render right action (swipe right = income)
+  // Determine what right and left actions should show based on preference
+  const rightActionType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+  const leftActionType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+  
+  // Render right action
   const renderRightAction = (progress: Animated.AnimatedInterpolation<number>) => {
     const scale = progress.interpolate({
       inputRange: [0, 1],
@@ -54,14 +72,20 @@ export default function SwipeableTransactionCard({
     return (
       <Animated.View style={[styles.rightAction, { transform: [{ scale }] }]}>
         <View style={styles.actionContent}>
-          <Ionicons name="arrow-up-circle" size={32} color={colors.background} />
-          <Text style={styles.actionText}>Income</Text>
+          <Ionicons 
+            name={rightActionType === 'income' ? 'arrow-up-circle' : 'arrow-down-circle'} 
+            size={32} 
+            color={colors.background} 
+          />
+          <Text style={styles.actionText}>
+            {rightActionType === 'income' ? 'Income' : 'Expense'}
+          </Text>
         </View>
       </Animated.View>
     );
   };
   
-  // Render left action (swipe left = expense)
+  // Render left action
   const renderLeftAction = (progress: Animated.AnimatedInterpolation<number>) => {
     const scale = progress.interpolate({
       inputRange: [0, 1],
@@ -71,8 +95,14 @@ export default function SwipeableTransactionCard({
     return (
       <Animated.View style={[styles.leftAction, { transform: [{ scale }] }]}>
         <View style={styles.actionContent}>
-          <Ionicons name="arrow-down-circle" size={32} color={colors.background} />
-          <Text style={styles.actionText}>Expense</Text>
+          <Ionicons 
+            name={leftActionType === 'income' ? 'arrow-up-circle' : 'arrow-down-circle'} 
+            size={32} 
+            color={colors.background} 
+          />
+          <Text style={styles.actionText}>
+            {leftActionType === 'income' ? 'Income' : 'Expense'}
+          </Text>
         </View>
       </Animated.View>
     );

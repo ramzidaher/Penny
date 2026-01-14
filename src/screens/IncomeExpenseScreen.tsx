@@ -113,17 +113,43 @@ export default function IncomeExpenseScreen() {
   };
 
   const handleSwipeRight = async (transaction: Transaction) => {
-    const suggestion = await suggestCategory(transaction.description || '', 'income', transaction.amount);
+    // Get swipe direction preference
+    const settings = await getSettings();
+    const rightSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+    
+    // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
+    if (rightSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
+      try {
+        await untagTransaction(transaction.id, 'all');
+      } catch (error) {
+        console.error('Error uncategorizing before marking as income:', error);
+      }
+    }
+    
+    const suggestion = await suggestCategory(transaction.description || '', rightSwipeType, transaction.amount);
     setSelectedTransaction(transaction);
-    setSelectedType('income');
+    setSelectedType(rightSwipeType);
     setSuggestedCategory(suggestion.category);
     setCategoryPickerVisible(true);
   };
 
   const handleSwipeLeft = async (transaction: Transaction) => {
-    const suggestion = await suggestCategory(transaction.description || '', 'expense', transaction.amount);
+    // Get swipe direction preference
+    const settings = await getSettings();
+    const leftSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+    
+    // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
+    if (leftSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
+      try {
+        await untagTransaction(transaction.id, 'all');
+      } catch (error) {
+        console.error('Error uncategorizing before marking as income:', error);
+      }
+    }
+    
+    const suggestion = await suggestCategory(transaction.description || '', leftSwipeType, transaction.amount);
     setSelectedTransaction(transaction);
-    setSelectedType('expense');
+    setSelectedType(leftSwipeType);
     setSuggestedCategory(suggestion.category);
     setCategoryPickerVisible(true);
   };

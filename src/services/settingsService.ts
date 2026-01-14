@@ -120,6 +120,7 @@ export const updateSettings = async (updates: Partial<AppSettings>): Promise<voi
       'enableBadge',
       'enableBiometric',
       'aiTone',
+      'swipeDirection',
       'theme',
     ];
     

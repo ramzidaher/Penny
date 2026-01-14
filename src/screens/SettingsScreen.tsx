@@ -309,6 +309,68 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* Transaction Preferences */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Transaction Preferences</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.settingInfo}>
+            <Text style={styles.settingLabel}>Swipe Direction</Text>
+            <Text style={styles.settingDescription}>
+              Choose how you want to swipe transactions
+            </Text>
+          </View>
+          <View style={styles.swipeDirectionContainer}>
+            <TouchableOpacity
+              style={[
+                styles.swipeDirectionOption,
+                settings.swipeDirection === 'right-income-left-expense' && styles.swipeDirectionOptionActive,
+              ]}
+              onPress={() => handleUpdate({ swipeDirection: 'right-income-left-expense' })}
+            >
+              <View style={styles.swipeDirectionVisual}>
+                <View style={styles.swipeDirectionArrow}>
+                  <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+                  <Text style={styles.swipeDirectionLabel}>Left</Text>
+                </View>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <Text style={styles.swipeDirectionType}>Expense</Text>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <Text style={styles.swipeDirectionType}>Income</Text>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <View style={styles.swipeDirectionArrow}>
+                  <Text style={styles.swipeDirectionLabel}>Right</Text>
+                  <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
+                </View>
+              </View>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.swipeDirectionOption,
+                settings.swipeDirection === 'right-expense-left-income' && styles.swipeDirectionOptionActive,
+              ]}
+              onPress={() => handleUpdate({ swipeDirection: 'right-expense-left-income' })}
+            >
+              <View style={styles.swipeDirectionVisual}>
+                <View style={styles.swipeDirectionArrow}>
+                  <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+                  <Text style={styles.swipeDirectionLabel}>Left</Text>
+                </View>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <Text style={styles.swipeDirectionType}>Income</Text>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <Text style={styles.swipeDirectionType}>Expense</Text>
+                <Text style={styles.swipeDirectionEquals}>=</Text>
+                <View style={styles.swipeDirectionArrow}>
+                  <Text style={styles.swipeDirectionLabel}>Right</Text>
+                  <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+
       {/* Reminder Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Reminders</Text>
@@ -1031,6 +1093,48 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 18,
+  },
+  swipeDirectionContainer: {
+    marginTop: 16,
+    gap: 12,
+  },
+  swipeDirectionOption: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+  },
+  swipeDirectionOptionActive: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primary + '10',
+  },
+  swipeDirectionVisual: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  swipeDirectionArrow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  swipeDirectionLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  swipeDirectionEquals: {
+    fontSize: 15,
+    color: colors.textSecondary,
+  },
+  swipeDirectionType: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: '600',
   },
 });
 

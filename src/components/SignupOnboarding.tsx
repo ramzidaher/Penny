@@ -82,7 +82,14 @@ export default function SignupOnboarding() {
   const [biometricType, setBiometricType] = useState('Biometric');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
 
-  const totalSteps = 7;
+  // Preferences state
+  const [defaultCurrency, setDefaultCurrency] = useState<string>('USD');
+  const [lowBalanceThreshold, setLowBalanceThreshold] = useState<number>(100);
+  const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
+  const [isCustomThreshold, setIsCustomThreshold] = useState(false);
+  const [customThreshold, setCustomThreshold] = useState<string>('');
+
+  const totalSteps = 8;
 
   // Check biometric availability on mount
   useEffect(() => {
@@ -282,7 +289,7 @@ export default function SignupOnboarding() {
     // Handle final step separately
     if (currentStep === totalSteps) {
       // Final step - create account
-      console.log('[SignupOnboarding] Step 6 - calling handleCreateAccount');
+      console.log('[SignupOnboarding] Step 8 - calling handleCreateAccount');
       await handleCreateAccount();
       return;
     }
@@ -414,9 +421,13 @@ export default function SignupOnboarding() {
       console.log('[SignupOnboarding] Step 5 validation passed, moving to step 6');
       setCurrentStep(6);
     } else if (currentStep === 6) {
-      // Permissions - can skip, so just proceed
-      console.log('[SignupOnboarding] Moving from step 6 to 7');
+      // Preferences - no validation needed, all have defaults
+      console.log('[SignupOnboarding] Moving from step 6 (preferences) to step 7');
       setCurrentStep(7);
+    } else if (currentStep === 7) {
+      // Permissions - can skip, so just proceed
+      console.log('[SignupOnboarding] Moving from step 7 to 8');
+      setCurrentStep(8);
     }
   };
 
@@ -541,17 +552,24 @@ export default function SignupOnboarding() {
         }
       }
       
-      // Save AI tone preference
-      if (formData.aiTone) {
-        try {
-          console.log('[SignupOnboarding] Saving AI tone preference...');
-          const { updateSettings } = await import('../services/settingsService');
-          await updateSettings({ aiTone: formData.aiTone });
-          console.log('[SignupOnboarding] AI tone preference saved');
-        } catch (error) {
-          console.error('[SignupOnboarding] Error saving AI tone:', error);
-          // Don't block signup if this fails - user can set it later
+      // Save preferences (AI tone, currency, low balance threshold)
+      try {
+        console.log('[SignupOnboarding] Saving preferences...');
+        const { updateSettings } = await import('../services/settingsService');
+        const preferences: any = {};
+        
+        if (formData.aiTone) {
+          preferences.aiTone = formData.aiTone;
         }
+        
+        preferences.defaultCurrency = defaultCurrency;
+        preferences.lowBalanceThreshold = lowBalanceThreshold;
+        
+        await updateSettings(preferences);
+        console.log('[SignupOnboarding] Preferences saved:', preferences);
+      } catch (error) {
+        console.error('[SignupOnboarding] Error saving preferences:', error);
+        // Don't block signup if this fails - user can set it later
       }
       
       // Clear sensitive data from memory (best practice)
@@ -1109,29 +1127,29 @@ export default function SignupOnboarding() {
             <TouchableOpacity
               key={option.value}
               style={[
-                styles.toneOptionCard,
-                formData.aiTone === option.value && styles.toneOptionCardSelected,
+                styles.toneOptionCardCompact,
+                formData.aiTone === option.value && styles.toneOptionCardCompactSelected,
               ]}
               onPress={() => setFormData({ ...formData, aiTone: option.value })}
               activeOpacity={0.7}
             >
-              <View style={styles.toneOptionHeader}>
-                <Ionicons 
-                  name={option.icon as any} 
-                  size={24} 
-                  color={formData.aiTone === option.value ? colors.primary : colors.textSecondary} 
-                />
+              <Ionicons 
+                name={option.icon as any} 
+                size={20} 
+                color={formData.aiTone === option.value ? colors.primary : colors.textSecondary} 
+              />
+              <View style={styles.toneOptionTextContainer}>
                 <Text style={[
-                  styles.toneOptionLabel,
-                  formData.aiTone === option.value && styles.toneOptionLabelSelected,
+                  styles.toneOptionLabelCompact,
+                  formData.aiTone === option.value && styles.toneOptionLabelCompactSelected,
                 ]}>
                   {option.label}
                 </Text>
-                {formData.aiTone === option.value && (
-                  <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                )}
+                <Text style={styles.toneOptionDescriptionCompact}>{option.description}</Text>
               </View>
-              <Text style={styles.toneOptionDescription}>{option.description}</Text>
+              {formData.aiTone === option.value && (
+                <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -1143,7 +1161,185 @@ export default function SignupOnboarding() {
     );
   };
 
+  const currencies = [
+    { code: 'USD', symbol: '$', name: 'US Dollar' },
+    { code: 'EUR', symbol: '€', name: 'Euro' },
+    { code: 'GBP', symbol: '£', name: 'British Pound' },
+    { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+    { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+    { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+    { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+    { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+    { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
+    { code: 'ILS', symbol: '₪', name: 'Israeli Shekel' },
+    { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
+    { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+    { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
+    { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
+    { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
+    { code: 'PLN', symbol: 'zł', name: 'Polish Zloty' },
+    { code: 'MXN', symbol: '$', name: 'Mexican Peso' },
+    { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
+    { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+    { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+    { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
+    { code: 'RUB', symbol: '₽', name: 'Russian Ruble' },
+  ];
+
   const renderStep6 = () => (
+    <View style={styles.stepContainer}>
+      <View style={styles.logoContainerSmall}>
+        <Image 
+          source={require('../../assets/Penny Logo RD.png')} 
+          style={styles.logoSmall}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={styles.stepTitle}>Configure Preferences</Text>
+      <Text style={styles.stepDescription}>Set up your default settings</Text>
+      
+      {/* Currency Selection */}
+      <View style={styles.preferenceSection}>
+        <Text style={styles.preferenceLabel}>Default Currency</Text>
+        <TouchableOpacity
+          style={styles.preferenceDropdown}
+          onPress={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.preferenceDropdownText}>
+            {currencies.find(c => c.code === defaultCurrency)?.symbol} {defaultCurrency}
+          </Text>
+          <Ionicons 
+            name={showCurrencyDropdown ? 'chevron-up' : 'chevron-down'} 
+            size={20} 
+            color={colors.textSecondary} 
+          />
+        </TouchableOpacity>
+        {showCurrencyDropdown && (
+          <ScrollView 
+            style={styles.preferenceDropdownList}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+          >
+            {currencies.map((currency, index) => (
+              <TouchableOpacity
+                key={currency.code}
+                style={[
+                  styles.preferenceDropdownItem,
+                  index === currencies.length - 1 && styles.preferenceDropdownItemLast,
+                  defaultCurrency === currency.code && styles.preferenceDropdownItemActive,
+                ]}
+                onPress={() => {
+                  setDefaultCurrency(currency.code);
+                  setShowCurrencyDropdown(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.preferenceDropdownItemText,
+                    defaultCurrency === currency.code && styles.preferenceDropdownItemTextActive,
+                  ]}
+                >
+                  {currency.symbol} {currency.code} - {currency.name}
+                </Text>
+                {defaultCurrency === currency.code && (
+                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+
+      {/* Low Balance Threshold */}
+      <View style={styles.preferenceSection}>
+        <Text style={styles.preferenceLabel}>Low Balance Warning</Text>
+        <Text style={styles.preferenceDescription}>
+          Get notified when balance falls below this amount
+        </Text>
+        <View style={styles.thresholdButtonsContainer}>
+          {[50, 100, 200, 500].map((amount) => (
+            <TouchableOpacity
+              key={amount}
+              style={[
+                styles.thresholdButtonOnboarding,
+                !isCustomThreshold && lowBalanceThreshold === amount && styles.thresholdButtonOnboardingActive,
+              ]}
+              onPress={() => {
+                setIsCustomThreshold(false);
+                setCustomThreshold('');
+                setLowBalanceThreshold(amount);
+              }}
+            >
+              <Text
+                style={[
+                  styles.thresholdButtonOnboardingText,
+                  !isCustomThreshold && lowBalanceThreshold === amount && styles.thresholdButtonOnboardingTextActive,
+                ]}
+              >
+                {currencies.find(c => c.code === defaultCurrency)?.symbol}{amount}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={[
+              styles.thresholdButtonOnboarding,
+              isCustomThreshold && styles.thresholdButtonOnboardingActive,
+            ]}
+            onPress={() => {
+              setIsCustomThreshold(true);
+              setCustomThreshold(lowBalanceThreshold.toString());
+            }}
+          >
+            <Text
+              style={[
+                styles.thresholdButtonOnboardingText,
+                isCustomThreshold && styles.thresholdButtonOnboardingTextActive,
+              ]}
+            >
+              Custom
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {isCustomThreshold && (
+          <View style={styles.customThresholdContainer}>
+            <Text style={styles.customThresholdLabel}>
+              Enter custom amount ({currencies.find(c => c.code === defaultCurrency)?.symbol})
+            </Text>
+            <TextInput
+              style={[
+                styles.customThresholdInput,
+                focusedInput === 'customThreshold' && styles.customThresholdInputFocused,
+              ]}
+              value={customThreshold}
+              onChangeText={(text) => {
+                // Only allow numbers and decimal point
+                const numericValue = text.replace(/[^0-9.]/g, '');
+                setCustomThreshold(numericValue);
+                // Update threshold if valid
+                const numValue = parseFloat(numericValue);
+                if (!isNaN(numValue) && numValue > 0) {
+                  setLowBalanceThreshold(numValue);
+                }
+              }}
+              placeholder={`${currencies.find(c => c.code === defaultCurrency)?.symbol || '$'}0.00`}
+              placeholderTextColor={colors.textLight}
+              keyboardType="decimal-pad"
+              onFocus={() => setFocusedInput('customThreshold')}
+              onBlur={() => setFocusedInput(null)}
+            />
+            {customThreshold && parseFloat(customThreshold) <= 0 && (
+              <Text style={styles.customThresholdError}>
+                Please enter a positive number
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    </View>
+  );
+
+  const renderStep7 = () => (
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
@@ -1219,7 +1415,7 @@ export default function SignupOnboarding() {
     </View>
   );
 
-  const renderStep7 = () => (
+  const renderStep8 = () => (
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
@@ -1252,6 +1448,8 @@ export default function SignupOnboarding() {
         return renderStep6();
       case 7:
         return renderStep7();
+      case 8:
+        return renderStep8();
       default:
         return renderStep1();
     }
@@ -1794,6 +1992,178 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
+  preferenceSection: {
+    width: '100%',
+    marginBottom: isSmallScreen ? 20 : 24,
+  },
+  preferenceLabel: {
+    ...typography.h3,
+    color: colors.text,
+    marginBottom: 8,
+    fontSize: isSmallScreen ? 16 : 18,
+  },
+  preferenceDescription: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: 12,
+    fontSize: isSmallScreen ? 13 : 14,
+  },
+  preferenceDropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: isSmallScreen ? 12 : 16,
+    paddingVertical: isSmallScreen ? 14 : 16,
+    minHeight: isSmallScreen ? 50 : 56,
+  },
+  preferenceDropdownText: {
+    ...typography.body,
+    color: colors.text,
+    fontSize: isSmallScreen ? 15 : 16,
+  },
+  preferenceDropdownList: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginTop: 8,
+    maxHeight: 250,
+  },
+  preferenceDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: isSmallScreen ? 12 : 16,
+    paddingVertical: isSmallScreen ? 12 : 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  preferenceDropdownItemLast: {
+    borderBottomWidth: 0,
+  },
+  preferenceDropdownItemActive: {
+    backgroundColor: colors.primary + '10',
+  },
+  preferenceDropdownItemText: {
+    ...typography.body,
+    color: colors.text,
+    fontSize: isSmallScreen ? 14 : 15,
+  },
+  preferenceDropdownItemTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  swipeDirectionContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  swipeDirectionOption: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: isSmallScreen ? 14 : 16,
+  },
+  swipeDirectionOptionActive: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primary + '10',
+  },
+  swipeDirectionCard: {
+    gap: 8,
+  },
+  swipeDirectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  swipeDirectionTextContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  swipeDirectionAction: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: isSmallScreen ? 12 : 13,
+    marginBottom: 4,
+  },
+  swipeDirectionResult: {
+    ...typography.body,
+    color: colors.text,
+    fontSize: isSmallScreen ? 15 : 16,
+    fontWeight: '700',
+  },
+  swipeDirectionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 8,
+  },
+  thresholdButtonsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 8,
+  },
+  thresholdButtonOnboarding: {
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: isSmallScreen ? 10 : 12,
+    paddingHorizontal: isSmallScreen ? 16 : 20,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  thresholdButtonOnboardingActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  thresholdButtonOnboardingText: {
+    ...typography.body,
+    color: colors.text,
+    fontSize: isSmallScreen ? 14 : 16,
+    fontWeight: '500',
+  },
+  thresholdButtonOnboardingTextActive: {
+    color: colors.background,
+    fontWeight: '600',
+  },
+  customThresholdContainer: {
+    marginTop: 16,
+    gap: 8,
+  },
+  customThresholdLabel: {
+    ...typography.bodySmall,
+    color: colors.text,
+    fontSize: isSmallScreen ? 13 : 14,
+    fontWeight: '500',
+  },
+  customThresholdInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: isSmallScreen ? 12 : 16,
+    paddingVertical: isSmallScreen ? 14 : 16,
+    fontSize: isSmallScreen ? 15 : 16,
+    color: colors.text,
+    minHeight: isSmallScreen ? 50 : 56,
+  },
+  customThresholdInputFocused: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+  },
+  customThresholdError: {
+    ...typography.bodySmall,
+    color: colors.error,
+    fontSize: isSmallScreen ? 12 : 13,
+    marginTop: 4,
+  },
   completeIcon: {
     alignSelf: 'center',
     marginBottom: 24,
@@ -1847,7 +2217,7 @@ const styles = StyleSheet.create({
   },
   toneOptionsContainer: {
     width: '100%',
-    gap: isSmallScreen ? 12 : 16,
+    gap: 8,
     marginBottom: isSmallScreen ? 16 : 20,
   },
   toneOptionCard: {
@@ -1883,6 +2253,40 @@ const styles = StyleSheet.create({
     fontSize: isSmallScreen ? 12 : 13,
     lineHeight: 18,
     marginLeft: 36,
+  },
+  toneOptionCardCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: isSmallScreen ? 12 : 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 12,
+  },
+  toneOptionCardCompactSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primary + '10',
+  },
+  toneOptionTextContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  toneOptionLabelCompact: {
+    ...typography.body,
+    color: colors.text,
+    fontWeight: '600',
+    fontSize: isSmallScreen ? 14 : 15,
+  },
+  toneOptionLabelCompactSelected: {
+    color: colors.primary,
+  },
+  toneOptionDescriptionCompact: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: isSmallScreen ? 11 : 12,
+    lineHeight: 16,
   },
   toneNote: {
     ...typography.bodySmall,

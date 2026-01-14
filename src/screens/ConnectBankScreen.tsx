@@ -141,12 +141,13 @@ export default function ConnectBankScreen() {
       }
       
       // Android path: WebBrowser returned a result
-      // Reset connecting state since WebBrowser handled it
-      setConnecting(false);
-      processingRef.current = false;
-      processingGlobal.current = false;
+      // Keep connecting state true until callback is processed or error occurs
       
       if (result?.error) {
+        // Reset connecting state on error
+        setConnecting(false);
+        processingRef.current = false;
+        processingGlobal.current = false;
         // Clear OAuth flow flag on error
         setOAuthFlowActive(false);
         if (result.error !== 'Authentication cancelled by user' && result.error !== 'Authentication dismissed') {
@@ -159,6 +160,9 @@ export default function ConnectBankScreen() {
         // Check if we've already processed this code (shouldn't happen, but safety check)
         if (processedCodesGlobal.has(result.code)) {
           console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring');
+          setConnecting(false);
+          processingRef.current = false;
+          processingGlobal.current = false;
           setOAuthFlowActive(false);
           return;
         }
@@ -167,8 +171,14 @@ export default function ConnectBankScreen() {
         processedCodesGlobal.add(result.code);
         
         // Process the OAuth callback directly with state parameter
-        // Don't set connecting to true again - handleOAuthCallback will show its own loading
+        // Keep connecting state true - handleOAuthCallback will manage it
         await handleOAuthCallback(result.code, result.state);
+      } else {
+        // No code and no error - unexpected result, reset state
+        setConnecting(false);
+        processingRef.current = false;
+        processingGlobal.current = false;
+        setOAuthFlowActive(false);
       }
     } catch (error: any) {
       console.error('Error opening auth URL:', error);
