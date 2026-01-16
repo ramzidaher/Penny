@@ -59,12 +59,22 @@ export const cloudGetAccounts = async (): Promise<Account[]> => {
     const accountsRef = collection(db, `users/${userId}/accounts`);
     const snapshot = await getDocs(query(accountsRef, orderBy('createdAt', 'desc')));
     
-    return snapshot.docs.map(doc => ({
+    const accounts = snapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data(),
       createdAt: timestampToISO(doc.data().createdAt),
       updatedAt: timestampToISO(doc.data().updatedAt),
     })) as Account[];
+    
+    // Log all accounts retrieved from Firestore for debugging
+    console.log(`[cloudGetAccounts] Retrieved ${accounts.length} account(s) from Firestore`);
+    accounts.forEach(acc => {
+      if (acc.truelayerConnectionId) {
+        console.log(`[cloudGetAccounts] Account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId || 'none'})`);
+      }
+    });
+    
+    return accounts;
   } catch (error) {
     console.error('Error fetching accounts from cloud:', error);
     throw error;
@@ -142,6 +152,9 @@ export const cloudUpdateAccount = async (id: string, updates: Partial<Account>):
     if (updateData.createdAt) {
       updateData.createdAt = isoToTimestamp(updateData.createdAt);
     }
+    
+    // lastSyncedAt is stored as ISO string (not timestamp) to match schema
+    // No conversion needed - it's already a string
     
     await setDoc(accountRef, updateData, { merge: true });
   } catch (error) {
@@ -260,6 +273,9 @@ export const cleanupDuplicateAccounts = async (connectionId: string): Promise<vo
     const truelayerAccountIds = new Set(truelayerAccounts.map(acc => acc.account_id));
     
     // Find accounts that match TrueLayer account IDs but have wrong/missing connectionId
+    // CRITICAL: Only fix accounts with NO connectionId (orphaned accounts).
+    // DO NOT touch accounts that belong to a different connection - users may
+    // intentionally connect the same bank account multiple times.
     const accountsToFix = allAccounts.filter(acc => {
       // Must have a truelayerAccountId
       if (!acc.truelayerAccountId) return false;
@@ -267,18 +283,32 @@ export const cleanupDuplicateAccounts = async (connectionId: string): Promise<vo
       // Must match one of the TrueLayer account IDs for this connection
       if (!truelayerAccountIds.has(acc.truelayerAccountId)) return false;
       
-      // Must have wrong or missing connectionId
-      return !acc.truelayerConnectionId || acc.truelayerConnectionId !== connectionId;
+      // CRITICAL: Only fix accounts with NO connectionId (orphaned accounts)
+      // If an account has a different connectionId, it belongs to another connection
+      // and should NOT be touched - this is valid when users connect the same bank multiple times
+      if (acc.truelayerConnectionId && acc.truelayerConnectionId !== connectionId) {
+        // This account belongs to a different connection - skip it
+        return false;
+      }
+      
+      // Only fix accounts with missing connectionId (orphaned)
+      return !acc.truelayerConnectionId;
     });
     
     if (accountsToFix.length === 0) {
-      console.log('[cleanupDuplicateAccounts] No duplicate accounts found to clean up');
+      console.log(`[cleanupDuplicateAccounts] No orphaned accounts found to clean up for connection ${connectionId}`);
       return;
     }
     
-    console.log(`[cleanupDuplicateAccounts] Found ${accountsToFix.length} account(s) to link to connection ${connectionId}`);
+    console.log(`[cleanupDuplicateAccounts] Found ${accountsToFix.length} orphaned account(s) to link to connection ${connectionId}`);
+    accountsToFix.forEach(acc => {
+      console.log(`[cleanupDuplicateAccounts] Orphaned account: ${acc.name} (ID: ${acc.id}, TL Account: ${acc.truelayerAccountId}, Connection: ${acc.truelayerConnectionId || 'none'})`);
+    });
     
     // Update each account to have the correct connectionId
+    // CRITICAL: Only update accounts that have missing/wrong connectionIds.
+    // DO NOT delete accounts that belong to a different connection - users may
+    // intentionally connect the same bank account multiple times.
     for (const account of accountsToFix) {
       // Check if there's already an account with the correct connectionId + accountId
       const existingCorrectAccount = allAccounts.find(
@@ -288,11 +318,27 @@ export const cleanupDuplicateAccounts = async (connectionId: string): Promise<vo
       );
       
       if (existingCorrectAccount) {
-        // There's already a correct account, delete this duplicate
-        console.log(`[cleanupDuplicateAccounts] Deleting duplicate account: ${account.name} (${account.id})`);
+        // There's already a correct account for this connection.
+        // Check if the account we're looking at belongs to a DIFFERENT connection.
+        // If it does, DON'T delete it - it's a valid account from another connection.
+        if (account.truelayerConnectionId && account.truelayerConnectionId !== connectionId) {
+          console.log(`[cleanupDuplicateAccounts] Skipping account from different connection: ${account.name} (${account.id}, Connection: ${account.truelayerConnectionId}, Target: ${connectionId})`);
+          console.log(`[cleanupDuplicateAccounts] This is valid - user may have connected the same bank account multiple times`);
+          continue; // Skip this account - it belongs to a different connection
+        }
+        
+        // Only delete if the account has no connectionId or wrong connectionId
+        // (this handles orphaned accounts, not accounts from other connections)
+        console.log(`[cleanupDuplicateAccounts] Deleting orphaned duplicate account: ${account.name} (${account.id})`);
         await cloudDeleteAccount(account.id);
       } else {
         // Update this account to have the correct connectionId
+        // Only update if it doesn't already belong to a different connection
+        if (account.truelayerConnectionId && account.truelayerConnectionId !== connectionId) {
+          console.log(`[cleanupDuplicateAccounts] Skipping account from different connection: ${account.name} (${account.id}, Connection: ${account.truelayerConnectionId}, Target: ${connectionId})`);
+          continue; // Skip - account belongs to a different connection
+        }
+        
         console.log(`[cleanupDuplicateAccounts] Linking account ${account.name} (${account.id}) to connection ${connectionId}`);
         await cloudUpdateAccount(account.id, {
           truelayerConnectionId: connectionId,
@@ -1812,19 +1858,30 @@ export const syncCloudToLocal = async (): Promise<void> => {
 };
 
 // TrueLayer sync functions
-export const syncTrueLayerAccounts = async (connectionId: string): Promise<void> => {
+export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ duplicates: Array<{ accountName: string; accountId: string; existingConnectionId: string }> }> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase not available');
   }
 
+  // Return empty duplicates array for backward compatibility
+  const duplicates: Array<{ accountName: string; accountId: string; existingConnectionId: string }> = [];
+
   try {
     // Fetch accounts from TrueLayer
+    console.log(`[syncTrueLayerAccounts] 🔵 Fetching accounts from TrueLayer for connection: ${connectionId}`);
+    
+    // Log connectionId flow for debugging token/code reuse
+    console.log('[syncTrueLayerAccounts] About to call getTrueLayerAccounts:', {
+      connectionId,
+    });
+    
     const accountsResponse = await getTrueLayerAccounts(connectionId);
     const truelayerAccounts = accountsResponse.results;
+    console.log(`[syncTrueLayerAccounts] 🔵 TrueLayer API returned ${truelayerAccounts.length} account(s) for connection ${connectionId}`);
 
     if (truelayerAccounts.length === 0) {
       console.log('No accounts found in TrueLayer connection');
-      return;
+      return { duplicates };
     }
 
     const db = getFirestoreDb();
@@ -1834,32 +1891,41 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
     const now = new Date().toISOString();
 
     // Get existing accounts to check for updates
-    // Use composite key (connectionId + accountId) to ensure uniqueness across different connections
+    // IMPORTANT: Only check for accounts in the SAME connection to allow connecting different banks
+    // This matches the old behavior where each connection could have its own accounts,
+    // even if they have the same TrueLayer account IDs (which can happen when connecting
+    // the same bank multiple times or if TrueLayer returns the same accounts)
     const existingAccounts = await cloudGetAccounts();
     
-    // Log all existing TrueLayer accounts for debugging
-    const allTrueLayerAccounts = existingAccounts.filter(acc => acc.truelayerConnectionId && acc.truelayerAccountId);
-    console.log(`[syncTrueLayerAccounts] Total existing TrueLayer accounts: ${allTrueLayerAccounts.length}`);
-    allTrueLayerAccounts.forEach(acc => {
-      console.log(`[syncTrueLayerAccounts] Existing account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId})`);
-    });
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1892',message:'Existing accounts retrieved for sync',data:{totalExistingAccounts:existingAccounts.length,currentConnectionId:connectionId,existingAccountsByConnection:Array.from(existingAccounts.reduce((map,acc)=>{if(acc.truelayerConnectionId){const connId=acc.truelayerConnectionId;if(!map.has(connId))map.set(connId,[]);map.get(connId)!.push({id:acc.id,name:acc.name,tlAccountId:acc.truelayerAccountId});}return map;},new Map()).entries()).map(([connId,accs])=>({connectionId:connId,accountCount:accs.length,accounts:accs}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     
-    // CRITICAL: Only match accounts from the SAME connection to prevent cross-connection matching
+    // Log accounts for this connection only
+    const accountsForThisConnection = existingAccounts.filter(acc => acc.truelayerConnectionId === connectionId);
+    console.log(`[syncTrueLayerAccounts] Found ${accountsForThisConnection.length} existing account(s) for connection ${connectionId}`);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1896',message:'Accounts for current connection',data:{connectionId,accountsForThisConnectionCount:accountsForThisConnection.length,accountsForThisConnection:accountsForThisConnection.map(a=>({id:a.id,name:a.name,tlAccountId:a.truelayerAccountId})),truelayerAccountsFromApi:truelayerAccounts.map(a=>({accountId:a.account_id,name:a.display_name,provider:a.provider?.display_name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    
+    // Only match accounts from the SAME connection (old behavior - allows different banks)
     const truelayerAccountMap = new Map(
       existingAccounts
-        .filter(acc => {
-          // Double-check: only include accounts that match this specific connectionId
-          const matches = acc.truelayerConnectionId === connectionId && acc.truelayerAccountId;
-          if (!matches && acc.truelayerConnectionId && acc.truelayerAccountId) {
-            // Log if we're filtering out an account from a different connection
-            console.log(`[syncTrueLayerAccounts] Filtering out account from different connection: ${acc.name} (Connection: ${acc.truelayerConnectionId}, expected: ${connectionId})`);
-          }
-          return matches;
-        })
-        .map(acc => [`${acc.truelayerConnectionId}_${acc.truelayerAccountId}`, acc])
+        .filter(acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId)
+        .map(acc => [acc.truelayerAccountId || '', acc])
     );
 
     console.log(`[syncTrueLayerAccounts] Found ${truelayerAccounts.length} account(s) from TrueLayer API for connection ${connectionId}`);
+    // Log what TrueLayer actually returned - CRITICAL for debugging
+    console.log(`[syncTrueLayerAccounts] 📋 TrueLayer accounts for connection ${connectionId}:`);
+    truelayerAccounts.forEach((tlAcc, index) => {
+      console.log(`[syncTrueLayerAccounts]   ${index + 1}. ${tlAcc.display_name}`);
+      console.log(`[syncTrueLayerAccounts]      - TL Account ID: ${tlAcc.account_id}`);
+      console.log(`[syncTrueLayerAccounts]      - Provider: ${tlAcc.provider?.display_name || 'unknown'}`);
+      console.log(`[syncTrueLayerAccounts]      - Type: ${tlAcc.account_type || 'unknown'}`);
+      console.log(`[syncTrueLayerAccounts]      - Currency: ${tlAcc.currency || 'unknown'}`);
+    });
     console.log(`[syncTrueLayerAccounts] Found ${truelayerAccountMap.size} existing account(s) for connection ${connectionId}`);
 
     // Fetch all balances in parallel for faster processing
@@ -1886,16 +1952,17 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         // Get balance from parallel fetch results
         const balance = balanceMap.get(tlAccount.account_id) || null;
 
-        // Check if account already exists using composite key
-        // CRITICAL: Use connectionId + accountId to ensure we only match accounts from the same connection
-        const compositeKey = `${connectionId}_${tlAccount.account_id}`;
-        let existingAccount = truelayerAccountMap.get(compositeKey);
+        // Check if account already exists in THIS connection (old behavior)
+        const existingAccount = truelayerAccountMap.get(tlAccount.account_id);
         
-        // Additional safety check: verify the existing account's connectionId matches
-        if (existingAccount && existingAccount.truelayerConnectionId !== connectionId) {
-          console.error(`[syncTrueLayerAccounts] CRITICAL: Found account with mismatched connectionId! Account: ${existingAccount.id}, Expected: ${connectionId}, Found: ${existingAccount.truelayerConnectionId}`);
-          // Don't use this account - treat as new
-          existingAccount = undefined;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1974',message:'Checking if account exists in connection',data:{connectionId,tlAccountId:tlAccount.account_id,tlAccountName:tlAccount.display_name,existingAccountFound:!!existingAccount,existingAccountId:existingAccount?.id,existingAccountConnectionId:existingAccount?.truelayerConnectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
+        
+        if (existingAccount) {
+          console.log(`[syncTrueLayerAccounts] ✅ Found existing account: ${existingAccount.name} (ID: ${existingAccount.id}, Connection: ${existingAccount.truelayerConnectionId})`);
+        } else {
+          console.log(`[syncTrueLayerAccounts] ➕ No existing account found - will create new account`);
         }
         
         console.log(`[syncTrueLayerAccounts] Processing account: ${tlAccount.display_name} (${tlAccount.account_id}) from ${tlAccount.provider?.display_name || 'Unknown'}, connection: ${connectionId}, exists: ${!!existingAccount}`);
@@ -1917,21 +1984,19 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         };
 
         if (existingAccount) {
-          // Final safety check: ensure connectionId matches before updating
-          if (existingAccount.truelayerConnectionId !== connectionId) {
-            console.error(`[syncTrueLayerAccounts] CRITICAL ERROR: Attempted to update account from different connection! Skipping update.`);
-            console.error(`[syncTrueLayerAccounts] Existing account connection: ${existingAccount.truelayerConnectionId}, Current connection: ${connectionId}`);
-            // Don't update - this would overwrite the wrong account
-            continue;
-          }
-          
           // Update existing account - ensure all TrueLayer fields are included
           console.log(`[syncTrueLayerAccounts] Updating existing account: ${existingAccount.id} (${accountData.name}) from connection ${connectionId}`);
           await cloudUpdateAccount(existingAccount.id, accountData);
           console.log(`[syncTrueLayerAccounts] Successfully updated account: ${existingAccount.id}`);
         } else {
-          // Create new account
+          // Create new account (old behavior - allows accounts even if they exist in other connections)
+          // This allows users to connect different banks, even if TrueLayer returns the same account IDs
           console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}, connection: ${connectionId}`);
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2030',message:'Creating new account',data:{connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId,provider:accountData.truelayerProviderName,checkingForDuplicatesAcrossConnections:true,existingAccountsWithSameTlId:existingAccounts.filter(a=>a.truelayerAccountId===accountData.truelayerAccountId&&a.truelayerConnectionId!==connectionId).map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
           const newAccountId = await cloudAddAccount({
             name: accountData.name!,
             type: accountData.type!,
@@ -1944,6 +2009,11 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
             lastSyncedAt: accountData.lastSyncedAt,
             truelayerAccountType: accountData.truelayerAccountType,
           });
+          
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2045',message:'Account created successfully',data:{newAccountId,connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
+          
           console.log(`[syncTrueLayerAccounts] Successfully created account with ID: ${newAccountId}`);
         }
       } catch (error) {
@@ -1953,21 +2023,49 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
     }
 
     // Clean up any duplicate accounts that should be linked to this connection
-    await cleanupDuplicateAccounts(connectionId);
+    // NOTE: This should NOT delete accounts from other connections, only fix accounts
+    // that have wrong/missing connectionIds for THIS connection
+    // TEMPORARILY DISABLED to debug account deletion issue
+    const accountsBeforeCleanup = await cloudGetAccounts();
+    console.log(`[syncTrueLayerAccounts] Accounts before cleanup: ${accountsBeforeCleanup.length} total`);
+    console.log(`[syncTrueLayerAccounts] ⚠️ CLEANUP TEMPORARILY DISABLED for debugging`);
+    // await cleanupDuplicateAccounts(connectionId);
+    const accountsAfterCleanup = await cloudGetAccounts();
+    console.log(`[syncTrueLayerAccounts] Accounts after cleanup: ${accountsAfterCleanup.length} total`);
+    if (accountsAfterCleanup.length < accountsBeforeCleanup.length) {
+      console.warn(`[syncTrueLayerAccounts] ⚠️ WARNING: Account count decreased after cleanup! Before: ${accountsBeforeCleanup.length}, After: ${accountsAfterCleanup.length}`);
+    }
     
-    // Verify final state after cleanup
+    // Verify final state after cleanup - CRITICAL for production debugging
     const finalAccountsAfterCleanup = await cloudGetAccounts();
     const syncedAccountsForConnection = finalAccountsAfterCleanup.filter(
       acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId
     );
     
-    console.log(`[syncTrueLayerAccounts] Sync complete. TrueLayer returned ${truelayerAccounts.length} account(s), database now has ${syncedAccountsForConnection.length} account(s) for this connection`);
+    console.log(`[syncTrueLayerAccounts] ✅ Sync complete. TrueLayer returned ${truelayerAccounts.length} account(s), database now has ${syncedAccountsForConnection.length} account(s) for connection ${connectionId}`);
+    
+    // Log all accounts for this connection for debugging
+    syncedAccountsForConnection.forEach(acc => {
+      console.log(`[syncTrueLayerAccounts] Account in database: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId})`);
+    });
     
     if (syncedAccountsForConnection.length !== truelayerAccounts.length) {
-      console.warn(`[syncTrueLayerAccounts] Mismatch: Expected ${truelayerAccounts.length} accounts, but found ${syncedAccountsForConnection.length} in database`);
-      console.log(`[syncTrueLayerAccounts] Account IDs from TrueLayer:`, truelayerAccounts.map(a => a.account_id));
-      console.log(`[syncTrueLayerAccounts] Account IDs in database:`, syncedAccountsForConnection.map(a => `${a.truelayerAccountId} (${a.name})`));
+      console.error(`[syncTrueLayerAccounts] ❌ MISMATCH: Expected ${truelayerAccounts.length} accounts, but found ${syncedAccountsForConnection.length} in database for connection ${connectionId}`);
+      console.error(`[syncTrueLayerAccounts] Account IDs from TrueLayer:`, truelayerAccounts.map(a => a.account_id));
+      console.error(`[syncTrueLayerAccounts] Account IDs in database:`, syncedAccountsForConnection.map(a => `${a.truelayerAccountId} (${a.name})`));
+      
+      // Log all TrueLayer accounts for comparison
+      truelayerAccounts.forEach(tlAcc => {
+        const found = syncedAccountsForConnection.find(acc => acc.truelayerAccountId === tlAcc.account_id);
+        if (!found) {
+          console.error(`[syncTrueLayerAccounts] ❌ Missing account in database: ${tlAcc.display_name} (${tlAcc.account_id})`);
+        }
+      });
+    } else {
+      console.log(`[syncTrueLayerAccounts] ✅ All accounts synced successfully for connection ${connectionId}`);
     }
+    
+    return { duplicates };
   } catch (error) {
     console.error('Error syncing TrueLayer accounts:', error);
     throw error;

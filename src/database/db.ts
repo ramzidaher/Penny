@@ -187,7 +187,7 @@ export const deleteDebt = async (id: string): Promise<void> => {
 };
 
 // TrueLayer sync operations
-export const syncTrueLayerAccounts = async (connectionId: string): Promise<void> => {
+export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ duplicates: Array<{ accountName: string; accountId: string; existingConnectionId: string }> }> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }

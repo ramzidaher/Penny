@@ -62,6 +62,13 @@ export default function AccountsScreen() {
   const [showConvertedAmounts, setShowConvertedAmounts] = useState<boolean>(false);
   const [convertedBalances, setConvertedBalances] = useState<Map<string, number>>(new Map());
 
+  useEffect(() => {
+    console.log('[AccountsScreen] 🟢 SCREEN MOUNTED - AccountsScreen');
+    return () => {
+      console.log('[AccountsScreen] 🔴 SCREEN UNMOUNTED - AccountsScreen');
+    };
+  }, []);
+
   const loadAccounts = async () => {
     try {
       setLoading(true);
@@ -74,11 +81,79 @@ export default function AccountsScreen() {
       
       console.log(`📋 Loaded ${accs.length} total account(s) from database`);
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:82',message:'Accounts loaded from database',data:{totalAccounts:accs.length,accounts:accs.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId,tlAccountId:a.truelayerAccountId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      
+      // Log all accounts with their connection IDs for debugging
+      accs.forEach(acc => {
+        if (acc.truelayerConnectionId) {
+          console.log(`[AccountsScreen] Account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId || 'none'})`);
+        } else {
+          console.log(`[AccountsScreen] Account: ${acc.name} (ID: ${acc.id}, Type: ${acc.type}, Not TrueLayer)`);
+        }
+      });
+      
+      // Group accounts by connection for debugging
+      const accountsByConnection = new Map<string, Account[]>();
+      accs.forEach(acc => {
+        if (acc.truelayerConnectionId) {
+          if (!accountsByConnection.has(acc.truelayerConnectionId)) {
+            accountsByConnection.set(acc.truelayerConnectionId, []);
+          }
+          accountsByConnection.get(acc.truelayerConnectionId)!.push(acc);
+        }
+      });
+      
+      console.log(`[AccountsScreen] Accounts by connection:`);
+      accountsByConnection.forEach((accounts, connectionId) => {
+        console.log(`[AccountsScreen] Connection ${connectionId}: ${accounts.length} account(s) - ${accounts.map(a => a.name).join(', ')}`);
+      });
+      
       // Track which connections are active on this device
       const activeIds = new Set(connections.map(conn => conn.id));
       setActiveConnectionIds(activeIds);
+      console.log(`[AccountsScreen] Active connections: ${Array.from(activeIds).join(', ')}`);
       
-      setAccounts(accs);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:112',message:'Active connections check',data:{activeConnectionIds:Array.from(activeIds),totalConnections:connections.length,accountsByConnection:Array.from(accountsByConnection.entries()).map(([connId,accs])=>({connectionId:connId,accountCount:accs.length,accountNames:accs.map(a=>a.name)}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Check for duplicate TrueLayer account IDs across different connections
+      const tlAccountIdMap = new Map<string, Account[]>();
+      accs.forEach(acc => {
+        if (acc.truelayerAccountId) {
+          if (!tlAccountIdMap.has(acc.truelayerAccountId)) {
+            tlAccountIdMap.set(acc.truelayerAccountId, []);
+          }
+          tlAccountIdMap.get(acc.truelayerAccountId)!.push(acc);
+        }
+      });
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:125',message:'Duplicate TL account ID check',data:{duplicateTlAccountIds:Array.from(tlAccountIdMap.entries()).filter(([_,accs])=>accs.length>1).map(([tlId,accs])=>({tlAccountId:tlId,count:accs.length,accounts:accs.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId}))}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
+      const duplicateTlAccountIds = Array.from(tlAccountIdMap.entries()).filter(([_, accs]) => accs.length > 1);
+      if (duplicateTlAccountIds.length > 0) {
+        console.warn(`[AccountsScreen] ⚠️ Found ${duplicateTlAccountIds.length} TrueLayer account ID(s) with duplicates:`);
+        duplicateTlAccountIds.forEach(([tlId, accs]) => {
+          console.warn(`[AccountsScreen]   TL Account ID ${tlId} appears ${accs.length} times:`);
+          accs.forEach(acc => {
+            console.warn(`[AccountsScreen]     - ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId})`);
+          });
+        });
+      }
+      
+      // Filter accounts to only show those from active connections OR deduplicate by TL account ID
+      // For now, show all accounts but log which ones are duplicates
+      const accountsToDisplay = accs;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:140',message:'Accounts to display',data:{accountsToDisplayCount:accountsToDisplay.length,accountsToDisplay:accountsToDisplay.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId,tlAccountId:a.truelayerAccountId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
+      
+      setAccounts(accountsToDisplay);
       const defaultCurrency = settings.defaultCurrency || 'USD';
       setCurrencyCode(defaultCurrency);
       
@@ -124,16 +199,12 @@ export default function AccountsScreen() {
     const timer = setTimeout(() => {
       loadAccounts();
     }, 100);
-    // Use focus listener for Expo Router compatibility
-    // Disable auto-refresh on focus in development mode to prevent constant reloading
-    // when switching between apps (keeps dev build functionality but prevents auto-refresh)
+    // Use focus listener to reload accounts when screen comes into focus
+    // This ensures accounts are refreshed after connecting a new bank account
     const focusListener = navigation.addListener('focus', () => {
-      if (__DEV__) {
-        // In development, only load accounts on initial mount, not on every focus
-        // This prevents auto-refresh when switching between apps
-        console.log('[AccountsScreen] Focus detected, but auto-refresh disabled in dev mode');
-        return;
-      }
+      console.log('[AccountsScreen] Focus detected, reloading accounts...');
+      // Always reload accounts on focus to ensure new connections are shown
+      // This is important when navigating from ConnectBankScreen after connecting a new bank
       loadAccounts();
     });
     return () => {

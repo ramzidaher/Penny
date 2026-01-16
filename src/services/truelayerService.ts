@@ -171,6 +171,17 @@ const secureTokenSet = async (key: string, value: string): Promise<void> => {
     }
     
     await SecureStore.setItemAsync(key, encrypted);
+    
+    // Verify write succeeded (defensive check for production SecureStore silent failures)
+    // SecureStore might not throw but also might not store in some production scenarios
+    const verificationDelay = 50; // Small delay to ensure write completes
+    await new Promise(resolve => setTimeout(resolve, verificationDelay));
+    const verification = await SecureStore.getItemAsync(key);
+    if (!verification || verification !== encrypted) {
+      const errorMsg = `SecureStore write verification failed. Key: ${key}, Expected size: ${encrypted.length} bytes, Got: ${verification?.length || 0} bytes`;
+      console.error('[truelayerService]', errorMsg);
+      throw new Error(errorMsg);
+    }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     // Check if error is about size limit
@@ -361,7 +372,42 @@ export const storeTokens = async (
     createdAt: new Date().toISOString(),
   };
 
-  await secureTokenSet(getTokenKey(connectionId), JSON.stringify(connection));
+  await secureTokenSet(tokenKey, JSON.stringify(connection));
+
+    const tokenKey = getTokenKey(connectionId);
+    // Log token storage for debugging token/code reuse
+    console.log('[truelayerService] Storing tokens:', {
+      connectionId,
+      accessTokenPrefix: accessToken.substring(0, 30) + '...',
+      refreshTokenPrefix: refreshToken.substring(0, 30) + '...',
+      tokenKey,
+      expiresAt: expiresAt,
+      createdAt: connection.createdAt,
+    });
+
+  // Verify token was actually stored (defensive check for production SecureStore issues)
+  // SecureStore might silently fail in production, causing token reuse
+  const verificationDelay = 100; // Small delay to ensure write completes
+  await new Promise(resolve => setTimeout(resolve, verificationDelay));
+  const storedToken = await getTokens(connectionId);
+  if (!storedToken || storedToken.accessToken !== accessToken) {
+    console.error('[truelayerService] CRITICAL: Token storage verification failed!', {
+      connectionId,
+      tokenKey,
+      expectedTokenPrefix: accessToken.substring(0, 30) + '...',
+      storedTokenPrefix: storedToken?.accessToken?.substring(0, 30) + '...' || 'null',
+      tokensMatch: storedToken?.accessToken === accessToken,
+    });
+    throw new Error('Token storage verification failed. Token may not have been stored correctly.');
+  }
+
+  // Log successful token storage verification
+  console.log('[truelayerService] Token storage verified:', {
+    connectionId,
+    tokenKey,
+    accessTokenPrefix: accessToken.substring(0, 30) + '...',
+    tokensMatch: storedToken.accessToken === accessToken,
+  });
 
   // Store connection ID in list
   const connections = await getConnectionIds();
@@ -378,14 +424,33 @@ export const getTokens = async (connectionId: string): Promise<TrueLayerConnecti
   }
   
   try {
-    const data = await secureTokenGet(getTokenKey(connectionId));
+    const tokenKey = getTokenKey(connectionId);
+    const data = await secureTokenGet(tokenKey);
+    
+    // Log token retrieval for debugging token/code reuse
+    console.log('[truelayerService] Retrieving tokens:', {
+      connectionId,
+      tokenKey,
+      found: !!data,
+    });
+    
     if (!data) {
       // Token not found or invalid - return null (app should handle re-authentication)
+      console.warn(`[truelayerService] Token not found for connectionId: ${connectionId}, tokenKey: ${tokenKey}`);
       return null;
     }
     
     try {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      // CRITICAL: Log the actual token prefix to verify we're getting the right token
+      console.log('[truelayerService] Token retrieved successfully:', {
+        connectionId,
+        tokenKey,
+        accessTokenPrefix: parsed?.accessToken?.substring(0, 30) + '...',
+        createdAt: parsed?.createdAt,
+        expiresAt: parsed?.expiresAt,
+      });
+      return parsed;
     } catch (parseError) {
       // If JSON parsing fails, the token data is corrupted
       console.warn('[truelayerService] Failed to parse token data, token may be corrupted');
@@ -540,6 +605,14 @@ export const getValidAccessToken = async (connectionId: string): Promise<string>
   if (!connection) {
     throw new Error('Connection not found');
   }
+
+  // Log token usage for debugging token/code reuse
+  console.log('[truelayerService] Getting valid access token:', {
+    connectionId,
+    accessTokenPrefix: connection.accessToken.substring(0, 20) + '...',
+    expiresAt: connection.expiresAt,
+    isExpired: isTokenExpired(connection.expiresAt),
+  });
 
   const revoked = await isTokenRevoked(connectionId);
   if (revoked) {
@@ -973,6 +1046,13 @@ export const exchangeCodeForTokens = async (
       throw new Error('Invalid token response from backend');
     }
 
+    // Log token exchange result for debugging token/code reuse
+    console.log('[truelayerService] Token exchange result:', {
+      codePrefix: code.substring(0, 20) + '...',
+      connectionId,
+      accessTokenPrefix: accessToken.substring(0, 20) + '...',
+    });
+
     const expiresIn = 3600;
     await storeTokens(connectionId, accessToken, refreshToken, expiresIn);
 
@@ -1195,9 +1275,49 @@ export const getAccounts = async (connectionId: string): Promise<TrueLayerAccoun
     throw new Error('Invalid connection ID format');
   }
   
+  // Log getAccounts call for debugging token/code reuse
+  console.log('[truelayerService] getAccounts called:', {
+    connectionId,
+  });
+  
   return makeApiCallWithRetry(connectionId, async (accessToken) => {
+    // CRITICAL: Verify we're using the correct token for this connectionId
+    // Double-check by retrieving the token again and comparing
+    const verificationToken = await getValidAccessToken(connectionId);
+    if (verificationToken !== accessToken) {
+      console.error('[truelayerService] CRITICAL: Token mismatch detected!', {
+        connectionId,
+        expectedTokenPrefix: accessToken.substring(0, 30) + '...',
+        actualTokenPrefix: verificationToken.substring(0, 30) + '...',
+      });
+      throw new Error('Token mismatch - wrong token being used for this connection');
+    }
+    
+    // Log which token is being used for this API call
+    console.log('[truelayerService] getAccounts using access token:', {
+      connectionId,
+      accessTokenPrefix: accessToken.substring(0, 30) + '...',
+      tokenVerified: true,
+    });
+    
     const client = createApiClient(accessToken);
     const response = await client.get<TrueLayerAccountsResponse>('/data/v1/accounts');
+    
+    // Log what TrueLayer API returned for this connection - CRITICAL for debugging
+    console.log(`[truelayerService] getAccounts for connection ${connectionId}: TrueLayer returned ${response.data.results?.length || 0} account(s)`);
+    if (response.data.results) {
+      response.data.results.forEach((acc, index) => {
+        console.log(`[truelayerService] Account ${index + 1} from TrueLayer for connection ${connectionId}:`);
+        console.log(`  - Name: ${acc.display_name}`);
+        console.log(`  - TL Account ID: ${acc.account_id}`);
+        console.log(`  - Provider: ${acc.provider?.display_name || 'unknown'}`);
+        console.log(`  - Type: ${acc.account_type || 'unknown'}`);
+        console.log(`  - Currency: ${acc.currency || 'unknown'}`);
+      });
+    } else {
+      console.warn(`[truelayerService] WARNING: TrueLayer returned no accounts for connection ${connectionId}`);
+    }
+    
     return response.data;
   });
 };

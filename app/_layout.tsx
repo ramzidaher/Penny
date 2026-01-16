@@ -234,10 +234,17 @@ function RootLayoutInner() {
                 console.log('[RootLayout] User or auth not ready, will navigate when ready');
                 console.log('[RootLayout] User:', !!user, 'AuthReady:', isAuthReady);
               }
-              // Clear OAuth flow flag after navigation - ConnectBankScreen will handle re-locking
+              // Keep OAuth flow flag active longer to prevent navigation interference
+              // ConnectBankScreen will clear it after successful processing
+              // Use longer timeout to prevent navigation effect from interfering
               setTimeout(() => {
-                setOAuthFlowActive(false);
-              }, 1000);
+                const { getOAuthFlowActive } = require('../src/services/oAuthFlowService');
+                // Only clear if still active (ConnectBankScreen might have cleared it already)
+                if (getOAuthFlowActive()) {
+                  console.log('[RootLayout] Clearing OAuth flow flag after timeout');
+                  setOAuthFlowActive(false);
+                }
+              }, 5000); // Increased from 1000ms to 5000ms to prevent navigation interference
             }, delay);
             return;
           }
@@ -718,6 +725,7 @@ function RootLayoutInner() {
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
     const isOnConnectBank = segments.includes('connect-bank');
+    const isOnAccounts = segments.includes('accounts');
 
     // Navigation rules:
     // 1. If not logged in and not on auth screen → go to login
@@ -733,14 +741,29 @@ function RootLayoutInner() {
     
     // Don't navigate away from connect-bank screen (OAuth might be in progress)
     if (user && isOnConnectBank) {
+      console.log('[RootLayout] 🚫 Skipping navigation - user on connect-bank screen (OAuth in progress)');
       return;
     }
     
+    // Don't navigate away from accounts screen if OAuth flow is still active
+    // This prevents navigation loops when OAuth completes and navigates to accounts
+    if (user && isOnAccounts) {
+      const recentOAuthFlow = getOAuthFlowActive();
+      if (recentOAuthFlow) {
+        console.log('[RootLayout] 🚫 Skipping navigation - on accounts screen after OAuth flow (preventing screen switching)');
+        return;
+      }
+    }
+    
+    // Note: OAuth flow check already done at line 671, no need to check again here
+    
     if (!user && !inAuthGroup) {
-      router.replace('/(auth)/login');
+      console.log('[RootLayout] 🔵 Navigating to login - user not logged in');
+      router.replace('/(auth)/login' as any);
     } else if (user && inAuthGroup && !pinSetupRequired && !isAppLocked) {
       // Only navigate away from auth if PIN is set AND app is not locked
-      router.replace('/(tabs)');
+      console.log('[RootLayout] 🟢 Navigating to tabs - user logged in and on auth screen');
+      router.replace('/(tabs)' as any);
     }
   }, [user, segments, isAuthReady, fontsLoaded, router, pinSetupRequired, isAppLocked, lockStateDetermined]);
 
@@ -895,8 +918,6 @@ function RootLayoutInner() {
 }
 
 export default RootLayoutInner;
-
-
 
 
 // Lock screen now shows directly without login screen flash
