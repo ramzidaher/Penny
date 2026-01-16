@@ -803,9 +803,16 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
   } else if (Platform.OS === 'android') {
     // On Android, use WebBrowser for better OAuth handling
     try {
+      console.log('[truelayerService] Opening OAuth URL in WebBrowser (Android)');
+      console.log('[truelayerService] Redirect URI:', redirectUri);
+      console.log('[truelayerService] OAuth flow marked as active - app should not reload');
+      // Note: WebBrowser.openAuthSessionAsync may cause app to go to background
+      // The deep link handler will process the callback when user returns
       const result = await WebBrowser.openAuthSessionAsync(url, redirectUri);
+      console.log('[truelayerService] WebBrowser returned, result type:', result.type);
       
       if (result.type === 'success' && result.url) {
+        console.log('[truelayerService] WebBrowser returned success with URL:', result.url);
         // Validate deep link security
         const validation = validateDeepLink(result.url);
         if (!validation.valid) {
@@ -835,11 +842,14 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
           return { error: 'No authorization code received' };
         }
       } else if (result.type === 'cancel') {
+        console.log('[truelayerService] WebBrowser cancelled by user');
         return { error: 'Authentication cancelled by user' };
       } else if (result.type === 'dismiss') {
+        console.log('[truelayerService] WebBrowser dismissed');
         return { error: 'Authentication dismissed' };
       }
       
+      console.log('[truelayerService] WebBrowser returned unexpected result, falling back to deep link handler');
       return null;
     } catch (error: any) {
       console.error('WebBrowser error:', error);

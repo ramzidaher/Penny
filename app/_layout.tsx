@@ -21,7 +21,7 @@ import type { User } from 'firebase/auth';
 // Module-level storage for TrueLayer callback URL to prevent route matching
 let truelayerCallbackUrl: string | null = null;
 
-export default function RootLayout() {
+function RootLayoutInner() {
   // Font loading kept for future use but not blocking app
   // When ready to use, uncomment the font below
   const [fontsLoaded] = useFonts({
@@ -36,11 +36,13 @@ export default function RootLayout() {
   const router = useRouter();
   const appState = useRef(AppState.currentState);
   const [appStateVisible, setAppStateVisible] = useState(appState.current);
-  const [isAppLocked, setIsAppLocked] = useState(false); // Start unlocked, will lock if user is authenticated
+  const [isAppLocked, setIsAppLocked] = useState(true); // Start locked optimistically - will unlock if no user or PIN setup required
   const [pinSetupRequired, setPinSetupRequired] = useState(false);
+  const [lockStateDetermined, setLockStateDetermined] = useState(false); // Track if we've determined lock state
   const appWentToBackgroundRef = useRef(false);
   const hasCheckedPINSetup = useRef(false);
   const hasCheckedInitialLock = useRef(false); // Track if we've checked lock on initial load
+  const authStateChangedFired = useRef(false); // Track if onAuthStateChanged has fired at least once
 
   // Handle deep links for TrueLayer OAuth callback
   // We need to prevent Expo Router from trying to route penny://truelayer-callback URLs
@@ -117,10 +119,24 @@ export default function RootLayout() {
       
       if (!url) return;
       
+      // CRITICAL: If OAuth flow just started (WebBrowser opened), ignore non-callback URLs
+      // This prevents reload when WebBrowser opens
+      const { getOAuthFlowActive } = await import('../src/services/oAuthFlowService');
+      const isOAuthFlow = getOAuthFlowActive();
+      const isTrueLayerCallback = url.includes('truelayer-callback') || 
+                                  (url.startsWith('penny://') && url.includes('truelayer-callback')) ||
+                                  url.includes('auth.truelayer.com/redirect');
+      
+      // If OAuth flow is active but this is NOT a TrueLayer callback, ignore it
+      // This prevents processing of other deep links that might cause reload
+      if (isOAuthFlow && !isTrueLayerCallback) {
+        console.log('[RootLayout] OAuth flow active, ignoring non-callback deep link:', url);
+        return;
+      }
+      
       // Handle TrueLayer redirect URL (https://auth.truelayer.com/redirect?token=...)
       // This is an intermediate redirect that should eventually go to penny://truelayer-callback
       if (url.includes('auth.truelayer.com/redirect')) {
-        console.log('[RootLayout] TrueLayer redirect URL detected, WebBrowser should handle this');
         // Mark OAuth flow as active to prevent lock screen interference
         const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
         setOAuthFlowActive(true);
@@ -132,7 +148,6 @@ export default function RootLayout() {
           if (token) {
             const code = extractCodeFromToken(token);
             if (code) {
-              console.log('[RootLayout] Extracted code from redirect token');
               // Store for navigation after auth is ready
               truelayerCallbackUrl = `penny://truelayer-callback?code=${code}`;
               return;
@@ -147,12 +162,14 @@ export default function RootLayout() {
       
       // Handle direct TrueLayer callback (penny://truelayer-callback)
       if (url.includes('truelayer-callback') || (url.startsWith('penny://') && url.includes('truelayer-callback'))) {
+        console.log('[RootLayout] Received TrueLayer callback deep link:', url);
+        console.log('[RootLayout] Platform:', Platform.OS);
         // Mark OAuth flow as active to prevent lock screen interference
         const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
         setOAuthFlowActive(true);
         // Temporarily unlock if locked to allow OAuth callback handling
         if (isAppLocked) {
-          console.log('[RootLayout] Temporarily unlocking app for OAuth callback handling');
+          console.log('[RootLayout] Temporarily unlocking app for OAuth callback');
           setIsAppLocked(false);
         }
         
@@ -160,15 +177,16 @@ export default function RootLayout() {
           const parsedUrl = Linking.parse(url);
           const code = parsedUrl.queryParams?.code as string;
           const error = parsedUrl.queryParams?.error as string;
+          const state = parsedUrl.queryParams?.state as string;
 
-          console.log('[RootLayout] Deep link received (TrueLayer callback):', { url, code: !!code, error: !!error });
+          console.log('[RootLayout] Parsed OAuth callback:', { hasCode: !!code, hasError: !!error, hasState: !!state });
 
-          // For codes, add a delay to give WebBrowser time to process first
-          // WebBrowser.openAuthSessionAsync should handle it directly, this is a fallback
+          // On Android, if the app reloaded, we should navigate immediately
+          // On iOS, WebBrowser might still return, so we can wait a bit
           if (code) {
             // Check if we've already processed this code
             if (processedCodes.has(code)) {
-              console.log('[RootLayout] Code already processed, ignoring duplicate deep link');
+              console.log('[RootLayout] Code already processed, ignoring duplicate');
               // Clear OAuth flow flag after processing - ConnectBankScreen will handle re-locking
               setTimeout(() => {
                 setOAuthFlowActive(false);
@@ -179,23 +197,48 @@ export default function RootLayout() {
             // Mark as processed
             processedCodes.add(code);
             
-            console.log('[RootLayout] OAuth callback received with code, waiting for WebBrowser...');
-            // Wait 1.5 seconds to give WebBrowser.openAuthSessionAsync time to process first
-            // If WebBrowser handled it, ConnectBankScreen will ignore this via processedCodesGlobal
+            // On Android, navigate immediately since app might have reloaded
+            // On iOS, wait a short time for WebBrowser to potentially return
+            const delay = Platform.OS === 'android' ? 0 : 200;
+            
+            if (delay > 0) {
+              console.log(`[RootLayout] Waiting ${delay}ms for WebBrowser to process, then handling deep link...`);
+            } else {
+              console.log('[RootLayout] Android: Navigating immediately (app may have reloaded)');
+            }
+            
             setTimeout(() => {
               if (user && isAuthReady) {
-                console.log('[RootLayout] Navigating to ConnectBank with code (fallback)');
                 // Note: ConnectBankScreen will check processedCodesGlobal and ignore if already processed
-                router.replace({
-                  pathname: '/(tabs)/finance/connect-bank' as any,
-                  params: { code: code },
-                });
+                console.log('[RootLayout] Navigating to connect-bank with OAuth code');
+                try {
+                  router.replace({
+                    pathname: '/(tabs)/finance/connect-bank' as any,
+                    params: { code: code, ...(state ? { state } : {}) },
+                  });
+                } catch (navError) {
+                  console.error('[RootLayout] Navigation error:', navError);
+                  // Retry navigation after a short delay
+                  setTimeout(() => {
+                    try {
+                      router.replace({
+                        pathname: '/(tabs)/finance/connect-bank' as any,
+                        params: { code: code, ...(state ? { state } : {}) },
+                      });
+                    } catch (retryError) {
+                      console.error('[RootLayout] Retry navigation error:', retryError);
+                    }
+                  }, 500);
+                }
+              } else {
+                console.log('[RootLayout] User or auth not ready, will navigate when ready');
+                console.log('[RootLayout] User:', !!user, 'AuthReady:', isAuthReady);
               }
               // Clear OAuth flow flag after navigation - ConnectBankScreen will handle re-locking
               setTimeout(() => {
                 setOAuthFlowActive(false);
-              }, 2000);
-            }, 1500); // 1.5 second delay to let WebBrowser process first
+              }, 1000);
+            }, delay);
             return;
           }
 
@@ -203,6 +246,7 @@ export default function RootLayout() {
             console.error('[RootLayout] TrueLayer OAuth error:', error);
             if (user && isAuthReady) {
               // For errors, navigate immediately (no WebBrowser processing)
+              console.log('[RootLayout] Navigating to connect-bank with OAuth error');
               router.replace({
                 pathname: '/(tabs)/finance/connect-bank' as any,
                 params: { error: error },
@@ -228,14 +272,30 @@ export default function RootLayout() {
     // Run this immediately, don't wait for dependencies
     (async () => {
       try {
+        // CRITICAL: Check if OAuth flow is active - if so, don't process initial URL
+        // This prevents reload when WebBrowser opens
+        const { getOAuthFlowActive } = await import('../src/services/oAuthFlowService');
+        if (getOAuthFlowActive()) {
+          console.log('[RootLayout] OAuth flow active, skipping initial URL check to prevent reload');
+          return;
+        }
+        
         const url = await Linking.getInitialURL();
         if (!url) return;
         
-        console.log('[RootLayout] Initial URL detected:', url);
+        // Only process TrueLayer callbacks - ignore other URLs during potential OAuth flow
+        const isTrueLayerCallback = url.includes('truelayer-callback') || 
+                                   (url.startsWith('penny://') && url.includes('truelayer-callback')) ||
+                                   url.includes('auth.truelayer.com/redirect');
+        
+        if (!isTrueLayerCallback) {
+          // Not a TrueLayer callback, process normally
+          handleDeepLink({ url });
+          return;
+        }
         
         // Handle TrueLayer redirect URL
         if (url.includes('auth.truelayer.com/redirect')) {
-          console.log('[RootLayout] Initial URL is TrueLayer redirect, extracting code');
           // Mark OAuth flow as active
           const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
           setOAuthFlowActive(true);
@@ -247,7 +307,6 @@ export default function RootLayout() {
               // Extract code from JWT token
               const code = extractCodeFromToken(token);
               if (code) {
-                console.log('[RootLayout] Extracted code from redirect token, storing for navigation');
                 truelayerCallbackUrl = `penny://truelayer-callback?code=${code}`;
                 // On Android, try to navigate immediately if possible to prevent route error
                 if (Platform.OS === 'android' && isAuthReady && user) {
@@ -271,7 +330,8 @@ export default function RootLayout() {
         
         // Handle direct TrueLayer callback
         if (url.includes('truelayer-callback') || (url.startsWith('penny://') && url.includes('truelayer-callback'))) {
-          console.log('[RootLayout] Initial URL is TrueLayer callback, storing for later navigation:', url);
+          console.log('[RootLayout] Received initial TrueLayer callback URL:', url);
+          console.log('[RootLayout] Platform:', Platform.OS);
           // Mark OAuth flow as active
           const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
           setOAuthFlowActive(true);
@@ -284,28 +344,50 @@ export default function RootLayout() {
               const parsedUrl = Linking.parse(url);
               const code = parsedUrl.queryParams?.code as string;
               const error = parsedUrl.queryParams?.error as string;
+              const state = parsedUrl.queryParams?.state as string;
               
-              // Use requestAnimationFrame for immediate navigation
-              requestAnimationFrame(() => {
-                if (code) {
-                  router.replace({
-                    pathname: '/(tabs)/finance/connect-bank' as any,
-                    params: { code: code },
-                  });
-                } else if (error) {
-                  router.replace({
-                    pathname: '/(tabs)/finance/connect-bank' as any,
-                    params: { error: error },
-                  });
+              console.log('[RootLayout] Android: Navigating immediately with OAuth callback');
+              console.log('[RootLayout] Parsed params:', { hasCode: !!code, hasError: !!error, hasState: !!state });
+              // Use a small delay to ensure router is ready
+              setTimeout(() => {
+                try {
+                  if (code) {
+                    router.replace({
+                      pathname: '/(tabs)/finance/connect-bank' as any,
+                      params: { code: code, ...(state ? { state } : {}) },
+                    });
+                  } else if (error) {
+                    router.replace({
+                      pathname: '/(tabs)/finance/connect-bank' as any,
+                      params: { error: error },
+                    });
+                  }
+                } catch (navError) {
+                  console.error('[RootLayout] Navigation error in initial URL handler:', navError);
+                  // Retry after a longer delay
+                  setTimeout(() => {
+                    try {
+                      if (code) {
+                        router.replace({
+                          pathname: '/(tabs)/finance/connect-bank' as any,
+                          params: { code: code, ...(state ? { state } : {}) },
+                        });
+                      } else if (error) {
+                        router.replace({
+                          pathname: '/(tabs)/finance/connect-bank' as any,
+                          params: { error: error },
+                        });
+                      }
+                    } catch (retryError) {
+                      console.error('[RootLayout] Retry navigation error:', retryError);
+                    }
+                  }, 1000);
                 }
-              });
+              }, 100);
             } catch (err) {
               console.error('[RootLayout] Error in immediate Android navigation:', err);
             }
           }
-        } else {
-          console.log('[RootLayout] Initial URL on app start:', url);
-          handleDeepLink({ url });
         }
       } catch (error) {
         console.error('[RootLayout] Error getting initial URL:', error);
@@ -314,8 +396,25 @@ export default function RootLayout() {
 
     // Handle deep links while app is running
     const subscription = Linking.addEventListener('url', (event) => {
-      console.log('[RootLayout] Deep link event received:', event.url);
-      handleDeepLink(event);
+      // CRITICAL: Check OAuth flow before processing any deep link
+      // This prevents reload when WebBrowser opens
+      (async () => {
+        const { getOAuthFlowActive } = await import('../src/services/oAuthFlowService');
+        const isOAuthFlow = getOAuthFlowActive();
+        const isTrueLayerCallback = event.url.includes('truelayer-callback') || 
+                                    (event.url.startsWith('penny://') && event.url.includes('truelayer-callback')) ||
+                                    event.url.includes('auth.truelayer.com/redirect');
+        
+        // If OAuth flow is active but this is NOT a TrueLayer callback, ignore it
+        // This prevents processing of other deep links that might cause reload
+        if (isOAuthFlow && !isTrueLayerCallback) {
+          console.log('[RootLayout] OAuth flow active, ignoring non-callback deep link event:', event.url);
+          return;
+        }
+        
+        // Process the deep link
+        handleDeepLink(event);
+      })();
     });
 
     return () => {
@@ -328,6 +427,12 @@ export default function RootLayout() {
     
     // Reset initial lock check on mount (handles hot reload)
     hasCheckedInitialLock.current = false;
+    setLockStateDetermined(false); // Reset lock state determination
+    authStateChangedFired.current = false; // Reset auth state change flag
+    
+    // Clear any stale OAuth callback URLs on app start
+    // Only process OAuth callbacks that come in during the current session
+    truelayerCallbackUrl = null;
     
     const initialize = async () => {
       await initFirebase();
@@ -335,37 +440,22 @@ export default function RootLayout() {
       const auth = getAuth();
       if (auth) {
         const handleAuthStateChange = async (user: User | null) => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:313',message:'handleAuthStateChange START',data:{hasUser:!!user,email:user?.email,hasCheckedInitialLock:hasCheckedInitialLock.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
-          console.log('Auth state changed:', user ? `User: ${user.email}` : 'User: null');
-          
           if (getIsSigningOut() && user !== null) {
-            console.log('Ignoring auto-restore during sign out');
             return;
           }
+          
+          // Mark that auth state change has fired at least once
+          // This is used to prevent showing login screen prematurely on app start
+          authStateChangedFired.current = true;
           
           setCurrentUser(user);
           setUser(user);
           setIsAuthReady(true);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:323',message:'setIsAuthReady(true) called',data:{hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-          // #endregion
           
           if (user) {
-            console.log('[RootLayout] User authenticated:', user.email);
-            
             // CRITICAL: Check PIN FIRST (before heavy initialization) for faster lock screen response
             // This prevents login screen flash and ensures lock screen shows immediately
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:339',message:'BEFORE isPINSetupRequired check (EARLY)',data:{hasCheckedInitialLock:hasCheckedInitialLock.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            console.log('[RootLayout] Checking if PIN setup is required (early check)...');
             const requiresPIN = await isPINSetupRequired();
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:342',message:'AFTER isPINSetupRequired check (EARLY)',data:{requiresPIN,hasCheckedInitialLock:hasCheckedInitialLock.current},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
-            console.log('[RootLayout] PIN setup required:', requiresPIN);
             setPinSetupRequired(requiresPIN);
             hasCheckedPINSetup.current = true;
             
@@ -376,40 +466,33 @@ export default function RootLayout() {
             if (!hasCheckedInitialLock.current && !isOAuthFlow) {
               if (!requiresPIN) {
                 // PIN is set - lock the app on app start
-                console.log('[RootLayout] PIN is set, locking app on initial load');
                 setIsAppLocked(true);
                 hasCheckedInitialLock.current = true;
               } else {
                 // PIN setup is required - don't lock, let user set up PIN
-                console.log('[RootLayout] PIN setup required, not locking app');
                 setIsAppLocked(false);
                 hasCheckedInitialLock.current = true;
               }
-            } else {
-              // Already checked initial lock or in OAuth flow - don't change lock state
-              if (isOAuthFlow) {
-                console.log('[RootLayout] In TrueLayer OAuth flow, skipping lock');
-              } else {
-                console.log('[RootLayout] Initial lock already checked, keeping current lock state');
-              }
             }
             
+            // Mark lock state as determined - safe to render now
+            setLockStateDetermined(true);
+            
             // Now do heavy initialization (can happen in parallel or after PIN check)
-            await initDatabase();
-            await initializeNotifications();
-            // Initialize auto-sync for TrueLayer accounts
-            await initializeAutoSync();
+            // Don't block rendering on these - they can happen in background
+            Promise.all([
+              initDatabase(),
+              initializeNotifications(),
+              initializeAutoSync(),
+            ]).catch(err => {
+              console.error('[RootLayout] Error in background initialization:', err);
+            });
             
             appWentToBackgroundRef.current = false;
             
             // Mark initialization as complete - safe to render now
             setIsInitializing(false);
-            
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:349',message:'handleAuthStateChange END - user authenticated',data:{requiresPIN,hasCheckedInitialLock:hasCheckedInitialLock.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
           } else {
-            console.log('User signed out, clearing state');
             // Cleanup auto-sync on logout
             cleanupAutoSync();
             setIsAppLocked(false); // Unlock when no user so login screen can show
@@ -417,6 +500,7 @@ export default function RootLayout() {
             setPinSetupRequired(false);
             hasCheckedPINSetup.current = false;
             hasCheckedInitialLock.current = false; // Reset on logout
+            setLockStateDetermined(true); // Mark lock state as determined
             
             // Mark initialization as complete - safe to render login screen now
             setIsInitializing(false);
@@ -429,23 +513,93 @@ export default function RootLayout() {
         // Check initial user state - onAuthStateChanged will also fire, but we set initial state here
         // for immediate rendering. The lock check will happen in handleAuthStateChange when it fires.
         const initialUser = auth.currentUser;
-        console.log('Initial auth state:', initialUser ? `User: ${initialUser.email}` : 'User: null');
         if (initialUser) {
           // Trigger auth state change handler for initial user to ensure lock check happens
           // This handles the case where onAuthStateChanged might not fire immediately
           handleAuthStateChange(initialUser).catch(err => {
             console.error('[RootLayout] Error in initial auth state check:', err);
             setIsInitializing(false); // Ensure initialization completes even on error
+            setLockStateDetermined(true); // Mark lock state as determined even on error
           });
         } else {
-          // No initial user, just set ready state
-          setCurrentUser(null);
-          setUser(null);
+          // No initial user - wait for onAuthStateChanged to fire before showing login screen
+          // This prevents login screen flash when Firebase is still restoring auth state
+          // On Android, auth state restoration can be slower, so we need more robust handling
           setIsAuthReady(true);
-          // Unlock app when no user so login screen can show
-          setIsAppLocked(false);
-          // Mark initialization as complete - safe to render login screen now
-          setIsInitializing(false);
+          
+          // CRITICAL: Set lockStateDetermined to true after a short delay to allow rendering
+          // But keep user as null until onAuthStateChanged confirms it
+          // This prevents the app from being stuck in loading state
+          const setInitialState = () => {
+            // Only set if auth state change hasn't fired yet (meaning no user was found)
+            if (!authStateChangedFired.current) {
+              setCurrentUser(null);
+              setUser(null);
+              setIsAppLocked(false);
+              setLockStateDetermined(true);
+              setIsInitializing(false);
+            }
+          };
+          
+          // On Android, Firebase auth state restoration from AsyncStorage can be delayed
+          // We'll check auth.currentUser again after a short delay as a fallback
+          if (Platform.OS === 'android') {
+            // Give Firebase time to restore auth state from AsyncStorage
+            // Check multiple times to catch delayed restoration
+            const checkAuthState = async (attempt: number, maxAttempts: number = 5) => {
+              if (authStateChangedFired.current) {
+                // Auth state change already fired, no need to check
+                return;
+              }
+              
+              // Wait progressively longer for each attempt
+              const delay = Math.min(200 * attempt, 1000);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              
+              // Re-check auth.currentUser (it might have been restored from AsyncStorage)
+              const restoredUser = auth.currentUser;
+              if (restoredUser && !authStateChangedFired.current) {
+                console.log('[RootLayout] Android: Found restored user after delay, triggering auth state change');
+                // Manually trigger auth state change handler
+                handleAuthStateChange(restoredUser).catch(err => {
+                  console.error('[RootLayout] Error in restored user check:', err);
+                });
+                return;
+              }
+              
+              // If we haven't found a user and haven't reached max attempts, try again
+              if (attempt < maxAttempts && !authStateChangedFired.current) {
+                checkAuthState(attempt + 1, maxAttempts);
+              } else if (!authStateChangedFired.current) {
+                // After all attempts, if auth state change still hasn't fired, show login screen
+                console.log('[RootLayout] Android: No user found after all attempts, showing login screen');
+                setInitialState();
+              }
+            };
+            
+            // Start checking after a short initial delay
+            setTimeout(() => {
+              checkAuthState(1);
+            }, 100);
+            
+            // Fallback: Set state after max time (2 seconds) to prevent infinite loading
+            setTimeout(() => {
+              if (!authStateChangedFired.current) {
+                console.log('[RootLayout] Android: Timeout reached, showing login screen');
+                setInitialState();
+              }
+            }, 2000);
+          } else {
+            // On iOS/web, use simpler timeout fallback
+            setTimeout(() => {
+              // Only show login if auth state change hasn't fired yet (shouldn't happen normally)
+              if (!authStateChangedFired.current) {
+                console.warn('[RootLayout] onAuthStateChanged did not fire, showing login screen as fallback');
+                setInitialState();
+              }
+            }, 500); // Shorter timeout for iOS/web since it's usually faster
+          }
+          // Note: handleAuthStateChange will be called by onAuthStateChanged and will handle the login screen
         }
       } else {
         setIsAuthReady(true);
@@ -469,28 +623,16 @@ export default function RootLayout() {
 
   // Handle app state changes for app lock
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
+      const subscription = AppState.addEventListener('change', async (nextAppState: AppStateStatus) => {
       const previousState = appState.current;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:402',message:'AppState change',data:{previousState,nextAppState,hasUser:!!user,isAuthReady,pinSetupRequired,appWentToBackground:appWentToBackgroundRef.current},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       
       // Track when app goes to background
       if (previousState === 'active' && nextAppState.match(/inactive|background/)) {
         // App is going to background - lock it if user is logged in (unless in OAuth flow)
         const isOAuthFlow = getOAuthFlowActive();
         if (user && isAuthReady && !isOAuthFlow) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:409',message:'App going to background - BEFORE lock',data:{hasUser:!!user,isAuthReady,isOAuthFlow},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          console.log('[AppLock] App going to background, locking app');
           appWentToBackgroundRef.current = true;
           setIsAppLocked(true);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:412',message:'App going to background - AFTER lock',data:{hasUser:!!user,isAuthReady},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-        } else if (isOAuthFlow) {
-          console.log('[AppLock] App going to background during OAuth flow, not locking');
         }
       }
       
@@ -502,22 +644,10 @@ export default function RootLayout() {
         isAuthReady
       ) {
         const isOAuthFlow = getOAuthFlowActive();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:420',message:'App coming to foreground - BEFORE lock check',data:{appWentToBackground:appWentToBackgroundRef.current,pinSetupRequired,hasUser:!!user,isAuthReady,isOAuthFlow},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         // App has come to the foreground - show lock screen if app went to background
         // Only lock if PIN is already set (don't lock during PIN setup or OAuth flow)
         if (appWentToBackgroundRef.current && !pinSetupRequired && !isOAuthFlow) {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:425',message:'App coming to foreground - BEFORE setIsAppLocked(true)',data:{appWentToBackground:appWentToBackgroundRef.current,pinSetupRequired},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          console.log('[AppLock] App came to foreground, showing lock screen');
           setIsAppLocked(true);
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:427',message:'App coming to foreground - AFTER setIsAppLocked(true)',data:{appWentToBackground:appWentToBackgroundRef.current,pinSetupRequired},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-        } else if (isOAuthFlow) {
-          console.log('[AppLock] App came to foreground during OAuth flow, not locking');
         }
       }
       
@@ -532,30 +662,23 @@ export default function RootLayout() {
 
   // Handle navigation based on auth state
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:440',message:'Navigation effect START',data:{isAuthReady,fontsLoaded,hasUser:!!user,pinSetupRequired,isAppLocked,segments:segments.join('/')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    console.log('[RootLayout] Navigation effect triggered:', {
-      isAuthReady,
-      fontsLoaded,
-      hasUser: !!user,
-      pinSetupRequired,
-      isAppLocked,
-      segments: segments.join('/')
-    });
-    
-    if (!isAuthReady || !fontsLoaded) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:452',message:'Navigation effect SKIPPED - not ready',data:{isAuthReady,fontsLoaded},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      console.log('[RootLayout] Navigation effect skipped - not ready');
+    if (!isAuthReady || !fontsLoaded || !lockStateDetermined) {
+      return;
+    }
+
+    // CRITICAL: Don't interfere with navigation during OAuth flow
+    // This prevents auto-refresh when OAuth callback comes back or when WebBrowser opens
+    const isOAuthFlow = getOAuthFlowActive();
+    if (isOAuthFlow) {
+      console.log('[RootLayout] OAuth flow active, skipping navigation logic to prevent reload');
       return;
     }
 
     // Check if we have a stored TrueLayer callback URL to handle first
     // This prevents Expo Router from trying to match the route
-    if (truelayerCallbackUrl && user) {
-      console.log('[RootLayout] Handling stored TrueLayer callback URL to prevent route error');
+    // CRITICAL: Only navigate if user is authenticated AND app is not locked
+    // This prevents navigating to connect-bank when app is locked (user can't interact)
+    if (truelayerCallbackUrl && user && !isAppLocked && !pinSetupRequired) {
       const storedUrl = truelayerCallbackUrl;
       truelayerCallbackUrl = null; // Clear it immediately
       
@@ -586,60 +709,44 @@ export default function RootLayout() {
       } catch (err) {
         console.error('[RootLayout] Error handling stored callback URL:', err);
       }
+    } else if (truelayerCallbackUrl && user && (isAppLocked || pinSetupRequired)) {
+      // If app is locked or PIN setup required, store the callback URL to process after unlock
+      // Don't clear truelayerCallbackUrl - it will be processed after unlock
+      console.log('[RootLayout] OAuth callback received but app is locked, will process after unlock');
     }
 
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:491',message:'Navigation check - BEFORE decision',data:{hasUser:!!user,inAuthGroup,inTabsGroup,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-    console.log('[RootLayout] Navigation check:', {
-      hasUser: !!user,
-      inAuthGroup,
-      inTabsGroup,
-      pinSetupRequired
-    });
+    const isOnConnectBank = segments.includes('connect-bank');
 
     // Navigation rules:
     // 1. If not logged in and not on auth screen → go to login
     // 2. If logged in and on auth screen → go to main app (unless PIN setup required OR app is locked)
     // 3. PIN setup and lock screens are handled by conditional rendering above
     // 4. CRITICAL: Don't navigate if app is locked or PIN setup required - let lock/PIN screens handle it
+    // 5. CRITICAL: Don't navigate away from connect-bank screen during OAuth flow
     
     // If app is locked or PIN setup required, don't navigate - lock/PIN screens will be shown
     if (user && (isAppLocked || pinSetupRequired)) {
-      console.log('[RootLayout] App is locked or PIN setup required, skipping navigation');
+      return;
+    }
+    
+    // Don't navigate away from connect-bank screen (OAuth might be in progress)
+    if (user && isOnConnectBank) {
       return;
     }
     
     if (!user && !inAuthGroup) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:506',message:'Navigation DECISION: navigate to login',data:{hasUser:!!user,inAuthGroup},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      console.log('[RootLayout] No user, navigating to login');
       router.replace('/(auth)/login');
     } else if (user && inAuthGroup && !pinSetupRequired && !isAppLocked) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:509',message:'Navigation DECISION: navigate to tabs',data:{hasUser:!!user,inAuthGroup,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       // Only navigate away from auth if PIN is set AND app is not locked
-      console.log('[RootLayout] User in auth group, PIN set, app unlocked, navigating to tabs');
       router.replace('/(tabs)');
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:513',message:'Navigation DECISION: no navigation',data:{hasUser:!!user,inAuthGroup,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      console.log('[RootLayout] Navigation check complete, no navigation needed');
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:515',message:'Navigation effect END',data:{isAuthReady,fontsLoaded,hasUser:!!user,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
-  }, [user, segments, isAuthReady, fontsLoaded, router, pinSetupRequired, isAppLocked]);
+  }, [user, segments, isAuthReady, fontsLoaded, router, pinSetupRequired, isAppLocked, lockStateDetermined]);
 
-  // Don't render anything until fonts are loaded, auth is ready, AND initialization is complete
-  // This prevents login screen flash and ensures correct screen shows immediately
-  if (!fontsLoaded || !isAuthReady || isInitializing) {
+  // Don't render anything until fonts are loaded, auth is ready, initialization is complete,
+  // AND lock state is determined. This prevents login screen flash and ensures correct screen shows immediately
+  if (!fontsLoaded || !isAuthReady || isInitializing || !lockStateDetermined) {
     return null;
   }
 
@@ -648,29 +755,54 @@ export default function RootLayout() {
   // This prevents the login screen from flashing before lock screen appears
   const shouldShowLogin = !user && !isAppLocked;
 
-  const handleUnlock = () => {
-    console.log('[RootLayout] handleUnlock called - unlocking app');
+  const handleUnlock = async () => {
     setIsAppLocked(false);
     appWentToBackgroundRef.current = false; // Reset background flag after successful unlock
     hasCheckedInitialLock.current = true; // Mark as checked so we don't lock again on this session
-    console.log('[RootLayout] App unlocked, isAppLocked:', false);
+    
+    // If there's a stored OAuth callback URL, process it after unlock
+    if (truelayerCallbackUrl && user) {
+      const storedUrl = truelayerCallbackUrl;
+      truelayerCallbackUrl = null; // Clear it immediately
+      
+      try {
+        const parsedUrl = Linking.parse(storedUrl);
+        const code = parsedUrl.queryParams?.code as string;
+        const error = parsedUrl.queryParams?.error as string;
+        
+        // Navigate to connect-bank to process the OAuth callback
+        setTimeout(() => {
+          if (code) {
+            router.replace({
+              pathname: '/(tabs)/finance/connect-bank' as any,
+              params: { code: code },
+            });
+          } else if (error) {
+            router.replace({
+              pathname: '/(tabs)/finance/connect-bank' as any,
+              params: { error: error },
+            });
+          }
+        }, 100);
+        return; // Don't navigate to tabs if we're processing OAuth
+      } catch (err) {
+        console.error('[RootLayout] Error handling stored callback URL after unlock:', err);
+      }
+    }
     
     // If user is in auth group after unlock, navigate to tabs
     // This handles the case where user just registered and unlocked
     if (user && segments[0] === '(auth)') {
-      console.log('[RootLayout] User unlocked and in auth group, navigating to tabs');
       router.replace('/(tabs)');
     }
   };
 
   const handlePINSetupComplete = async () => {
-    console.log('[RootLayout] handlePINSetupComplete called');
     setPinSetupRequired(false);
     hasCheckedPINSetup.current = true;
     // Don't lock after PIN setup - user should go directly to main app
     setIsAppLocked(false);
     appWentToBackgroundRef.current = false;
-    console.log('[RootLayout] PIN setup complete, navigating to main app');
   };
 
   return (
@@ -680,25 +812,12 @@ export default function RootLayout() {
           <ActionMenuProvider>
           <StatusBar style="dark" />
           {/* PIN Setup Screen - Show if user is logged in but PIN not set */}
-          {user && pinSetupRequired && (() => {
-            console.log('[RootLayout] Rendering PIN Setup Screen');
-            return <PINSetupScreen onComplete={handlePINSetupComplete} />;
-          })()}
+          {user && pinSetupRequired && <PINSetupScreen onComplete={handlePINSetupComplete} />}
           {/* Lock Screen - Show if user is logged in, PIN is set, and app is locked */}
-          {user && !pinSetupRequired && isAppLocked && (() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:551',message:'RENDERING: App Lock Screen',data:{hasUser:!!user,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            console.log('[RootLayout] Rendering App Lock Screen');
-            return <AppLockScreen onUnlock={handleUnlock} />;
-          })()}
+          {user && !pinSetupRequired && isAppLocked && <AppLockScreen onUnlock={handleUnlock} />}
           {/* Main App - Show if user is logged in, PIN is set, and app is not locked */}
           {/* CRITICAL: Only render Stack when app is NOT locked to prevent login screen flash */}
           {user && !pinSetupRequired && !isAppLocked && (() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:556',message:'RENDERING: Main App Stack',data:{hasUser:!!user,pinSetupRequired,isAppLocked},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            console.log('[RootLayout] Rendering Main App Stack');
             return (
               <>
                 <Stack screenOptions={{ headerShown: false }}>
@@ -711,6 +830,24 @@ export default function RootLayout() {
                       headerShown: false
                     }} 
                   />
+                  <Stack.Screen 
+                    name="settings" 
+                    options={{ 
+                      headerShown: false
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="help" 
+                    options={{ 
+                      headerShown: false
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="about" 
+                    options={{ 
+                      headerShown: false
+                    }} 
+                  />
                 </Stack>
               </>
             );
@@ -718,10 +855,6 @@ export default function RootLayout() {
           {/* Login Screen - Show if user is not logged in AND app is not locked */}
           {/* Don't show login screen if app is locked - wait for auth state to restore */}
           {shouldShowLogin && (() => {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/_layout.tsx:576',message:'RENDERING: Login Stack',data:{hasUser:!!user},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            // #endregion
-            console.log('[RootLayout] Rendering Login Stack (no user)');
             return (
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -729,6 +862,24 @@ export default function RootLayout() {
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen 
                   name="profile" 
+                  options={{ 
+                    headerShown: false
+                  }} 
+                />
+                <Stack.Screen 
+                  name="settings" 
+                  options={{ 
+                    headerShown: false
+                  }} 
+                />
+                <Stack.Screen 
+                  name="help" 
+                  options={{ 
+                    headerShown: false
+                  }} 
+                />
+                <Stack.Screen 
+                  name="about" 
                   options={{ 
                     headerShown: false
                   }} 
@@ -743,3 +894,10 @@ export default function RootLayout() {
   );
 }
 
+export default RootLayoutInner;
+
+
+
+
+// Lock screen now shows directly without login screen flash
+// Initialization is optimized to check PIN status early and render lock screen immediately

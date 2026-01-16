@@ -59,10 +59,6 @@ function HomeStack() {
 }
 
 export default function App() {
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:61',message:'OLD App.tsx is being executed - this should NOT happen with Expo Router',data:{entryPoint:'App.tsx',usingReactNavigation:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-  
   const [fontsLoaded] = useFonts({
     'Gulfs Display': require('./assets/fonts/GulfsDisplay-Normal.ttf'),
   });
@@ -84,8 +80,6 @@ export default function App() {
           const code = parsedUrl.queryParams?.code as string;
           const error = parsedUrl.queryParams?.error as string;
 
-          console.log('Deep link received:', { url, code: !!code, error: !!error });
-
           if (error) {
             console.error('TrueLayer OAuth error:', error);
             // Navigate to ConnectBank screen with error
@@ -102,7 +96,6 @@ export default function App() {
           }
 
           if (code) {
-            console.log('TrueLayer OAuth callback received with code');
             // Navigate to ConnectBank screen with code
             if (navigationRef.current && user) {
               // Small delay to ensure navigation is ready
@@ -124,7 +117,6 @@ export default function App() {
     // This is important for when the app is closed and opened via deep link
     Linking.getInitialURL().then((url) => {
       if (url) {
-        console.log('Initial URL on app start:', url);
         handleDeepLink({ url });
       }
     }).catch((error) => {
@@ -133,7 +125,6 @@ export default function App() {
 
     // Listen for deep links while app is running (mobile)
     const subscription = Linking.addEventListener('url', (event) => {
-      console.log('Deep link event received:', event.url);
       handleDeepLink(event);
     });
 
@@ -154,11 +145,8 @@ export default function App() {
       if (auth) {
         // Define the auth state change handler
         const handleAuthStateChange = async (user: User | null) => {
-          console.log('Auth state changed:', user ? `User: ${user.email}` : 'User: null');
-          
           // If we're in the process of signing out and user is being restored, ignore it
           if (getIsSigningOut() && user !== null) {
-            console.log('Ignoring auto-restore during sign out');
             return;
           }
           
@@ -171,9 +159,6 @@ export default function App() {
             // User is signed in, initialize app features
             await initDatabase();
             await initializeNotifications();
-          } else {
-            // User signed out, clear any cached data if needed
-            console.log('User signed out, clearing state');
           }
         };
         
@@ -185,7 +170,6 @@ export default function App() {
         
         // Set initial state
         const initialUser = auth.currentUser;
-        console.log('Initial auth state:', initialUser ? `User: ${initialUser.email}` : 'User: null');
         setCurrentUser(initialUser);
         setUser(initialUser);
         setIsAuthReady(true);
@@ -225,10 +209,6 @@ export default function App() {
 
   // Main App Stack (protected routes)
   function MainApp() {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:223',message:'OLD React Navigation Tab.Navigator being used',data:{navigationType:'React Navigation Bottom Tabs'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
-    
     return (
       <Tab.Navigator
         screenOptions={({ route }) => ({

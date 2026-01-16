@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, usePathname, useSegments, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
@@ -33,8 +33,11 @@ const currencies = [
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  const router = useRouter();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+  const segments = useSegments();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,6 +52,8 @@ export default function SettingsScreen() {
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinSet, setPinSet] = useState(false);
   const [settingPIN, setSettingPIN] = useState(false);
+
+  // Removed logging for better performance
 
   const loadSettings = async () => {
     try {
@@ -256,8 +261,18 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-      {/* Currency Settings */}
+    <View style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Settings</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Currency Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Currency</Text>
         <View style={styles.sectionCard}>
@@ -806,7 +821,8 @@ export default function SettingsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -814,6 +830,26 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  headerSpacer: {
+    width: 32,
   },
   loadingContainer: {
     flex: 1,

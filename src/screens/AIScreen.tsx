@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Modal, ScrollView, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Ionicons } from '@expo/vector-icons';
 import { askAI } from '../services/aiService';
 import ScreenHeader from '../components/ScreenHeader';
@@ -26,7 +27,7 @@ export default function AIScreen() {
   const [showQuickQuestions, setShowQuickQuestions] = useState(true);
   const screenWrapperRef = useRef<ScreenWrapperRef>(null);
 
-  // Load threads on mount
+  // Load threads on mount - no delay for faster loading
   useEffect(() => {
     loadThreads();
   }, []);

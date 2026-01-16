@@ -171,12 +171,6 @@ export default function LoginScreen() {
         <View style={styles.content}>
           {/* Logo/Icon */}
           <View style={styles.iconContainer}>
-            {/* #region agent log */}
-            {(() => {
-              fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/screens/LoginScreen.tsx:90',message:'Loading logo asset',data:{assetPath:'../../assets/Penny Logo RD.png',component:'LoginScreen'},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'A'})}).catch(()=>{});
-              return null;
-            })()}
-            {/* #endregion */}
             <Image 
               source={require('../../assets/Penny Logo RD.png')} 
               style={styles.logo}

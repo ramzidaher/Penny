@@ -54,8 +54,11 @@ export default function HomeScreen() {
       if (showLoading) {
         setLoading(true);
       }
-      // Wait for Firebase to be ready before loading data
-      await waitForFirebase();
+      // Don't wait for Firebase on every load - it's usually already ready
+      // Only wait if it's the first load
+      if (!hasLoadedRef.current) {
+        await waitForFirebase();
+      }
       const [accs, trans, buds, subs, settings] = await Promise.all([
         getAccounts(),
         getTransactions(),
@@ -80,10 +83,8 @@ export default function HomeScreen() {
     useCallback(() => {
       // Only show loading on initial load, refresh silently on subsequent focuses
       const isInitialLoad = !hasLoadedRef.current;
-      const timer = setTimeout(() => {
-        loadData(isInitialLoad);
-      }, 100);
-      return () => clearTimeout(timer);
+      // Remove delay for faster loading - load immediately
+      loadData(isInitialLoad);
     }, [])
   );
 
@@ -326,12 +327,6 @@ export default function HomeScreen() {
         loadingComponent={loadingComponent}
         showsVerticalScrollIndicator={false}
       >
-      {/* #region agent log */}
-      {(() => {
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/screens/HomeScreen.tsx:126',message:'HomeScreen container structure',data:{hasViewWrapper:false,hasScrollView:true,directScrollView:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'B'})}).catch(()=>{});
-        return null;
-      })()}
-      {/* #endregion */}
       {/* Header Section */}
       <ScreenHeader
         subtitle={getGreeting()}

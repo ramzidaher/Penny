@@ -69,11 +69,8 @@ export default function PINSetupScreen({ onComplete }: PINSetupScreenProps) {
 
     try {
       setLoading(true);
-      console.log('[PINSetup] Setting PIN...');
       await setPIN(pin);
-      console.log('[PINSetup] PIN set successfully');
       await markPINSetupComplete();
-      console.log('[PINSetup] PIN setup marked complete');
       onComplete();
     } catch (error: any) {
       console.error('[PINSetup] PIN setup error:', error);

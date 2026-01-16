@@ -41,7 +41,6 @@ export default function BudgetCreationDialog({
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    console.log('[BudgetCreationDialog] Visibility changed:', visible, 'Category:', category, 'Transaction:', transaction?.id);
     if (visible) {
       loadCurrency();
       if (category) {

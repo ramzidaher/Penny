@@ -21,6 +21,12 @@ import { getAccounts } from '../database/db';
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours (4x per day)
 const MIN_SYNC_INTERVAL_MS = 60 * 60 * 1000; // Minimum 1 hour between syncs
 
+// Set to true to disable auto-refresh on foreground (useful for development)
+// This only disables the foreground sync, not the development build functionality
+// The development build will still work - this just prevents automatic syncing when app comes to foreground
+// Change to false to re-enable auto-refresh
+const DISABLE_FOREGROUND_SYNC = __DEV__ ? true : false;
+
 let lastSyncTime: number = 0;
 let syncInProgress: boolean = false;
 let appStateListener: { remove: () => void } | null = null;
@@ -31,7 +37,6 @@ let appStateListener: { remove: () => void } | null = null;
 export const performAutoSync = async (force: boolean = false): Promise<void> => {
   // Prevent concurrent syncs
   if (syncInProgress) {
-    console.log('[autoSync] Sync already in progress, skipping');
     return;
   }
 
@@ -40,21 +45,16 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
   const timeSinceLastSync = now - lastSyncTime;
   
   if (!force && timeSinceLastSync < MIN_SYNC_INTERVAL_MS) {
-    console.log(`[autoSync] Too soon since last sync (${Math.round(timeSinceLastSync / 1000 / 60)} min ago), skipping`);
     return;
   }
 
   try {
     syncInProgress = true;
-    console.log('[autoSync] Starting automatic sync...');
 
     const connections = await getAllConnections();
     if (connections.length === 0) {
-      console.log('[autoSync] No connections found, skipping sync');
       return;
     }
-
-    console.log(`[autoSync] Found ${connections.length} connection(s), syncing...`);
 
     // Sync each connection
     for (const connection of connections) {
@@ -71,8 +71,6 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
         // Refresh balances
         const accounts = await getAccounts();
         await refreshAccountBalances(accounts, true);
-        
-        console.log(`[autoSync] Successfully synced connection ${connection.id.substring(0, 8)}...`);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         
@@ -84,10 +82,7 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
           errorMessage.includes('Token refresh failed') ||
           errorMessage.includes('Unauthorized');
         
-        if (isAuthError) {
-          console.log(`[autoSync] Connection ${connection.id.substring(0, 8)}... requires reconnection, skipping`);
-          // Continue with other connections - this one needs user action
-        } else {
+        if (!isAuthError) {
           console.error(`[autoSync] Error syncing connection ${connection.id.substring(0, 8)}...:`, errorMessage);
         }
         // Continue with other connections even if one fails
@@ -95,7 +90,6 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
     }
 
     lastSyncTime = now;
-    console.log('[autoSync] Automatic sync completed successfully');
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('[autoSync] Error during automatic sync:', errorMessage);
@@ -109,8 +103,11 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
  */
 const handleAppStateChange = (nextAppState: AppStateStatus): void => {
   if (nextAppState === 'active') {
-    // App came to foreground - sync if needed
-    console.log('[autoSync] App came to foreground, checking if sync needed...');
+    // App came to foreground - sync if needed (unless disabled)
+    if (DISABLE_FOREGROUND_SYNC) {
+      console.log('[autoSync] Foreground sync disabled (development mode)');
+      return;
+    }
     performAutoSync(false).catch(error => {
       console.error('[autoSync] Error syncing on foreground:', error);
     });
@@ -123,8 +120,6 @@ const handleAppStateChange = (nextAppState: AppStateStatus): void => {
  * - Performs initial sync if needed
  */
 export const initializeAutoSync = async (): Promise<void> => {
-  console.log('[autoSync] Initializing auto-sync service...');
-
   // Remove existing listener if any
   if (appStateListener) {
     if (Platform.OS === 'web') {
@@ -138,14 +133,16 @@ export const initializeAutoSync = async (): Promise<void> => {
   // Add app state listener
   appStateListener = AppState.addEventListener('change', handleAppStateChange);
 
-  // Perform initial sync (with delay to ensure app is ready)
-  setTimeout(() => {
-    performAutoSync(false).catch(error => {
-      console.error('[autoSync] Error in initial sync:', error);
-    });
-  }, 2000); // 2 second delay after app launch
-
-  console.log('[autoSync] Auto-sync service initialized');
+  // Perform initial sync (with delay to ensure app is ready) - only if not disabled
+  if (!DISABLE_FOREGROUND_SYNC) {
+    setTimeout(() => {
+      performAutoSync(false).catch(error => {
+        console.error('[autoSync] Error in initial sync:', error);
+      });
+    }, 2000); // 2 second delay after app launch
+  } else {
+    console.log('[autoSync] Initial sync disabled (development mode)');
+  }
 };
 
 /**
@@ -156,7 +153,6 @@ export const cleanupAutoSync = (): void => {
     appStateListener.remove();
     appStateListener = null;
   }
-  console.log('[autoSync] Auto-sync service cleaned up');
 };
 
 /**

@@ -90,7 +90,7 @@ Financial Summary:
 - Available: $${(financialData.monthlyIncome - financialData.monthlyExpenses).toFixed(2)}
 
 Accounts (${financialData.accounts.length}):
-${financialData.accounts.map(acc => `  - ${acc.name} (${acc.type}): $${acc.balance.toFixed(2)}`).join('\n')}
+${financialData.accounts.map(acc => `  - ${acc.name} (${acc.type}): $${(acc.balance ?? 0).toFixed(2)}`).join('\n')}
 
 Recent Transactions (last 10):
 ${financialData.transactions.slice(0, 10).map(t => 

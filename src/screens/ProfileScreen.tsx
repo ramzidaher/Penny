@@ -1,11 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Share, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialog } from '../contexts/DialogContext';
 import { colors } from '../theme/colors';
 import { getUserEmail, getCurrentUser, logoutUser } from '../services/firebase';
+import { exportDataAsJSON, exportDataAsCSV } from '../services/dataExportService';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -13,6 +14,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const userEmail = getUserEmail();
   const currentUser = getCurrentUser();
+  const [exporting, setExporting] = useState(false);
   
   // Get display name or email username
   const displayName = currentUser?.displayName || (userEmail ? userEmail.split('@')[0] : 'User');
@@ -22,15 +24,112 @@ export default function ProfileScreen() {
   };
 
   const handleSettings = () => {
-    router.push('/(tabs)/finance/settings');
+    router.push('/settings' as any);
   };
 
   const handleHelp = () => {
-    router.push('/(tabs)/finance/help');
+    router.push('/help' as any);
   };
 
   const handleAbout = () => {
-    router.push('/(tabs)/finance/about');
+    router.push('/about' as any);
+  };
+
+  const handleExportData = async () => {
+    try {
+      setExporting(true);
+      
+      // Show format selection dialog
+      const format = await new Promise<'json' | 'csv' | null>((resolve) => {
+        if (Platform.OS === 'web') {
+          const choice = window.confirm('Export as JSON (full data) or CSV (spreadsheet)?\n\nOK = JSON\nCancel = CSV');
+          resolve(choice ? 'json' : 'csv');
+        } else {
+          dialog.showDialog(
+            'Export Data',
+            'Choose export format:',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+              { text: 'JSON (Full Data)', onPress: () => resolve('json') },
+              { text: 'CSV (Spreadsheet)', onPress: () => resolve('csv') },
+            ]
+          ).then((buttonText) => {
+            if (buttonText === 'JSON (Full Data)') resolve('json');
+            else if (buttonText === 'CSV (Spreadsheet)') resolve('csv');
+            else resolve(null);
+          });
+        }
+      });
+
+      if (!format) {
+        setExporting(false);
+        return;
+      }
+
+      if (format === 'json') {
+        const jsonData = await exportDataAsJSON();
+        const fileName = `penny-export-${new Date().toISOString().split('T')[0]}.json`;
+        
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+          // Web: Download file
+          const blob = new Blob([jsonData], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          dialog.alert('Success', 'Data exported successfully!');
+        } else {
+          // Mobile: Share
+          await Share.share({
+            message: jsonData,
+            title: 'Penny Data Export',
+          });
+        }
+      } else {
+        const csvData = await exportDataAsCSV();
+        const fileName = `penny-export-${new Date().toISOString().split('T')[0]}`;
+        
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+          // Web: Download multiple CSV files
+          for (const [key, value] of Object.entries(csvData)) {
+            const blob = new Blob([value], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${fileName}-${key}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+          }
+          dialog.alert('Success', 'Data exported successfully!');
+        } else {
+          // Mobile: Combine all CSVs into one message
+          const combinedCSV = Object.entries(csvData)
+            .map(([key, value]) => `=== ${key.toUpperCase()} ===\n${value}`)
+            .join('\n\n');
+          
+          await Share.share({
+            message: combinedCSV,
+            title: 'Penny Data Export',
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error exporting data:', error);
+      const errorMessage = error.message || 'Failed to export data. Please try again.';
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert(errorMessage);
+      } else {
+        dialog.alert('Error', errorMessage);
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -183,6 +282,35 @@ export default function ProfileScreen() {
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionCard, styles.actionCardWithMargin]}
+            onPress={handleExportData}
+            activeOpacity={0.7}
+            disabled={exporting}
+          >
+            <View style={styles.actionCardContent}>
+              <View style={styles.actionCardLeft}>
+                <View style={styles.actionIconContainer}>
+                  {exporting ? (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color={colors.text} />
+                  )}
+                </View>
+                <View style={styles.actionCardTextContainer}>
+                  <Text style={styles.actionCardTitle}>
+                    {exporting ? 'Exporting...' : 'Export Data'}
+                  </Text>
+                  <Text style={styles.actionCardSubtitle}>
+                    {exporting ? 'Please wait' : 'Download your data (JSON or CSV)'}
+                  </Text>
+                </View>
+              </View>
+              {!exporting && (
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              )}
             </View>
           </TouchableOpacity>
         </View>

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
 import { colors } from '../theme/colors';
+import { typography } from '../theme/typography';
 import {
   isBiometricAvailable,
   getBiometricType,
@@ -26,50 +27,43 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
   const [pinSet, setPinSet] = useState(false);
   const [showPINInput, setShowPINInput] = useState(false);
   const [biometricAttempted, setBiometricAttempted] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
-      console.log('[AppLockScreen] Starting auth check...');
+      // Run all checks in parallel for better performance
+      const [available, hasPin] = await Promise.all([
+        isBiometricAvailable(),
+        hasPIN(),
+      ]);
       
-      const available = await isBiometricAvailable();
-      console.log('[AppLockScreen] Biometric available:', available);
       setBiometricAvailable(available);
-      
-      let hasCredentials = false;
-      if (available) {
-        const type = await getBiometricType();
-        console.log('[AppLockScreen] Biometric type:', type);
-        setBiometricType(type);
-        
-        hasCredentials = await hasBiometricCredentials();
-        console.log('[AppLockScreen] Has biometric credentials:', hasCredentials);
-        setHasSavedCredentials(hasCredentials);
-      }
-      
-      const hasPin = await hasPIN();
-      console.log('[AppLockScreen] PIN check:', { hasPin, available, hasCredentials });
       setPinSet(hasPin);
       
       // Always show PIN input if PIN is set (even if biometric is available)
       if (hasPin) {
-        console.log('[AppLockScreen] PIN is set, showing PIN input');
         setShowPINInput(true);
-      } else {
-        console.log('[AppLockScreen] WARNING: PIN is not set but lock screen is showing!');
+      }
+      
+      let hasCredentials = false;
+      if (available) {
+        const [type, credentials] = await Promise.all([
+          getBiometricType(),
+          hasBiometricCredentials(),
+        ]);
+        setBiometricType(type);
+        setHasSavedCredentials(credentials);
+        hasCredentials = credentials;
       }
       
       // Auto-trigger biometric if available and credentials exist
       if (available && hasCredentials && !biometricAttempted) {
-        console.log('[AppLockScreen] Auto-triggering biometric unlock...');
         setBiometricAttempted(true);
-        setTimeout(() => {
-          handleBiometricUnlock();
-        }, 300);
-      } else {
-        console.log('[AppLockScreen] Not auto-triggering biometric:', {
-          available,
-          hasCredentials,
-          biometricAttempted
+        // Use requestAnimationFrame for smoother animation
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            handleBiometricUnlock();
+          }, 300);
         });
       }
     };
@@ -77,70 +71,68 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
     checkAuth();
   }, []);
 
-  const handleBiometricUnlock = async () => {
-    console.log('[AppLockScreen] handleBiometricUnlock called');
+  const handleBiometricUnlock = useCallback(async () => {
     try {
       setLoading(true);
-      console.log('[AppLockScreen] Starting biometric authentication...');
+      setErrorMessage(null); // Clear any previous errors
       const result = await authenticateWithBiometricForLock();
-      console.log('[AppLockScreen] Biometric result:', result);
       
       if (result.success) {
-        console.log('[AppLockScreen] Biometric unlock successful, calling onUnlock');
+        setErrorMessage(null);
         onUnlock();
       } else {
-        console.log('[AppLockScreen] Biometric unlock failed:', result.error);
-        // Biometric failed or cancelled - PIN input should already be visible if PIN is set
-        // Just show error message
-        if (!pinSet) {
-          dialog.alert('Biometric Unlock Failed', result.error || 'Failed to authenticate. Please try again.');
-        }
+        // Show error message directly in the lock screen
+        const errorMsg = result.error || 'Failed to authenticate. Please try again.';
+        setErrorMessage(errorMsg);
+        // Clear error after 5 seconds
+        setTimeout(() => setErrorMessage(null), 5000);
       }
     } catch (error: any) {
       console.error('[AppLockScreen] Biometric unlock error:', error);
-      // PIN input should already be visible if PIN is set
-      if (!pinSet) {
-        dialog.alert('Biometric Unlock Failed', error.message || 'Failed to authenticate.');
-      }
+      const errorMsg = error.message || 'Failed to authenticate.';
+      setErrorMessage(errorMsg);
+      // Clear error after 5 seconds
+      setTimeout(() => setErrorMessage(null), 5000);
     } finally {
       setLoading(false);
     }
-  };
+  }, [onUnlock]);
 
-  const handlePINUnlock = async (pinToValidate?: string) => {
+  const handlePINUnlock = useCallback(async (pinToValidate?: string) => {
     const pinValue = pinToValidate || pin;
-    console.log('[AppLockScreen] handlePINUnlock called with PIN length:', pinValue?.length);
     
     if (!pinValue || pinValue.length !== 6) {
-      console.log('[AppLockScreen] PIN validation failed: length is', pinValue?.length);
-      dialog.alert('Error', 'PIN must be exactly 6 digits');
+      setErrorMessage('PIN must be exactly 6 digits');
+      setTimeout(() => setErrorMessage(null), 3000);
       return;
     }
 
     try {
       setLoading(true);
-      console.log('[AppLockScreen] Validating PIN...');
+      setErrorMessage(null); // Clear any previous errors
       const isValid = await validatePIN(pinValue);
-      console.log('[AppLockScreen] PIN validation result:', isValid);
       
       if (isValid) {
-        console.log('[AppLockScreen] PIN unlock successful, calling onUnlock');
+        setErrorMessage(null);
         onUnlock();
       } else {
-        console.log('[AppLockScreen] PIN validation failed - incorrect PIN');
-        dialog.alert('Incorrect PIN', 'The PIN you entered is incorrect. Please try again.');
+        setErrorMessage('Incorrect PIN. Please try again.');
         setPin('');
+        // Clear error after 3 seconds
+        setTimeout(() => setErrorMessage(null), 3000);
       }
     } catch (error: any) {
       console.error('[AppLockScreen] PIN unlock error:', error);
-      dialog.alert('Error', 'Failed to validate PIN. Please try again.');
+      setErrorMessage('Failed to validate PIN. Please try again.');
       setPin('');
+      // Clear error after 3 seconds
+      setTimeout(() => setErrorMessage(null), 3000);
     } finally {
       setLoading(false);
     }
-  };
+  }, [pin, onUnlock]);
 
-  const handleUsePassword = async () => {
+  const handleUsePassword = useCallback(() => {
     dialog.showDialog(
       'Use Password',
       'This will log you out. You will need to sign in with your email and password.',
@@ -160,23 +152,51 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
         },
       ]
     );
-  };
+  }, [dialog]);
 
-  const handlePINChange = (text: string) => {
+  const handlePINChange = useCallback((text: string) => {
+    // Clear error when user starts typing
+    if (errorMessage) {
+      setErrorMessage(null);
+    }
+    
     // Only allow digits and limit to exactly 6 characters
     const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, 6);
-    console.log('[AppLockScreen] PIN changed, length:', digitsOnly.length);
     setPin(digitsOnly);
     
     // Auto-submit when exactly 6 digits entered
     if (digitsOnly.length === 6) {
-      console.log('[AppLockScreen] PIN reached 6 digits, auto-submitting...');
       // Small delay to let user see the last digit, then validate with the actual value
-      setTimeout(() => {
-        handlePINUnlock(digitsOnly);
-      }, 200);
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          handlePINUnlock(digitsOnly);
+        }, 200);
+      });
     }
-  };
+  }, [handlePINUnlock, errorMessage]);
+
+  // Memoize biometric icon name for performance
+  // iOS shows Face ID icon (person-circle-outline), Android shows fingerprint icon
+  const biometricIconName = useMemo(() => {
+    if (Platform.OS === 'ios' && biometricType === 'Face ID') {
+      // Use person-circle-outline for Face ID on iOS
+      return 'person-circle-outline';
+    }
+    // Use finger-print-outline for Touch ID on iOS or fingerprint on Android
+    return 'finger-print-outline';
+  }, [biometricType]);
+
+  // Memoize subtitle text for performance
+  const subtitleText = useMemo(() => {
+    if (biometricAvailable && hasSavedCredentials && pinSet) {
+      return `Use ${biometricType} or PIN to unlock`;
+    } else if (biometricAvailable && hasSavedCredentials) {
+      return `Use ${biometricType} to unlock`;
+    } else if (pinSet) {
+      return 'Enter your PIN to continue';
+    }
+    return 'Enter your PIN to continue';
+  }, [biometricAvailable, hasSavedCredentials, pinSet, biometricType]);
 
   return (
     <Modal
@@ -194,15 +214,6 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
         >
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          contentInsetAdjustmentBehavior="automatic"
-          alwaysBounceVertical={false}
-        >
           <View style={styles.content}>
           {/* Logo */}
           <View style={styles.logoContainer}>
@@ -215,16 +226,15 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
 
           {/* Title */}
           <Text style={styles.title}>App Locked</Text>
-          <Text style={styles.subtitle}>
-            {biometricAvailable && hasSavedCredentials && pinSet
-              ? `Use ${biometricType} or PIN to unlock`
-              : biometricAvailable && hasSavedCredentials
-                ? `Use ${biometricType} to unlock`
-                : pinSet
-                  ? 'Enter your PIN to continue'
-                  : 'Enter your PIN to continue'
-            }
-          </Text>
+          <Text style={styles.subtitle}>{subtitleText}</Text>
+
+          {/* Error Message - Show if there's an error */}
+          {errorMessage && (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={20} color="#FF3B30" />
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          )}
 
           {/* Biometric Button - Show if available and credentials exist */}
           {biometricAvailable && hasSavedCredentials && (
@@ -233,9 +243,10 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
                 style={[styles.biometricButton, loading && styles.biometricButtonDisabled]}
                 onPress={handleBiometricUnlock}
                 disabled={loading}
+                activeOpacity={0.7}
               >
                 <Ionicons 
-                  name={Platform.OS === 'ios' ? 'finger-print-outline' : 'finger-print'} 
+                  name={biometricIconName}
                   size={32} 
                   color={colors.background} 
                 />
@@ -293,7 +304,7 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
                 </View>
               )}
               
-              {loading && (
+              {loading && !errorMessage && (
                 <Text style={styles.loadingText}>Verifying...</Text>
               )}
             </>
@@ -304,11 +315,11 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
             style={styles.passwordLink}
             onPress={handleUsePassword}
             disabled={loading}
+            activeOpacity={0.7}
           >
             <Text style={styles.passwordLinkText}>Use Password</Text>
           </TouchableOpacity>
         </View>
-        </ScrollView>
       </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -323,19 +334,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  scrollView: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  scrollContent: {
-    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
     paddingBottom: 40,
-    backgroundColor: colors.background,
-    minHeight: '100%',
   },
   content: {
     width: '100%',
@@ -351,15 +353,13 @@ const styles = StyleSheet.create({
     height: 120,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
+    ...typography.h2,
     color: colors.text,
     textAlign: 'center',
     marginBottom: 8,
-    letterSpacing: -1,
   },
   subtitle: {
-    fontSize: 16,
+    ...typography.body,
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 40,
@@ -383,6 +383,7 @@ const styles = StyleSheet.create({
     width: '100%',
     minHeight: 60,
     opacity: 1,
+    fontFamily: typography.fontFamily.default,
   },
   pinDotsContainer: {
     flexDirection: 'row',
@@ -410,7 +411,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   loadingText: {
-    fontSize: 14,
+    ...typography.bodySmall,
     color: colors.textSecondary,
     marginTop: 8,
   },
@@ -430,8 +431,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   biometricButtonText: {
+    ...typography.h3,
     fontSize: 18,
-    fontWeight: '600',
     color: colors.background,
   },
   divider: {
@@ -446,8 +447,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
   },
   dividerText: {
+    ...typography.bodySmall,
     marginHorizontal: 16,
-    fontSize: 14,
     color: colors.textSecondary,
     fontWeight: '500',
   },
@@ -456,8 +457,32 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   passwordLinkText: {
-    fontSize: 16,
+    ...typography.body,
     color: colors.primary,
     fontWeight: '600',
   },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF5F5',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    width: '100%',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: '#FFE5E5',
+  },
+  errorText: {
+    ...typography.bodySmall,
+    color: '#FF3B30',
+    flex: 1,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
 });
+
+
+// Optimized for smooth performance with consistent typography
+// Shows Face ID icon on iOS and fingerprint icon on Android

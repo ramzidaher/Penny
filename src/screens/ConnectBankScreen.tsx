@@ -7,8 +7,9 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  Platform,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,19 +23,32 @@ import {
   clearTokens,
   getAccounts as getTrueLayerAccounts,
   getAccountBalance,
-  TrueLayerConnection,
 } from '../services/truelayerService';
+import { TrueLayerConnection } from '../types/truelayer';
 import { syncTrueLayerAccounts } from '../database/db';
 import { refreshTransactions } from '../services/transactionService';
 import { formatDistanceToNow } from 'date-fns';
 import { setOAuthFlowActive } from '../services/oAuthFlowService';
 
 // Module-level tracking to persist across component mounts/unmounts
-const processedCodesGlobal = new Set<string>();
+// Use Map with timestamps to auto-expire old entries (prevent stale codes from blocking new ones)
+const processedCodesGlobal = new Map<string, number>();
+const CODE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes - codes should be processed quickly
 const processingGlobal = { current: false };
+
+// Clean up expired codes periodically
+const cleanupExpiredCodes = () => {
+  const now = Date.now();
+  for (const [code, timestamp] of processedCodesGlobal.entries()) {
+    if (now - timestamp > CODE_EXPIRY_MS) {
+      processedCodesGlobal.delete(code);
+    }
+  }
+};
 
 export default function ConnectBankScreen() {
   const navigation = useNavigation();
+  const router = useRouter();
   const dialog = useDialog();
   const { code, state, error } = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [connections, setConnections] = useState<TrueLayerConnection[]>([]);
@@ -45,35 +59,164 @@ export default function ConnectBankScreen() {
   const { showSuccess, showError } = useToast();
 
   useEffect(() => {
+    console.log('[ConnectBankScreen] Component mounted, loading connections');
     loadConnections();
   }, []);
 
   useEffect(() => {
     // Handle OAuth callback from deep link (mobile)
-    // This is a fallback - WebBrowser should handle it directly
-    // On iOS production, WebBrowser might not return properly when OAuth goes through multiple apps
-    // So we process deep link callbacks even if processing flags are set (after a short delay)
+    // On Android, the app may reload when returning from OAuth, so WebBrowser.openAuthSessionAsync
+    // might not return. In this case, we process the deep link callback immediately.
+    // On iOS, WebBrowser should return, but we handle deep link as fallback.
+    
+    console.log('[ConnectBankScreen] OAuth callback effect triggered', {
+      hasCode: !!code,
+      hasError: !!error,
+      hasState: !!state,
+      codeLength: code?.length,
+      errorValue: error,
+      processingRef: processingRef.current,
+      processingGlobal: processingGlobal.current,
+      connecting,
+      processedCodesCount: processedCodesGlobal.size,
+    });
     
     if (error) {
       // Only show error if we haven't processed it already
       const errorKey = `error_${error}`;
+      cleanupExpiredCodes(); // Clean up before checking
       if (!processedCodesGlobal.has(errorKey)) {
-        processedCodesGlobal.add(errorKey);
+        processedCodesGlobal.set(errorKey, Date.now());
         showError(`Connection failed: ${error}`);
+        // Clear OAuth flow flag on error
+        setTimeout(() => {
+          setOAuthFlowActive(false);
+        }, 1000);
       }
       return;
     }
 
     if (code) {
-      // Check if we've already processed this code (global check)
-      if (processedCodesGlobal.has(code)) {
-        console.log('[ConnectBankScreen] Code already processed, ignoring duplicate');
+      console.log('[ConnectBankScreen] OAuth code received:', {
+        codePrefix: code.substring(0, 20) + '...',
+        codeLength: code.length,
+        state,
+        processingRef: processingRef.current,
+        processingGlobal: processingGlobal.current,
+        connecting,
+      });
+      
+      // EARLY CHECK: If we already have connections, the code was likely already processed successfully
+      // Check this BEFORE attempting to process to prevent infinite loops
+      if (connections.length > 0) {
+        console.log('[ConnectBankScreen] Connections already exist - code was likely already processed, navigating away', {
+          connectionCount: connections.length,
+        });
+        // Use replace to prevent going back to this screen with the code param
+        router.replace('/(tabs)/finance/accounts' as any);
         return;
       }
+      
+      // Also check asynchronously in case connections haven't loaded yet
+      (async () => {
+        try {
+          const existingConnections = await getAllConnections();
+          if (existingConnections.length > 0) {
+            console.log('[ConnectBankScreen] Connections exist (async check) - code was already processed, navigating away', {
+              connectionCount: existingConnections.length,
+            });
+            await loadConnections();
+            // Use replace to prevent going back to this screen with the code param
+            router.replace('/(tabs)/finance/accounts' as any);
+          }
+        } catch (checkError) {
+          // Ignore errors - continue with normal processing
+        }
+      })();
+      
+      // Clean up expired codes first
+      const beforeCleanup = processedCodesGlobal.size;
+      cleanupExpiredCodes();
+      const afterCleanup = processedCodesGlobal.size;
+      if (beforeCleanup !== afterCleanup) {
+        console.log(`[ConnectBankScreen] Cleaned up ${beforeCleanup - afterCleanup} expired codes`);
+      }
+      
+      // Check if we've already processed this code (global check)
+      // Only reject if it was processed recently (within expiry window)
+      const processedTime = processedCodesGlobal.get(code);
+      const now = Date.now();
+      if (processedTime) {
+        const age = now - processedTime;
+        console.log('[ConnectBankScreen] Code check:', {
+          wasProcessed: true,
+          processedAge: age,
+          expiryWindow: CODE_EXPIRY_MS,
+          isExpired: age >= CODE_EXPIRY_MS,
+        });
+      } else {
+        console.log('[ConnectBankScreen] Code check: Not processed before');
+      }
+      
+      if (processedTime && (now - processedTime) < CODE_EXPIRY_MS) {
+        console.log('[ConnectBankScreen] Code already processed recently, checking if connection exists', {
+          processedAge: now - processedTime,
+          expiryWindow: CODE_EXPIRY_MS,
+        });
+        
+        // First check synchronously if we have connections in state
+        // If we do, this means it was successfully processed - just navigate away
+        if (connections.length > 0) {
+          console.log('[ConnectBankScreen] Code was processed and connections exist in state - skipping reprocessing', {
+            connectionCount: connections.length,
+          });
+          // Use replace to prevent going back to this screen with the code param
+          router.replace('/(tabs)/finance/accounts' as any);
+          return;
+        }
+        
+        // If no connections in state, check asynchronously (might not be loaded yet)
+        // If connections exist, skip processing. Otherwise, allow reprocessing.
+        (async () => {
+          try {
+            const existingConnections = await getAllConnections();
+            if (existingConnections.length > 0) {
+              console.log('[ConnectBankScreen] Code was processed and connection exists - skipping reprocessing', {
+                connectionCount: existingConnections.length,
+              });
+              // Reload connections state and navigate
+              await loadConnections();
+              // Use replace to prevent going back to this screen with the code param
+              router.replace('/(tabs)/finance/accounts' as any);
+            } else {
+              // Code was processed but no connections found - might be a failed attempt
+              // Allow reprocessing by removing from processed codes
+              console.log('[ConnectBankScreen] Code was processed but no connections found - allowing reprocessing');
+              processedCodesGlobal.delete(code);
+            }
+          } catch (checkError) {
+            console.error('[ConnectBankScreen] Error checking existing connections:', checkError);
+            // On error, allow reprocessing
+            processedCodesGlobal.delete(code);
+          }
+        })();
+        
+        // Return early to prevent immediate reprocessing
+        // The async check will either navigate away or allow reprocessing by deleting the code
+        return;
+      }
+      
+      // If code exists but is expired, remove it and allow processing
+      if (processedTime && (now - processedTime) >= CODE_EXPIRY_MS) {
+        console.log('[ConnectBankScreen] Code was processed but expired, allowing reprocessing', {
+          processedAge: now - processedTime,
+        });
+        processedCodesGlobal.delete(code);
+      }
 
-      // On iOS production, WebBrowser might hang when OAuth goes through multiple apps
-      // Give WebBrowser a chance to return (2 seconds), then process the deep link
-      // This ensures we process the callback even if WebBrowser.openAuthSessionAsync() doesn't return
+      // On Android, if the app reloaded, processing flags will be reset
+      // So if flags are NOT set, it means the app reloaded and we should process immediately
+      // If flags ARE set, WebBrowser might still return, so wait a short time
       const processCallback = () => {
         // Reset processing flags if they're still set (WebBrowser didn't return)
         if (processingRef.current || processingGlobal.current) {
@@ -82,24 +225,55 @@ export default function ConnectBankScreen() {
           processingGlobal.current = false;
           setConnecting(false);
         }
-
-        // Mark as processed immediately to prevent duplicate processing
-        processedCodesGlobal.add(code);
         
         // Process the callback from deep link (fallback scenario) with state parameter
-        // Pass forceProcess=true to allow processing even if flags are set (iOS production workaround)
+        // Pass forceProcess=true to allow processing even if flags are set
+        // Don't mark code as processed here - let handleOAuthCallback do it after success
+        console.log('[ConnectBankScreen] Processing OAuth callback from deep link');
         handleOAuthCallback(code, state, true);
       };
 
+      // On Android, if processing flags are NOT set, the app likely reloaded
+      // Process immediately without waiting for WebBrowser
+      if (Platform.OS === 'android' && !processingRef.current && !processingGlobal.current && !connecting) {
+        console.log('[ConnectBankScreen] Android: App reloaded, processing deep link callback immediately', {
+          codePrefix: code.substring(0, 20) + '...',
+          state,
+        });
+        // Don't mark code as processed here - let handleOAuthCallback do it after success
+        console.log('[ConnectBankScreen] Calling handleOAuthCallback with forceProcess=true');
+        handleOAuthCallback(code, state, true);
+        return;
+      }
+
       // If processing flags are set, wait a bit for WebBrowser to return
-      // Otherwise, process immediately
+      // On iOS, WebBrowser should return quickly
+      // On Android, if flags are set, WebBrowser might still return (app didn't reload)
       if (processingRef.current || processingGlobal.current || connecting) {
-        console.log('[ConnectBankScreen] Waiting for WebBrowser to return, will process deep link if it doesn\'t...');
-        const timeout = setTimeout(processCallback, 2000);
-        return () => clearTimeout(timeout);
+        // On Android, use shorter delay since WebBrowser should return quickly if app didn't reload
+        // On iOS, also use short delay
+        const delay = Platform.OS === 'android' ? 200 : 300;
+        console.log(`[ConnectBankScreen] Waiting ${delay}ms for WebBrowser to return, will process deep link if it doesn't...`, {
+          processingRef: processingRef.current,
+          processingGlobal: processingGlobal.current,
+          connecting,
+        });
+        const timeout = setTimeout(() => {
+          console.log('[ConnectBankScreen] Timeout reached, executing processCallback');
+          processCallback();
+        }, delay);
+        return () => {
+          console.log('[ConnectBankScreen] Cleaning up timeout');
+          clearTimeout(timeout);
+        };
       } else {
-        // No processing flags set, process immediately
-        processedCodesGlobal.add(code);
+        // No processing flags set (iOS case or direct navigation)
+        console.log('[ConnectBankScreen] No processing flags set, processing deep link callback immediately', {
+          codePrefix: code.substring(0, 20) + '...',
+          state,
+        });
+        // Don't mark code as processed here - let handleOAuthCallback do it after success
+        console.log('[ConnectBankScreen] Calling handleOAuthCallback with forceProcess=false');
         handleOAuthCallback(code, state, false);
       }
     }
@@ -119,8 +293,9 @@ export default function ConnectBankScreen() {
 
   const handleConnect = async () => {
     try {
-      // Mark OAuth flow as active to prevent lock screen interference
+      // Mark OAuth flow as active FIRST to prevent any reloads or navigation interference
       setOAuthFlowActive(true);
+      console.log('[ConnectBankScreen] OAuth flow started, marking as active');
       
       setConnecting(true);
       processingRef.current = true;
@@ -128,7 +303,11 @@ export default function ConnectBankScreen() {
       
       // On iOS, openAuthUrl uses system browser and returns null
       // On Android, it uses WebBrowser and returns a result
+      // Note: On Android, opening WebBrowser may cause app to reload in development mode
+      // The deep link handler will process the callback when user returns
+      console.log('[ConnectBankScreen] Opening OAuth URL...');
       const result = await openAuthUrl();
+      console.log('[ConnectBankScreen] OAuth URL opened, result:', result ? 'received' : 'null (will use deep link)');
       
       if (result === null) {
         // On iOS, system browser was opened
@@ -157,9 +336,19 @@ export default function ConnectBankScreen() {
       }
       
       if (result?.code) {
+        console.log('[ConnectBankScreen] WebBrowser returned code', {
+          codePrefix: result.code.substring(0, 20) + '...',
+          codeLength: result.code.length,
+          state: result.state,
+        });
+        
         // Check if we've already processed this code (shouldn't happen, but safety check)
-        if (processedCodesGlobal.has(result.code)) {
-          console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring');
+        cleanupExpiredCodes();
+        const processedTime = processedCodesGlobal.get(result.code);
+        if (processedTime && (Date.now() - processedTime) < CODE_EXPIRY_MS) {
+          console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring', {
+            processedAge: Date.now() - processedTime,
+          });
           setConnecting(false);
           processingRef.current = false;
           processingGlobal.current = false;
@@ -167,11 +356,20 @@ export default function ConnectBankScreen() {
           return;
         }
         
-        // Mark as processed immediately (global)
-        processedCodesGlobal.add(result.code);
+        // CRITICAL: Clear processing flags BEFORE calling handleOAuthCallback
+        // The flags were set when handleConnect was called, but now WebBrowser has returned
+        // We need to clear them so handleOAuthCallback can process the code
+        console.log('[ConnectBankScreen] Clearing processing flags before handling WebBrowser result');
+        processingRef.current = false;
+        processingGlobal.current = false;
+        setConnecting(false);
+        
+        // DON'T mark as processed yet - let handleOAuthCallback mark it after successful processing
+        // This prevents the code from being rejected if component remounts before processing completes
+        console.log('[ConnectBankScreen] Calling handleOAuthCallback from WebBrowser result');
         
         // Process the OAuth callback directly with state parameter
-        // Keep connecting state true - handleOAuthCallback will manage it
+        // handleOAuthCallback will set the flags and mark as processed after success
         await handleOAuthCallback(result.code, result.state);
       } else {
         // No code and no error - unexpected result, reset state
@@ -197,10 +395,23 @@ export default function ConnectBankScreen() {
       // Reset processing flags on unmount to prevent blocking
       processingRef.current = false;
       processingGlobal.current = false;
+      // Clear OAuth flow flag if component unmounts during OAuth (shouldn't happen, but safety)
+      // Note: We don't clear it here if connecting is true, as the callback might still be processing
+      // The finally block in handleOAuthCallback will clear it
     };
   }, []);
 
   const handleOAuthCallback = async (code: string, state?: string, forceProcess: boolean = false) => {
+    console.log('[ConnectBankScreen] handleOAuthCallback called', {
+      codePrefix: code.substring(0, 20) + '...',
+      codeLength: code.length,
+      state,
+      forceProcess,
+      processingRef: processingRef.current,
+      processingGlobal: processingGlobal.current,
+      connecting,
+    });
+    
     // Prevent duplicate processing (check both local and global)
     // But allow processing if forceProcess is true (deep link callback on iOS production)
     if ((processingRef.current || processingGlobal.current) && !forceProcess) {
@@ -218,21 +429,46 @@ export default function ConnectBankScreen() {
     }
 
     try {
+      console.log('[ConnectBankScreen] Starting OAuth callback processing', {
+        codePrefix: code.substring(0, 20) + '...',
+        state,
+        forceProcess,
+      });
+      
       processingRef.current = true;
       processingGlobal.current = true;
       setConnecting(true);
       
+      console.log('[ConnectBankScreen] Calling exchangeCodeForTokens...');
       const { connectionId } = await exchangeCodeForTokens(code, undefined, state);
+      console.log('[ConnectBankScreen] exchangeCodeForTokens succeeded', { connectionId });
+      
+      // Mark code as processed ONLY after successful token exchange
+      // This prevents duplicate processing if component remounts
+      processedCodesGlobal.set(code, Date.now());
+      console.log('[ConnectBankScreen] Code marked as processed after successful token exchange');
 
       // Sync accounts first
       console.log('[ConnectBankScreen] Syncing accounts...');
-      await syncTrueLayerAccounts(connectionId);
+      try {
+        await syncTrueLayerAccounts(connectionId);
+        console.log('[ConnectBankScreen] Accounts synced successfully');
+      } catch (syncError: any) {
+        console.error('[ConnectBankScreen] Error syncing accounts:', syncError);
+        // Still show success but log the error - accounts might have been partially synced
+        const errorMessage = syncError?.message || 'Account sync had issues, but connection was established';
+        console.warn('[ConnectBankScreen]', errorMessage);
+      }
+
+      // Removed unnecessary delay - Firestore writes are synchronous from our perspective
+      // The 500ms delay was not needed and slowed down the connection process
 
       // Reload connections immediately
       await loadConnections();
 
       // Navigate immediately - don't wait for transactions
-      navigation.navigate('Accounts' as never);
+      // Use replace to prevent going back to this screen with the code param
+      router.replace('/(tabs)/finance/accounts' as any);
       showSuccess('Bank account connected successfully!');
 
       // Fetch transactions in background (non-blocking)
@@ -246,25 +482,76 @@ export default function ConnectBankScreen() {
           console.error('[ConnectBankScreen] Background transaction fetch failed (non-critical):', error);
         });
     } catch (error: any) {
-      console.error('Error handling OAuth callback:', error);
+      console.error('[ConnectBankScreen] Error handling OAuth callback:', error);
+      console.error('[ConnectBankScreen] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack?.substring(0, 200),
+      });
+      
+      const errorMessage = error.message || 'Failed to connect bank account';
+      
+      // Check if error is "code already used" or "invalid state" - this might mean it was successfully processed
+      // but the component remounted and tried again
+      const isCodeAlreadyUsed = errorMessage.includes('invalid_grant') || 
+                                 errorMessage.includes('Invalid grant') || 
+                                 errorMessage.includes('authorization code has already been used');
+      const isInvalidState = errorMessage.includes('Invalid or expired state') || 
+                            errorMessage.includes('invalid state') ||
+                            errorMessage.includes('Invalid state parameter');
+      
+      if (isCodeAlreadyUsed || isInvalidState) {
+        console.log('[ConnectBankScreen] Code/state error - checking if connection was successful', {
+          errorType: isCodeAlreadyUsed ? 'code_already_used' : 'invalid_state',
+        });
+        
+        // Check if connection was actually created by loading connections directly
+        try {
+          const existingConnections = await getAllConnections();
+          // If we have connections, the code was successfully processed before
+          // This happens when component remounts after successful processing
+          if (existingConnections.length > 0) {
+            console.log('[ConnectBankScreen] Connection already exists - treating as success', {
+              connectionCount: existingConnections.length,
+              errorType: isCodeAlreadyUsed ? 'code_already_used' : 'invalid_state',
+            });
+            // Mark code as processed to prevent further attempts
+            processedCodesGlobal.set(code, Date.now());
+            // Reload connections state
+            await loadConnections();
+            // Navigate and show success (connection was already established)
+            // Use replace to prevent going back to this screen with the code param
+            router.replace('/(tabs)/finance/accounts' as any);
+            showSuccess('Bank account connected successfully!');
+            return;
+          }
+        } catch (checkError) {
+          console.error('[ConnectBankScreen] Error checking existing connections:', checkError);
+          // Continue to show error if we can't check
+        }
+      }
       
       // Remove from processed codes so user can retry (global)
       processedCodesGlobal.delete(code);
+      console.log('[ConnectBankScreen] Removed code from processedCodesGlobal to allow retry');
       
-      // Check for specific error messages
-      const errorMessage = error.message || 'Failed to connect bank account';
-      if (errorMessage.includes('invalid_grant') || errorMessage.includes('Invalid grant')) {
+      // Show error for actual failures
+      if (isCodeAlreadyUsed) {
         showError('This authorization code has already been used. Please try connecting again.');
+      } else if (isInvalidState) {
+        showError('The authorization session has expired. Please try connecting again.');
       } else {
         showError(errorMessage);
       }
     } finally {
+      console.log('[ConnectBankScreen] OAuth callback processing finished, cleaning up');
       setConnecting(false);
       processingRef.current = false;
       processingGlobal.current = false;
       // Clear OAuth flow flag after callback is processed
       // Add a small delay to ensure navigation completes
       setTimeout(() => {
+        console.log('[ConnectBankScreen] Clearing OAuth flow flag');
         setOAuthFlowActive(false);
       }, 1000);
     }
@@ -273,7 +560,7 @@ export default function ConnectBankScreen() {
   const handleDisconnect = async (connectionId: string) => {
     await dialog.showDialog(
       'Disconnect Account',
-      'Are you sure you want to disconnect this account? You will need to reconnect to sync data again.',
+      'Are you sure you want to disconnect this account? All linked accounts and their data will be removed.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -281,8 +568,16 @@ export default function ConnectBankScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Delete all accounts linked to this connection
+              const { cloudDeleteAccountsByConnection } = await import('../services/cloudDb');
+              await cloudDeleteAccountsByConnection(connectionId);
+              
+              // Clear tokens
               await clearTokens(connectionId);
+              
+              // Reload connections
               await loadConnections();
+              
               showSuccess('Account disconnected successfully');
             } catch (error: any) {
               console.error('Error disconnecting:', error);

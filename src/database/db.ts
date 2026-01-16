@@ -237,3 +237,6 @@ export const deleteChatThread = async (id: string): Promise<void> => {
   return await cloudDb.cloudDeleteChatThread(id);
 };
 
+// Data export operations
+export { exportDataAsJSON, exportDataAsCSV, getExportStats } from '../services/dataExportService';
+

@@ -311,10 +311,6 @@ export default function IncomeExpenseScreen() {
   // Filter transactions
   const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
   let filteredTransactions = filteredData.transactions;
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/screens/IncomeExpenseScreen.tsx:286',message:'IncomeExpenseScreen filtering',data:{filterPeriod,filteredCount:filteredTransactions.length,totalCount:transactions.length,activeTab,incomeCount:filteredTransactions.filter(t=>t.type==='income').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  // #endregion
 
   // Apply tab filter
   if (activeTab === 'income') {

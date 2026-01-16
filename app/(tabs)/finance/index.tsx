@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, usePathname } from 'expo-router';
 import AccountsScreen from '../../../src/screens/AccountsScreen';
 import TransactionsScreen from '../../../src/screens/TransactionsScreen';
 import BudgetsScreen from '../../../src/screens/BudgetsScreen';
@@ -28,6 +28,7 @@ type ViewStyle = 'cards' | 'bars' | 'compact';
 
 export default function FinanceHomeScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -35,11 +36,18 @@ export default function FinanceHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [viewStyle, setViewStyle] = useState<ViewStyle>('cards');
+  const hasLoadedRef = useRef(false);
 
-  const loadData = async () => {
+  const loadData = async (showLoading = false) => {
     try {
-      setLoading(true);
-      await waitForFirebase();
+      if (showLoading) {
+        setLoading(true);
+      }
+      // Don't wait for Firebase on every load - it's usually already ready
+      // Only wait if it's the first load
+      if (!hasLoadedRef.current) {
+        await waitForFirebase();
+      }
       const [accs, trans, buds, settings] = await Promise.all([
         getAccounts(),
         getTransactions(),
@@ -50,6 +58,7 @@ export default function FinanceHomeScreen() {
       setTransactions(trans);
       setBudgets(buds);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading data:', error);
     } finally {
@@ -59,12 +68,15 @@ export default function FinanceHomeScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      const timer = setTimeout(() => {
-        loadData();
-      }, 100);
-      return () => clearTimeout(timer);
+      // Only show loading on initial load, refresh silently on subsequent focuses
+      const isInitialLoad = !hasLoadedRef.current;
+      // Remove delay for faster loading
+      loadData(isInitialLoad);
     }, [])
   );
+
+  // Removed route checking logic - it was causing unnecessary re-renders and delays
+  // Native tabs handle navigation correctly, no need for manual checks
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -77,29 +89,11 @@ export default function FinanceHomeScreen() {
   const startOfCurrentMonth = startOfMonth(now);
   const endOfCurrentMonth = endOfMonth(now);
   
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:76',message:'Monthly calculation entry',data:{now:now.toISOString(),currentDay:now.getDate(),startOfMonth:startOfCurrentMonth.toISOString(),endOfMonth:endOfCurrentMonth.toISOString(),totalTransactions:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
-  
   const monthlyTransactions = transactions.filter(t => {
     const date = new Date(t.date);
     const isInRange = date >= startOfCurrentMonth && date <= endOfCurrentMonth;
-    
-    // #region agent log
-    if (t.type === 'income') {
-      const dayOfMonth = date.getDate();
-      if (dayOfMonth >= 20 || dayOfMonth <= 5) {
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:85',message:'Income transaction in monthly filter',data:{transactionId:t.id,transactionDate:t.date,parsedDate:date.toISOString(),dayOfMonth,isInRange,description:t.description?.substring(0,50),amount:t.amount,category:t.category},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      }
-    }
-    // #endregion
-    
     return isInRange;
   });
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:95',message:'Monthly transactions filtered',data:{monthlyTransactionCount:monthlyTransactions.length,incomeCount:monthlyTransactions.filter(t=>t.type==='income').length,expenseCount:monthlyTransactions.filter(t=>t.type==='expense').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
   
   const monthlyIncome = monthlyTransactions
     .filter(t => t.type === 'income')
@@ -108,10 +102,6 @@ export default function FinanceHomeScreen() {
   const monthlyExpenses = monthlyTransactions
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
-  
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:103',message:'Monthly totals calculated',data:{monthlyIncome,monthlyExpenses,net:monthlyIncome-monthlyExpenses,incomeTransactionCount:monthlyTransactions.filter(t=>t.type==='income').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-  // #endregion
 
   const activeBudgets = budgets.length;
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
@@ -139,12 +129,6 @@ export default function FinanceHomeScreen() {
       loadingComponent={loadingComponent}
       showsVerticalScrollIndicator={false}
     >
-      {/* #region agent log */}
-      {(() => {
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/(tabs)/finance/index.tsx:113',message:'FinanceScreen container structure',data:{hasViewWrapper:false,hasScrollView:true,directScrollView:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'B'})}).catch(()=>{});
-        return null;
-      })()}
-      {/* #endregion */}
       {/* Header */}
       <ScreenHeader
         subtitle="Manage your money"

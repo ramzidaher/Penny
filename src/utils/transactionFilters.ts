@@ -58,26 +58,11 @@ export const filterTransactionsByPeriod = (
       };
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/transactionFilters.ts:31',message:'filterTransactionsByPeriod entry',data:{period,now:now.toISOString(),startDate:startDate.toISOString(),endDate:endDate.toISOString(),totalTransactions:transactions.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
-
   const filtered = transactions.filter(t => {
     const date = new Date(t.date);
     const isInRange = date >= startDate && date <= endDate;
-    
-    // #region agent log
-    if (t.type === 'income' && (date.getDate() >= 20 || date.getDate() <= 5)) {
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/transactionFilters.ts:65',message:'Income transaction near month boundary',data:{transactionId:t.id,transactionDate:t.date,parsedDate:date.toISOString(),dayOfMonth:date.getDate(),isInRange,period,description:t.description?.substring(0,50),amount:t.amount,type:t.type},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    }
-    // #endregion
-    
     return isInRange;
   });
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/transactionFilters.ts:75',message:'filterTransactionsByPeriod filtering results',data:{period,filteredCount:filtered.length,totalCount:transactions.length,incomeCount:filtered.filter(t=>t.type==='income').length,expenseCount:filtered.filter(t=>t.type==='expense').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
   const income = filtered
     .filter(t => t.type === 'income')
@@ -86,10 +71,6 @@ export const filterTransactionsByPeriod = (
   const expenses = filtered
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
-
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/utils/transactionFilters.ts:87',message:'filterTransactionsByPeriod exit',data:{period,income,expenses,net:income-expenses,incomeTransactions:filtered.filter(t=>t.type==='income').length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-  // #endregion
 
   return {
     transactions: filtered,

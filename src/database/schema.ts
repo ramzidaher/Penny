@@ -2,7 +2,7 @@ export interface Account {
   id: string;
   name: string;
   type: 'bank' | 'card' | 'cash' | 'investment';
-  balance: number;
+  balance?: number; // Optional: only set for manual accounts, TrueLayer accounts fetch on-demand
   currency: string;
   // Card-specific fields (only used when type === 'card')
   linkedAccountId?: string; // The bank account this card is linked to

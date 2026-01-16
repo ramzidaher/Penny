@@ -493,7 +493,7 @@ export default function TransactionsScreen() {
               onSwipeRight={() => handleSwipeRight(item)}
               onSwipeLeft={() => handleSwipeLeft(item)}
               onDelete={() => handleDelete(item.id)}
-              onUncategorize={(item.subscriptionId || item.debtId || item.type === 'income') ? () => handleUncategorize(item) : undefined}
+              onUncategorize={(item.subscriptionId || item.debtId) ? () => handleUncategorize(item) : undefined}
               showTagBadges={true}
             />
           )}

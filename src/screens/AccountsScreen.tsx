@@ -125,9 +125,23 @@ export default function AccountsScreen() {
       loadAccounts();
     }, 100);
     // Use focus listener for Expo Router compatibility
-    navigation.addListener('focus', loadAccounts);
+    // Disable auto-refresh on focus in development mode to prevent constant reloading
+    // when switching between apps (keeps dev build functionality but prevents auto-refresh)
+    const focusListener = navigation.addListener('focus', () => {
+      if (__DEV__) {
+        // In development, only load accounts on initial mount, not on every focus
+        // This prevents auto-refresh when switching between apps
+        console.log('[AccountsScreen] Focus detected, but auto-refresh disabled in dev mode');
+        return;
+      }
+      loadAccounts();
+    });
     return () => {
       clearTimeout(timer);
+      // Cleanup: remove the focus listener
+      if (typeof focusListener === 'function') {
+        focusListener();
+      }
     };
   }, []);
 
@@ -501,12 +515,12 @@ export default function AccountsScreen() {
                 <Text style={styles.accountBalance}>
                   {showConvertedAmounts && convertedBalances.has(item.id)
                     ? formatCurrencySync(convertedBalances.get(item.id)!, currencyCode)
-                    : formatCurrencySync(item.balance, item.currency || currencyCode)
+                    : formatCurrencySync(item.balance ?? 0, item.currency || currencyCode)
                   }
                 </Text>
                 {showConvertedAmounts && item.currency && item.currency !== currencyCode && (
                   <Text style={styles.originalBalance}>
-                    {formatCurrencySync(item.balance, item.currency)}
+                    {formatCurrencySync(item.balance ?? 0, item.currency)}
                   </Text>
                 )}
                 <View style={styles.accountActions}>

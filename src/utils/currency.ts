@@ -44,9 +44,11 @@ export const formatCurrency = async (amount: number): Promise<string> => {
 };
 
 // Format currency with symbol (synchronous version - requires currency to be passed)
-export const formatCurrencySync = (amount: number, currencyCode: string = 'USD'): string => {
+export const formatCurrencySync = (amount: number | undefined | null, currencyCode: string = 'USD'): string => {
   const currency = currencies[currencyCode] || currencies.USD;
-  return `${currency.symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Handle undefined/null amounts - default to 0
+  const safeAmount = amount ?? 0;
+  return `${currency.symbol}${safeAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
 // Get currency symbol (synchronous version)

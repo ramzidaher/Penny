@@ -129,12 +129,21 @@ export const checkLowBalanceAlerts = async () => {
     const accounts = await getAccounts();
     const lowBalanceThreshold = settings.lowBalanceThreshold;
     
+    // Import currency utility to get the correct symbol
+    const { getCurrencySymbol } = await import('../utils/currency');
+    const currencySymbol = getCurrencySymbol(settings.defaultCurrency);
+    
     for (const account of accounts) {
+      // Check if account has a balance before processing
+      if (account.balance === undefined || account.balance === null) {
+        continue; // Skip accounts without a balance
+      }
+      
       if (account.balance < lowBalanceThreshold && account.balance >= 0) {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Low Balance Alert',
-            body: `${account.name} balance is low: $${account.balance.toFixed(2)}. Consider adding funds.`,
+            body: `${account.name} balance is low: ${currencySymbol}${account.balance.toFixed(2)}. Consider adding funds.`,
             data: { type: 'low_balance', accountId: account.id },
           },
           trigger: null, // Immediate
@@ -143,7 +152,7 @@ export const checkLowBalanceAlerts = async () => {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Negative Balance Warning',
-            body: `${account.name} has a negative balance: $${account.balance.toFixed(2)}. Please add funds immediately.`,
+            body: `${account.name} has a negative balance: ${currencySymbol}${account.balance.toFixed(2)}. Please add funds immediately.`,
             data: { type: 'negative_balance', accountId: account.id },
           },
           trigger: null, // Immediate

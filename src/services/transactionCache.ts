@@ -79,7 +79,9 @@ const mapTrueLayerTransaction = (
   const transactionType = (tlTransaction.transaction_type || '').toUpperCase();
   const isCredit = transactionType === 'CREDIT';
   
-  const type: 'income' | 'expense' = isCredit ? 'income' : 'expense';
+  // Default all transactions to 'expense' - income should be set manually by user
+  // This allows users to manually categorize credits as income if needed
+  const type: 'income' | 'expense' = 'expense';
   const amount = Math.abs(tlTransaction.amount);
   const category = mapTrueLayerCategory(tlTransaction.transaction_category || 'general', type);
   const description = tlTransaction.merchant_name || tlTransaction.description || 'Transaction';
@@ -193,11 +195,8 @@ const fetchTransactionsFromAPI = async (
   internalAccountId: string
 ): Promise<Transaction[]> => {
   try {
-    console.log(`[transactionCache] Fetching transactions from TrueLayer API`);
     const transactionsResponse = await getAccountTransactions(connectionId, accountId);
     const pendingTransactionsResponse = await getAccountPendingTransactions(connectionId, accountId);
-
-    console.log(`[transactionCache] API returned ${transactionsResponse.results.length} confirmed and ${pendingTransactionsResponse.results.length} pending transactions`);
 
     const allTransactions = [
       ...transactionsResponse.results,
@@ -208,7 +207,6 @@ const fetchTransactionsFromAPI = async (
       mapTrueLayerTransaction(tlTransaction, internalAccountId)
     );
 
-    console.log(`[transactionCache] Mapped ${mappedTransactions.length} transactions`);
     return mappedTransactions;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -331,13 +329,9 @@ export const getCachedTransactions = async (
     throw new Error('User not authenticated');
   }
 
-  console.log(`[transactionCache] Getting transactions: forceRefresh=${forceRefresh}`);
-
   // If force refresh, skip cache and fetch fresh
   if (forceRefresh) {
-    console.log('[transactionCache] Force refresh - fetching from API');
     const transactions = await fetchTransactionsFromAPI(connectionId, accountId, internalAccountId);
-    console.log(`[transactionCache] Fetched ${transactions.length} transactions from API`);
     await storeInCache(userId, connectionId, accountId, transactions);
     return transactions;
   }
@@ -346,8 +340,6 @@ export const getCachedTransactions = async (
   const cached = await getFromCache(userId, connectionId, accountId);
   
   if (cached) {
-    console.log(`[transactionCache] Cache hit - returning ${cached.length} cached transactions`);
-    
     // Stale-while-revalidate: Return cached data immediately, refresh in background
     // Check if cache is stale (but not expired) - refresh in background
     const metadataKey = getMetadataKey(userId, connectionId, accountId);
@@ -359,14 +351,12 @@ export const getCachedTransactions = async (
       
       if (age > staleThreshold) {
         // Cache is stale but still valid - refresh in background (don't await)
-        console.log('[transactionCache] Cache is stale, refreshing in background');
         fetchTransactionsFromAPI(connectionId, accountId, internalAccountId)
           .then(transactions => {
-            console.log(`[transactionCache] Background refresh complete: ${transactions.length} transactions`);
             return storeInCache(userId, connectionId, accountId, transactions);
           })
-          .catch(error => {
-            console.log('[transactionCache] Background refresh failed (non-critical):', error instanceof Error ? error.message : 'Unknown error');
+          .catch(() => {
+            // Background refresh failed - non-critical, cache is still valid
           });
       }
     }
@@ -375,9 +365,7 @@ export const getCachedTransactions = async (
   }
 
   // Cache miss or expired - fetch from API
-  console.log('[transactionCache] Cache miss - fetching from API');
   const transactions = await fetchTransactionsFromAPI(connectionId, accountId, internalAccountId);
-  console.log(`[transactionCache] Fetched ${transactions.length} transactions from API`);
   await storeInCache(userId, connectionId, accountId, transactions);
   return transactions;
 };

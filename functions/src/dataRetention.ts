@@ -46,6 +46,16 @@ const getRetentionCutoffDate = (): Date => {
 };
 
 /**
+ * Calculate the cutoff date for 12-month chat retention
+ */
+const getChatRetentionCutoffDate = (): Date => {
+  const now = new Date();
+  const cutoffDate = new Date(now);
+  cutoffDate.setMonth(cutoffDate.getMonth() - 12);
+  return cutoffDate;
+};
+
+/**
  * Aggregate transactions into monthly summaries
  */
 const aggregateTransactions = (
@@ -82,6 +92,43 @@ const aggregateTransactions = (
   }
   
   return Array.from(summaries.values());
+};
+
+/**
+ * Process chat retention for a single user
+ * Deletes chat threads older than 12 months
+ */
+const processChatRetention = async (userId: string): Promise<{
+  processed: number;
+  deleted: number;
+}> => {
+  const cutoffDate = getChatRetentionCutoffDate();
+  const cutoffTimestamp = admin.firestore.Timestamp.fromDate(cutoffDate);
+  
+  // Find all chat threads older than 12 months
+  const chatThreadsRef = db.collection(`users/${userId}/chatThreads`);
+  const expiredChatThreadsQuery = chatThreadsRef
+    .where('updatedAt', '<', cutoffTimestamp)
+    .limit(500); // Process in batches
+  
+  const expiredSnap = await expiredChatThreadsQuery.get();
+  
+  if (expiredSnap.empty) {
+    return { processed: 0, deleted: 0 };
+  }
+  
+  // Delete expired chat threads
+  const batch = db.batch();
+  for (const threadDoc of expiredSnap.docs) {
+    batch.delete(threadDoc.ref);
+  }
+  
+  await batch.commit();
+  
+  return {
+    processed: expiredSnap.docs.length,
+    deleted: expiredSnap.docs.length,
+  };
 };
 
 /**
@@ -156,6 +203,8 @@ export const processDataRetention = functions.pubsub
       let totalProcessed = 0;
       let totalDeleted = 0;
       let totalAggregated = 0;
+      let totalChatProcessed = 0;
+      let totalChatDeleted = 0;
       let usersProcessed = 0;
       
       // Process each user
@@ -163,11 +212,11 @@ export const processDataRetention = functions.pubsub
         const userId = userDoc.id;
         
         try {
+          // Process transaction retention
           const result = await processUserRetention(userId);
           totalProcessed += result.processed;
           totalDeleted += result.deleted;
           totalAggregated += result.aggregated;
-          usersProcessed += 1;
           
           if (result.processed > 0) {
             functions.logger.info('Processed user retention', {
@@ -177,6 +226,21 @@ export const processDataRetention = functions.pubsub
               aggregated: result.aggregated,
             });
           }
+          
+          // Process chat retention
+          const chatResult = await processChatRetention(userId);
+          totalChatProcessed += chatResult.processed;
+          totalChatDeleted += chatResult.deleted;
+          
+          if (chatResult.processed > 0) {
+            functions.logger.info('Processed chat retention', {
+              userId,
+              processed: chatResult.processed,
+              deleted: chatResult.deleted,
+            });
+          }
+          
+          usersProcessed += 1;
         } catch (error: any) {
           functions.logger.error('Error processing user retention', {
             userId,
@@ -191,6 +255,8 @@ export const processDataRetention = functions.pubsub
         totalProcessed,
         totalDeleted,
         totalAggregated,
+        totalChatProcessed,
+        totalChatDeleted,
       });
       
       return {
@@ -199,6 +265,8 @@ export const processDataRetention = functions.pubsub
         totalProcessed,
         totalDeleted,
         totalAggregated,
+        totalChatProcessed,
+        totalChatDeleted,
       };
     } catch (error: any) {
       functions.logger.error('Error in data retention process', {

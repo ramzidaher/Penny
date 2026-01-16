@@ -24,6 +24,8 @@ import {
   getCardTransactions,
 } from './truelayerService';
 import { TrueLayerAccount, TrueLayerTransaction } from '../types/truelayer';
+import { clearTransactionCache } from './transactionCache';
+import { clearBalanceCache } from './balanceCache';
 
 // Helper to convert Firestore timestamp to ISO string
 const timestampToISO = (timestamp: any): string => {
@@ -87,11 +89,15 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     const accountData: any = {
       name: account.name,
       type: account.type,
-      balance: account.balance,
       currency: account.currency,
       createdAt: isoToTimestamp(now),
       updatedAt: isoToTimestamp(now),
     };
+    
+    // Only include balance for manual accounts (not TrueLayer synced)
+    if (account.balance !== undefined) {
+      accountData.balance = account.balance;
+    }
     
     // Only include card fields if they are defined and not empty
     if (account.linkedAccountId) accountData.linkedAccountId = account.linkedAccountId;
@@ -155,9 +161,150 @@ export const cloudDeleteAccount = async (id: string): Promise<void> => {
   try {
     const userId = getUserId();
     const accountRef = doc(db, `users/${userId}/accounts`, id);
+    
+    // Get account data before deletion to clear associated caches
+    const accountSnap = await getDoc(accountRef);
+    if (accountSnap.exists()) {
+      const accountData = accountSnap.data() as Account;
+      
+      // Clear caches for TrueLayer accounts
+      if (accountData.isSynced && accountData.truelayerConnectionId && accountData.truelayerAccountId) {
+        try {
+          await clearTransactionCache(accountData.truelayerConnectionId, accountData.truelayerAccountId);
+          await clearBalanceCache(accountData.truelayerConnectionId, accountData.truelayerAccountId);
+          console.log(`[cloudDeleteAccount] Cleared caches for TrueLayer account: ${accountData.name}`);
+        } catch (cacheError) {
+          console.error('[cloudDeleteAccount] Error clearing caches:', cacheError);
+          // Continue with deletion even if cache clearing fails
+        }
+      }
+    }
+    
     await deleteDoc(accountRef);
   } catch (error) {
     console.error('Error deleting account from cloud:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete all accounts associated with a TrueLayer connection
+ * This is called when disconnecting a bank connection
+ */
+export const cloudDeleteAccountsByConnection = async (connectionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    const accountsRef = collection(db, `users/${userId}/accounts`);
+    
+    // Get all accounts for this connection
+    const accountsQuery = query(
+      accountsRef,
+      where('truelayerConnectionId', '==', connectionId)
+    );
+    const snapshot = await getDocs(accountsQuery);
+    
+    console.log(`[cloudDeleteAccountsByConnection] Found ${snapshot.docs.length} account(s) to delete for connection ${connectionId}`);
+    
+    // Delete all accounts and clear their caches
+    const deletePromises = snapshot.docs.map(async (accountDoc) => {
+      const accountData = accountDoc.data() as Account;
+      
+      // Clear caches for TrueLayer accounts
+      if (accountData.isSynced && accountData.truelayerConnectionId && accountData.truelayerAccountId) {
+        try {
+          await clearTransactionCache(accountData.truelayerConnectionId, accountData.truelayerAccountId);
+          await clearBalanceCache(accountData.truelayerConnectionId, accountData.truelayerAccountId);
+          console.log(`[cloudDeleteAccountsByConnection] Cleared caches for account: ${accountData.name}`);
+        } catch (cacheError) {
+          console.error('[cloudDeleteAccountsByConnection] Error clearing caches:', cacheError);
+          // Continue with deletion even if cache clearing fails
+        }
+      }
+      
+      // Delete the account document
+      await deleteDoc(accountDoc.ref);
+      console.log(`[cloudDeleteAccountsByConnection] Deleted account: ${accountData.name} (${accountDoc.id})`);
+    });
+    
+    await Promise.all(deletePromises);
+    console.log(`[cloudDeleteAccountsByConnection] Successfully deleted ${snapshot.docs.length} account(s) for connection ${connectionId}`);
+  } catch (error) {
+    console.error('Error deleting accounts by connection:', error);
+    throw error;
+  }
+};
+
+/**
+ * Clean up duplicate accounts that should be linked to the same connection
+ * This finds accounts with the same provider and accountId but different/missing connectionIds
+ * and links them to the correct connection
+ */
+export const cleanupDuplicateAccounts = async (connectionId: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  try {
+    const allAccounts = await cloudGetAccounts();
+    
+    // Get accounts from TrueLayer for this connection to know what accounts should exist
+    const accountsResponse = await getTrueLayerAccounts(connectionId);
+    const truelayerAccounts = accountsResponse.results;
+    const truelayerAccountIds = new Set(truelayerAccounts.map(acc => acc.account_id));
+    
+    // Find accounts that match TrueLayer account IDs but have wrong/missing connectionId
+    const accountsToFix = allAccounts.filter(acc => {
+      // Must have a truelayerAccountId
+      if (!acc.truelayerAccountId) return false;
+      
+      // Must match one of the TrueLayer account IDs for this connection
+      if (!truelayerAccountIds.has(acc.truelayerAccountId)) return false;
+      
+      // Must have wrong or missing connectionId
+      return !acc.truelayerConnectionId || acc.truelayerConnectionId !== connectionId;
+    });
+    
+    if (accountsToFix.length === 0) {
+      console.log('[cleanupDuplicateAccounts] No duplicate accounts found to clean up');
+      return;
+    }
+    
+    console.log(`[cleanupDuplicateAccounts] Found ${accountsToFix.length} account(s) to link to connection ${connectionId}`);
+    
+    // Update each account to have the correct connectionId
+    for (const account of accountsToFix) {
+      // Check if there's already an account with the correct connectionId + accountId
+      const existingCorrectAccount = allAccounts.find(
+        acc => acc.truelayerConnectionId === connectionId && 
+               acc.truelayerAccountId === account.truelayerAccountId &&
+               acc.id !== account.id
+      );
+      
+      if (existingCorrectAccount) {
+        // There's already a correct account, delete this duplicate
+        console.log(`[cleanupDuplicateAccounts] Deleting duplicate account: ${account.name} (${account.id})`);
+        await cloudDeleteAccount(account.id);
+      } else {
+        // Update this account to have the correct connectionId
+        console.log(`[cleanupDuplicateAccounts] Linking account ${account.name} (${account.id}) to connection ${connectionId}`);
+        await cloudUpdateAccount(account.id, {
+          truelayerConnectionId: connectionId,
+          isSynced: true,
+          lastSyncedAt: new Date().toISOString(),
+        });
+      }
+    }
+    
+    console.log(`[cleanupDuplicateAccounts] Cleanup complete for connection ${connectionId}`);
+  } catch (error) {
+    console.error('Error cleaning up duplicate accounts:', error);
     throw error;
   }
 };
@@ -214,19 +361,9 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
         ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
       };
       
-      // Log all transactions with their tag values for debugging
-      const hasNullTags = data.subscriptionId === null || data.debtId === null || data.budgetId === null;
-      const hasTags = data.subscriptionId || data.debtId || data.budgetId;
-      
-      // Always log transactions with any tag-related data
-      if (hasNullTags || hasTags) {
-        console.log(`[cloudGetTransactions] Transaction ${doc.id} tag info: subscriptionId=${data.subscriptionId}, debtId=${data.debtId}, budgetId=${data.budgetId}`);
-      }
-      
       return transaction;
     }) as Transaction[];
     
-    console.log(`[cloudGetTransactions] Returning ${transactions.length} mapped transactions`);
     return transactions;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -578,9 +715,10 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
         date: timestampToISO(createdData.date),
         createdAt: timestampToISO(createdData.createdAt),
         truelayerTransactionId: createdData.truelayerTransactionId || undefined,
-        subscriptionId: createdData.subscriptionId || undefined,
-        debtId: createdData.debtId || undefined,
-        budgetId: createdData.budgetId || undefined,
+        // Preserve null values explicitly - null means explicitly untagged
+        subscriptionId: createdData.subscriptionId !== undefined ? createdData.subscriptionId : undefined,
+        debtId: createdData.debtId !== undefined ? createdData.debtId : undefined,
+        budgetId: createdData.budgetId !== undefined ? createdData.budgetId : undefined,
         descriptionHash: createdData.descriptionHash || undefined,
       } as Transaction;
     } else {
@@ -590,7 +728,23 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
       if (!transactionData) {
         throw new Error('Transaction data not found');
       }
-      existingTransaction = transactionData as Transaction;
+      // Explicitly preserve null values from Firestore - null means explicitly untagged
+      existingTransaction = {
+        id: id,
+        accountId: transactionData.accountId,
+        amount: transactionData.amount,
+        type: transactionData.type,
+        category: transactionData.category,
+        description: transactionData.description || '',
+        date: timestampToISO(transactionData.date),
+        createdAt: timestampToISO(transactionData.createdAt),
+        truelayerTransactionId: transactionData.truelayerTransactionId || undefined,
+        // Preserve null values explicitly - null means explicitly untagged
+        subscriptionId: transactionData.subscriptionId !== undefined ? transactionData.subscriptionId : undefined,
+        debtId: transactionData.debtId !== undefined ? transactionData.debtId : undefined,
+        budgetId: transactionData.budgetId !== undefined ? transactionData.budgetId : undefined,
+        descriptionHash: transactionData.descriptionHash || undefined,
+      } as Transaction;
       
       // SECURITY: Additional ownership verification - ensure accountId belongs to user
       if (existingTransaction.accountId) {
@@ -648,133 +802,8 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
       updateData.budgetId = updates.budgetId || null;
     }
     
-    // SECURITY: Auto-link to subscription BEFORE saving (so it's included in the main update)
-    // This ensures subscriptionId is set in the same write operation
-    const finalCategory = updateData.category || existingTransaction.category;
-    if (updateData.subscriptionId === undefined && finalCategory === 'Subscription') {
-      const finalDescription = updates.description !== undefined ? updates.description : existingTransaction.description;
-      
-      if (finalCategory === 'Subscription' && finalDescription) {
-        try {
-          const subscriptionsRef = collection(db, `users/${userId}/subscriptions`);
-          const subscriptionsSnapshot = await getDocs(subscriptionsRef);
-          
-          console.log(`[cloudUpdateTransaction] Attempting to auto-link subscription. Found ${subscriptionsSnapshot.docs.length} subscription(s), description: "${finalDescription}"`);
-          
-          // SECURITY: Sanitize merchant name extraction (multiple strategies for better matching)
-          const cleanDesc = finalDescription
-            .replace(/^Subscription:\s*/i, '')
-            .replace(/^Payment\s+to\s+/i, '')
-            .replace(/^Payment\s+/i, '')
-            .replace(/^PURCHASE\s*-\s*/i, '')
-            .replace(/^RECURRENT\s+TRANSACTION\s+AT\s+/i, '')
-            .replace(/^GOOGLE\s+PAY\s+IN-APP\s+AT\s+/i, '')
-            .replace(/\s+AT\s+.*$/i, '') // Remove "AT London GBR..." suffix
-            .replace(/\s+OF\s+\d+\.\d+\s+\w+\s+ON\s+.*$/i, '') // Remove "OF 33.32 GBP ON 2026-01-11" suffix
-            .trim();
-          
-          const cleanDescLower = cleanDesc.toLowerCase();
-          const descLower = finalDescription.toLowerCase();
-          
-          // Extract merchant name variations
-          const merchantName = cleanDesc.split(/[,\s-]/)[0].trim().toLowerCase();
-          const firstTwoWords = cleanDesc.split(/\s+/).slice(0, 2).join(' ').trim().toLowerCase();
-          const firstThreeWords = cleanDesc.split(/\s+/).slice(0, 3).join(' ').trim().toLowerCase();
-          
-          console.log(`[cloudUpdateTransaction] Cleaned description: "${cleanDesc}", merchant: "${merchantName}", two words: "${firstTwoWords}"`);
-          
-          // Log all subscription names for debugging
-          const subscriptionNames = subscriptionsSnapshot.docs.map(doc => doc.data().name);
-          console.log(`[cloudUpdateTransaction] Available subscriptions: ${subscriptionNames.join(', ')}`);
-          
-          const matchingSubscription = subscriptionsSnapshot.docs.find(doc => {
-            const sub = doc.data() as Subscription;
-            const subNameLower = sub.name.toLowerCase().trim();
-            
-            // Strategy 1: Exact match with cleaned description
-            if (subNameLower === cleanDescLower) {
-              console.log(`[cloudUpdateTransaction] Exact match: "${sub.name}" === "${cleanDesc}"`);
-              return true;
-            }
-            
-            // Strategy 2: Subscription name is contained in description or vice versa
-            if (cleanDescLower.includes(subNameLower) || subNameLower.includes(cleanDescLower)) {
-              console.log(`[cloudUpdateTransaction] Contains match: "${sub.name}" in "${cleanDesc}"`);
-              return true;
-            }
-            
-            // Strategy 3: First word matches
-            if (merchantName.length >= 2 && (subNameLower === merchantName || subNameLower.includes(merchantName) || merchantName.includes(subNameLower))) {
-              console.log(`[cloudUpdateTransaction] First word match: "${sub.name}" matches "${merchantName}"`);
-              return true;
-            }
-            
-            // Strategy 4: First two words match
-            if (firstTwoWords.length >= 2 && (subNameLower === firstTwoWords || subNameLower.includes(firstTwoWords) || firstTwoWords.includes(subNameLower))) {
-              console.log(`[cloudUpdateTransaction] Two words match: "${sub.name}" matches "${firstTwoWords}"`);
-              return true;
-            }
-            
-            // Strategy 5: First three words match (for "Google One" type names)
-            if (firstThreeWords.length >= 2 && (subNameLower === firstThreeWords || subNameLower.includes(firstThreeWords) || firstThreeWords.includes(subNameLower))) {
-              console.log(`[cloudUpdateTransaction] Three words match: "${sub.name}" matches "${firstThreeWords}"`);
-              return true;
-            }
-            
-            // Strategy 6: Full description contains subscription name
-            if (descLower.includes(subNameLower) || subNameLower.includes(descLower)) {
-              console.log(`[cloudUpdateTransaction] Full description match: "${sub.name}" in "${finalDescription}"`);
-              return true;
-            }
-            
-            return false;
-          });
-          
-          if (matchingSubscription) {
-            updateData.subscriptionId = matchingSubscription.id;
-            console.log(`[cloudUpdateTransaction] ✅ Auto-linked transaction to subscription: "${matchingSubscription.data().name}" (ID: ${matchingSubscription.id})`);
-          } else {
-            console.log(`[cloudUpdateTransaction] ⚠️ No matching subscription found for description: "${finalDescription}"`);
-          }
-        } catch (error) {
-          // Log but don't throw - subscription linking is optional
-          console.error('[cloudUpdateTransaction] Error linking subscription:', error instanceof Error ? error.message : 'Unknown error');
-        }
-      }
-    }
-    
-    // SECURITY: Auto-link to debt BEFORE saving (so it's included in the main update)
-    if (updateData.debtId === undefined && (updates.category || existingTransaction.category)) {
-      const finalCategory = updates.category || existingTransaction.category;
-      const finalDescription = updates.description !== undefined ? updates.description : existingTransaction.description;
-      
-      if (finalCategory && finalDescription) {
-        try {
-          const debtsRef = collection(db, `users/${userId}/debts`);
-          const debtsSnapshot = await getDocs(debtsRef);
-          
-          const merchantName = extractMerchantName(finalDescription);
-          if (merchantName && merchantName.length >= 2) {
-            const matchingDebt = debtsSnapshot.docs.find(doc => {
-              const debt = doc.data() as Debt;
-              const debtNameLower = debt.name.toLowerCase();
-              const merchantLower = merchantName.toLowerCase();
-              const nameMatches = debtNameLower.includes(merchantLower) || merchantLower.includes(debtNameLower);
-              const categoryMatches = debt.budgetCategory && debt.budgetCategory === finalCategory;
-              return nameMatches && categoryMatches;
-            });
-            
-            if (matchingDebt) {
-              updateData.debtId = matchingDebt.id;
-              console.log(`[cloudUpdateTransaction] Auto-linked transaction to debt: ${matchingDebt.data().name}`);
-            }
-          }
-        } catch (error) {
-          // Log but don't throw - debt linking is optional
-          console.error('[cloudUpdateTransaction] Error linking debt:', error instanceof Error ? error.message : 'Unknown error');
-        }
-      }
-    }
+    // REMOVED: All auto-linking logic - users must explicitly tag transactions
+    // This ensures user trust and control over their data
     
     await setDoc(transactionRef, updateData, { merge: true });
     
@@ -907,14 +936,6 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
         }
       }
     }
-    
-    // Note: Auto-linking to subscriptions and debts now happens BEFORE the main update
-    // (see code above) so subscriptionId/debtId are included in the main setDoc call
-    
-    // If we successfully linked a subscription, log it for debugging
-    if (updateData.subscriptionId && !updates.subscriptionId) {
-      console.log(`[cloudUpdateTransaction] ✅ Successfully set subscriptionId: ${updateData.subscriptionId}`);
-    }
   } catch (error: unknown) {
     // SECURITY: Don't leak sensitive information in errors
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -1027,6 +1048,24 @@ export const cloudDeleteTransaction = async (id: string): Promise<void> => {
             currentSpent: Math.max(0, (budgetData.currentSpent || 0) - transaction.amount),
             updatedAt: isoToTimestamp(new Date().toISOString()),
           }, { merge: true });
+        }
+      }
+      
+      // Clear transaction cache if this is a TrueLayer transaction
+      if (transaction.truelayerTransactionId) {
+        const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
+        const accountSnap = await getDoc(accountRef);
+        if (accountSnap.exists()) {
+          const accountData = accountSnap.data() as Account;
+          if (accountData.isSynced && accountData.truelayerConnectionId && accountData.truelayerAccountId) {
+            try {
+              await clearTransactionCache(accountData.truelayerConnectionId, accountData.truelayerAccountId);
+              console.log(`[cloudDeleteTransaction] Cleared transaction cache for TrueLayer account`);
+            } catch (cacheError) {
+              console.error('[cloudDeleteTransaction] Error clearing transaction cache:', cacheError);
+              // Continue with deletion even if cache clearing fails
+            }
+          }
         }
       }
       
@@ -1797,34 +1836,76 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
     // Get existing accounts to check for updates
     // Use composite key (connectionId + accountId) to ensure uniqueness across different connections
     const existingAccounts = await cloudGetAccounts();
+    
+    // Log all existing TrueLayer accounts for debugging
+    const allTrueLayerAccounts = existingAccounts.filter(acc => acc.truelayerConnectionId && acc.truelayerAccountId);
+    console.log(`[syncTrueLayerAccounts] Total existing TrueLayer accounts: ${allTrueLayerAccounts.length}`);
+    allTrueLayerAccounts.forEach(acc => {
+      console.log(`[syncTrueLayerAccounts] Existing account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId})`);
+    });
+    
+    // CRITICAL: Only match accounts from the SAME connection to prevent cross-connection matching
     const truelayerAccountMap = new Map(
       existingAccounts
-        .filter(acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId)
+        .filter(acc => {
+          // Double-check: only include accounts that match this specific connectionId
+          const matches = acc.truelayerConnectionId === connectionId && acc.truelayerAccountId;
+          if (!matches && acc.truelayerConnectionId && acc.truelayerAccountId) {
+            // Log if we're filtering out an account from a different connection
+            console.log(`[syncTrueLayerAccounts] Filtering out account from different connection: ${acc.name} (Connection: ${acc.truelayerConnectionId}, expected: ${connectionId})`);
+          }
+          return matches;
+        })
         .map(acc => [`${acc.truelayerConnectionId}_${acc.truelayerAccountId}`, acc])
     );
 
-    console.log(`[syncTrueLayerAccounts] Found ${truelayerAccounts.length} account(s) from TrueLayer API`);
+    console.log(`[syncTrueLayerAccounts] Found ${truelayerAccounts.length} account(s) from TrueLayer API for connection ${connectionId}`);
     console.log(`[syncTrueLayerAccounts] Found ${truelayerAccountMap.size} existing account(s) for connection ${connectionId}`);
+
+    // Fetch all balances in parallel for faster processing
+    console.log(`[syncTrueLayerAccounts] Fetching balances for ${truelayerAccounts.length} account(s) in parallel...`);
+    const balancePromises = truelayerAccounts.map(async (tlAccount) => {
+      try {
+        const balanceResponse = await getAccountBalance(connectionId, tlAccount.account_id);
+        const balance = balanceResponse.results[0];
+        console.log(`[syncTrueLayerAccounts] Fetched balance for account ${tlAccount.account_id}`);
+        return { accountId: tlAccount.account_id, balance, error: null };
+      } catch (balanceError) {
+        console.warn(`[syncTrueLayerAccounts] Failed to fetch balance for account ${tlAccount.account_id}, continuing without balance:`, balanceError);
+        // Continue without balance - it will be fetched on-demand later
+        return { accountId: tlAccount.account_id, balance: null, error: balanceError };
+      }
+    });
+    
+    const balanceResults = await Promise.all(balancePromises);
+    const balanceMap = new Map(balanceResults.map(result => [result.accountId, result.balance]));
 
     // Process each TrueLayer account
     for (const tlAccount of truelayerAccounts) {
       try {
-        // Fetch balance for this account
-        const balanceResponse = await getAccountBalance(connectionId, tlAccount.account_id);
-        const balance = balanceResponse.results[0];
+        // Get balance from parallel fetch results
+        const balance = balanceMap.get(tlAccount.account_id) || null;
 
         // Check if account already exists using composite key
+        // CRITICAL: Use connectionId + accountId to ensure we only match accounts from the same connection
         const compositeKey = `${connectionId}_${tlAccount.account_id}`;
-        const existingAccount = truelayerAccountMap.get(compositeKey);
+        let existingAccount = truelayerAccountMap.get(compositeKey);
         
-        console.log(`[syncTrueLayerAccounts] Processing account: ${tlAccount.display_name} (${tlAccount.account_id}) from ${tlAccount.provider?.display_name || 'Unknown'}, exists: ${!!existingAccount}`);
+        // Additional safety check: verify the existing account's connectionId matches
+        if (existingAccount && existingAccount.truelayerConnectionId !== connectionId) {
+          console.error(`[syncTrueLayerAccounts] CRITICAL: Found account with mismatched connectionId! Account: ${existingAccount.id}, Expected: ${connectionId}, Found: ${existingAccount.truelayerConnectionId}`);
+          // Don't use this account - treat as new
+          existingAccount = undefined;
+        }
+        
+        console.log(`[syncTrueLayerAccounts] Processing account: ${tlAccount.display_name} (${tlAccount.account_id}) from ${tlAccount.provider?.display_name || 'Unknown'}, connection: ${connectionId}, exists: ${!!existingAccount}`);
 
         // For TrueLayer accounts, don't store balance in Firestore (security: minimize persisted financial data)
         // Balance will be fetched on-demand from TrueLayer API and cached locally
         const accountData: Partial<Account> = {
           name: tlAccount.display_name,
           type: 'bank' as const,
-          balance: 0, // Placeholder - actual balance fetched on-demand
+          // balance is intentionally omitted - fetched on-demand from API
           currency: tlAccount.currency,
           truelayerConnectionId: connectionId,
           truelayerAccountId: tlAccount.account_id,
@@ -1836,16 +1917,25 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
         };
 
         if (existingAccount) {
+          // Final safety check: ensure connectionId matches before updating
+          if (existingAccount.truelayerConnectionId !== connectionId) {
+            console.error(`[syncTrueLayerAccounts] CRITICAL ERROR: Attempted to update account from different connection! Skipping update.`);
+            console.error(`[syncTrueLayerAccounts] Existing account connection: ${existingAccount.truelayerConnectionId}, Current connection: ${connectionId}`);
+            // Don't update - this would overwrite the wrong account
+            continue;
+          }
+          
           // Update existing account - ensure all TrueLayer fields are included
-          console.log(`[syncTrueLayerAccounts] Updating existing account: ${existingAccount.id} (${accountData.name})`);
+          console.log(`[syncTrueLayerAccounts] Updating existing account: ${existingAccount.id} (${accountData.name}) from connection ${connectionId}`);
           await cloudUpdateAccount(existingAccount.id, accountData);
+          console.log(`[syncTrueLayerAccounts] Successfully updated account: ${existingAccount.id}`);
         } else {
           // Create new account
-          console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}`);
-          await cloudAddAccount({
+          console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}, connection: ${connectionId}`);
+          const newAccountId = await cloudAddAccount({
             name: accountData.name!,
             type: accountData.type!,
-            balance: accountData.balance!,
+            // balance omitted for TrueLayer accounts - fetched on-demand
             currency: accountData.currency!,
             truelayerConnectionId: accountData.truelayerConnectionId,
             truelayerAccountId: accountData.truelayerAccountId,
@@ -1854,6 +1944,7 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
             lastSyncedAt: accountData.lastSyncedAt,
             truelayerAccountType: accountData.truelayerAccountType,
           });
+          console.log(`[syncTrueLayerAccounts] Successfully created account with ID: ${newAccountId}`);
         }
       } catch (error) {
         console.error(`[syncTrueLayerAccounts] Error syncing account ${tlAccount.account_id}:`, error);
@@ -1861,9 +1952,12 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<void>
       }
     }
 
-    // Verify final state
-    const finalAccounts = await cloudGetAccounts();
-    const syncedAccountsForConnection = finalAccounts.filter(
+    // Clean up any duplicate accounts that should be linked to this connection
+    await cleanupDuplicateAccounts(connectionId);
+    
+    // Verify final state after cleanup
+    const finalAccountsAfterCleanup = await cloudGetAccounts();
+    const syncedAccountsForConnection = finalAccountsAfterCleanup.filter(
       acc => acc.truelayerConnectionId === connectionId && acc.truelayerAccountId
     );
     
@@ -1907,7 +2001,7 @@ export const createOrUpdateTrueLayerAccount = async (
   const accountData: Partial<Account> = {
     name: truelayerAccount.display_name,
     type: 'bank' as const,
-    balance: 0, // Placeholder - actual balance fetched on-demand
+    // balance is intentionally omitted - fetched on-demand from API
     currency: truelayerAccount.currency,
     truelayerConnectionId: connectionId,
     truelayerAccountId: truelayerAccount.account_id,
@@ -1925,7 +2019,7 @@ export const createOrUpdateTrueLayerAccount = async (
     return await cloudAddAccount({
       name: accountData.name!,
       type: accountData.type!,
-      balance: 0, // Placeholder - actual balance fetched on-demand
+      // balance omitted for TrueLayer accounts - fetched on-demand
       currency: accountData.currency!,
       truelayerConnectionId: accountData.truelayerConnectionId,
       truelayerAccountId: accountData.truelayerAccountId,
@@ -2002,7 +2096,9 @@ const mapTrueLayerTransaction = (
   const transactionType = (tlTransaction.transaction_type || '').toUpperCase();
   const isCredit = transactionType === 'CREDIT';
   
-  const type: 'income' | 'expense' = isCredit ? 'income' : 'expense';
+  // Default all transactions to 'expense' - income should be set manually by user
+  // This allows users to manually categorize credits as income if needed
+  const type: 'income' | 'expense' = 'expense';
   const amount = Math.abs(tlTransaction.amount);
   const category = mapTrueLayerCategory(tlTransaction.transaction_category || 'general', type);
   const description = tlTransaction.merchant_name || tlTransaction.description || 'Transaction';

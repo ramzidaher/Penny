@@ -90,7 +90,6 @@ const syncPINFromFirestore = async (): Promise<boolean> => {
         // Store in local SecureStore for fast access
         await SecureStore.setItemAsync(PIN_KEY, data.pinHash);
         await SecureStore.setItemAsync(PIN_SALT_KEY, data.salt);
-        console.log('[pinService] PIN synced from Firestore to local storage');
         return true;
       }
     }
@@ -106,23 +105,18 @@ const syncPINFromFirestore = async (): Promise<boolean> => {
  */
 export const hasPIN = async (): Promise<boolean> => {
   try {
-    console.log('[pinService] Checking if PIN exists...');
     // Check local storage first
     const pinHash = await SecureStore.getItemAsync(PIN_KEY);
     if (pinHash !== null) {
-      console.log('[pinService] PIN exists in local storage');
       return true;
     }
     
     // If not in local storage, try to sync from Firestore
-    console.log('[pinService] PIN not in local storage, checking Firestore...');
     const synced = await syncPINFromFirestore();
     if (synced) {
-      console.log('[pinService] PIN exists in Firestore');
       return true;
     }
     
-    console.log('[pinService] PIN does not exist');
     return false;
   } catch (error) {
     console.error('[pinService] Error checking PIN:', error);
@@ -136,25 +130,20 @@ export const hasPIN = async (): Promise<boolean> => {
  */
 export const setPIN = async (pin: string): Promise<void> => {
   try {
-    console.log('[pinService] Setting PIN (length:', pin.length, ')');
     // Validate PIN format - must be exactly 6 digits
     if (!/^\d{6}$/.test(pin)) {
-      console.log('[pinService] PIN validation failed - not exactly 6 digits');
       throw new Error('PIN must be exactly 6 digits');
     }
 
     // Generate salt
     const salt = await generateSalt();
-    console.log('[pinService] Generated salt');
     
     // Hash PIN
     const pinHash = await hashPIN(pin, salt);
-    console.log('[pinService] Hashed PIN');
 
     // Store hash and salt in local SecureStore for fast access
     await SecureStore.setItemAsync(PIN_KEY, pinHash);
     await SecureStore.setItemAsync(PIN_SALT_KEY, salt);
-    console.log('[pinService] PIN stored in local SecureStore');
 
     // Also store in Firestore for cross-device sync and persistence
     try {
@@ -171,15 +160,12 @@ export const setPIN = async (pin: string): Promise<void> => {
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
           });
-          console.log('[pinService] PIN stored in Firestore');
         }
       }
     } catch (firestoreError) {
       console.error('[pinService] Error storing PIN in Firestore (continuing with local storage):', firestoreError);
       // Don't throw - local storage is sufficient for basic functionality
     }
-    
-    console.log('[pinService] PIN stored successfully');
   } catch (error) {
     console.error('[pinService] Error setting PIN:', error);
     throw new Error('Failed to set PIN');
@@ -193,13 +179,11 @@ export const setPIN = async (pin: string): Promise<void> => {
  */
 export const validatePIN = async (pin: string): Promise<boolean> => {
   try {
-    console.log('[pinService] Validating PIN (length:', pin.length, ')');
     let storedHash = await SecureStore.getItemAsync(PIN_KEY);
     let storedSalt = await SecureStore.getItemAsync(PIN_SALT_KEY);
 
     // If not in local storage, try to sync from Firestore
     if (!storedHash || !storedSalt) {
-      console.log('[pinService] PIN not in local storage, syncing from Firestore...');
       const synced = await syncPINFromFirestore();
       if (synced) {
         storedHash = await SecureStore.getItemAsync(PIN_KEY);
@@ -208,14 +192,12 @@ export const validatePIN = async (pin: string): Promise<boolean> => {
     }
 
     if (!storedHash || !storedSalt) {
-      console.log('[pinService] No stored PIN found');
       return false;
     }
 
     // Hash the provided PIN with stored salt
     const providedHash = await hashPIN(pin, storedSalt);
     const isValid = providedHash === storedHash;
-    console.log('[pinService] PIN validation result:', isValid);
 
     // Compare hashes
     return isValid;

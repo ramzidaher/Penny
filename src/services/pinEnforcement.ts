@@ -9,10 +9,8 @@ const PIN_SETUP_REQUIRED_KEY = 'pin_setup_required';
  */
 export const isPINSetupRequired = async (): Promise<boolean> => {
   try {
-    console.log('[pinEnforcement] Checking if PIN setup is required...');
     const hasPin = await hasPIN();
     const required = !hasPin;
-    console.log('[pinEnforcement] PIN setup required:', required, '(hasPin:', hasPin, ')');
     // If PIN doesn't exist, setup is required
     return required;
   } catch (error) {
