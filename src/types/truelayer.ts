@@ -91,6 +91,7 @@ export interface TrueLayerConnection {
   refreshToken: string;
   expiresAt: number;
   createdAt: string;
+  providerName?: string;
 }
 
 

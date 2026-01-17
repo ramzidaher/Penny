@@ -693,14 +693,14 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
         // If updates don't specify subscriptionId/debtId, include them from local
         // If updates explicitly set them to null/undefined, respect that
         subscriptionId: updates.subscriptionId !== undefined 
-          ? (updates.subscriptionId || null) 
-          : (localTransaction.subscriptionId || null),
+          ? (updates.subscriptionId || undefined) 
+          : (localTransaction.subscriptionId || undefined),
         debtId: updates.debtId !== undefined
-          ? (updates.debtId || null)
-          : (localTransaction.debtId || null),
+          ? (updates.debtId || undefined)
+          : (localTransaction.debtId || undefined),
         budgetId: updates.budgetId !== undefined
-          ? (updates.budgetId || null)
-          : (localTransaction.budgetId || null),
+          ? (updates.budgetId || undefined)
+          : (localTransaction.budgetId || undefined),
       };
       
       // Use the existing ID when creating
@@ -1870,14 +1870,86 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
     // Fetch accounts from TrueLayer
     console.log(`[syncTrueLayerAccounts] 🔵 Fetching accounts from TrueLayer for connection: ${connectionId}`);
     
-    // Log connectionId flow for debugging token/code reuse
+    // CRITICAL: Validate connectionId format before proceeding
+    if (!connectionId || !connectionId.startsWith('tl_')) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: Invalid connectionId format:', {
+        connectionId,
+        isValid: connectionId?.startsWith('tl_'),
+      });
+      throw new Error(`Invalid connectionId format: ${connectionId}`);
+    }
+    
+    // CRITICAL: Verify we have a token for this connectionId before fetching accounts
+    const { getTokens } = await import('./truelayerService');
+    const tokenBeforeFetch = await getTokens(connectionId);
+    if (!tokenBeforeFetch) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: No token found for connectionId before fetching accounts:', {
+        connectionId,
+      });
+      throw new Error(`No token found for connection ${connectionId}. Please reconnect your account.`);
+    }
+    
+    // CRITICAL: Verify the token's connectionId matches
+    if (tokenBeforeFetch.id !== connectionId) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: Token connectionId mismatch:', {
+        requestedConnectionId: connectionId,
+        tokenConnectionId: tokenBeforeFetch.id,
+        accessTokenPrefix: tokenBeforeFetch.accessToken.substring(0, 30) + '...',
+      });
+      throw new Error(`Token connectionId mismatch: expected ${connectionId}, got ${tokenBeforeFetch.id}`);
+    }
+    
+    // CRITICAL: Log the token we're about to use
     console.log('[syncTrueLayerAccounts] About to call getTrueLayerAccounts:', {
       connectionId,
+      tokenConnectionId: tokenBeforeFetch.id,
+      connectionIdsMatch: tokenBeforeFetch.id === connectionId,
+      accessTokenPrefix: tokenBeforeFetch.accessToken.substring(0, 30) + '...',
+      accessTokenLength: tokenBeforeFetch.accessToken.length,
     });
+    
+    // CRITICAL: Store the token prefix for comparison after API call
+    const tokenPrefixBefore = tokenBeforeFetch.accessToken.substring(0, 30);
     
     const accountsResponse = await getTrueLayerAccounts(connectionId);
     const truelayerAccounts = accountsResponse.results;
     console.log(`[syncTrueLayerAccounts] 🔵 TrueLayer API returned ${truelayerAccounts.length} account(s) for connection ${connectionId}`);
+    
+    // CRITICAL: Log the actual account IDs returned by TrueLayer to detect duplicates
+    if (truelayerAccounts.length > 0) {
+      console.log(`[syncTrueLayerAccounts] 📋 TrueLayer account IDs for connection ${connectionId}:`, {
+        connectionId,
+        accountIds: truelayerAccounts.map(acc => ({
+          accountId: acc.account_id,
+          name: acc.display_name,
+          provider: acc.provider?.display_name || 'unknown',
+        })),
+      });
+    }
+    
+    // CRITICAL: Verify the token we used is still the same after the API call
+    const tokenAfterFetch = await getTokens(connectionId);
+    if (!tokenAfterFetch) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: Token not found after API call!', {
+        connectionId,
+      });
+    } else if (tokenAfterFetch.id !== connectionId) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: Token connectionId changed after API call!', {
+        connectionId,
+        tokenConnectionId: tokenAfterFetch.id,
+      });
+    } else if (tokenAfterFetch.accessToken !== tokenBeforeFetch.accessToken) {
+      console.error('[syncTrueLayerAccounts] CRITICAL: Token changed during API call!', {
+        connectionId,
+        tokenBeforePrefix: tokenBeforeFetch.accessToken.substring(0, 30) + '...',
+        tokenAfterPrefix: tokenAfterFetch.accessToken.substring(0, 30) + '...',
+      });
+    } else {
+      console.log('[syncTrueLayerAccounts] ✅ Token verified unchanged after API call:', {
+        connectionId,
+        tokenPrefix: tokenPrefixBefore + '...',
+      });
+    }
 
     if (truelayerAccounts.length === 0) {
       console.log('No accounts found in TrueLayer connection');
@@ -1989,8 +2061,22 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
           await cloudUpdateAccount(existingAccount.id, accountData);
           console.log(`[syncTrueLayerAccounts] Successfully updated account: ${existingAccount.id}`);
         } else {
-          // Create new account (old behavior - allows accounts even if they exist in other connections)
-          // This allows users to connect different banks, even if TrueLayer returns the same account IDs
+          // CRITICAL: Check if this account already exists in a DIFFERENT connection
+          // This prevents duplicate accounts when TrueLayer returns the same account IDs for different connections
+          const duplicateAccount = existingAccounts.find(
+            acc => acc.truelayerAccountId === tlAccount.account_id && 
+                   acc.truelayerConnectionId !== connectionId
+          );
+          
+          if (duplicateAccount) {
+            console.warn(`[syncTrueLayerAccounts] ⚠️ SKIPPING duplicate account: ${tlAccount.display_name} (${tlAccount.account_id})`);
+            console.warn(`[syncTrueLayerAccounts]   This account already exists in connection ${duplicateAccount.truelayerConnectionId}`);
+            console.warn(`[syncTrueLayerAccounts]   TrueLayer returned the same account ID for connection ${connectionId}, which suggests the same bank account was connected multiple times`);
+            console.warn(`[syncTrueLayerAccounts]   Skipping to prevent duplicate accounts in the UI`);
+            continue; // Skip creating this account
+          }
+          
+          // Create new account - no duplicate found across connections
           console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}, connection: ${connectionId}`);
           
           // #region agent log

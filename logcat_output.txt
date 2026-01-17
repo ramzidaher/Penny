@@ -1,0 +1,1156 @@
+01-17 01:42:54.150 13815 14425 I clouddpc: [EventLogManagerImpl.kt:logMessage:2067] Event logged: PolicyUpdateMetric details: [flowId=bb617790a0dc066d784d47b5776991a84ce360e3e03792d9e581551d141ec6d1, eventType=COMPLIANCE_FLOW_START] metadata: [isNetworkConnected=true]
+01-17 01:43:03.695 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:03.695 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:03.882 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:03.915 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:03.915 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:03.915 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:03.916 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:03.916 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:04.978 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:04.978 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:04.979 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:04.985 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.002 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.002 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.003 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.003 28247 28947 I ReactNativeJS: '[syncTrueLayerAccounts] About to call getTrueLayerAccounts:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.003 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.003 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.003 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:43:05.003 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:43:05.003 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.003 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.011 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.011 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.011 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.176 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.176 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.176 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.176 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.176 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:05.176 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.177 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.258 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.258 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:43:05.258 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:43:05.258 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.258 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.293 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.293 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.316 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.316 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.316 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.316 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.316 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.316 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.322 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.322 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.322 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.322 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.322 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:05.322 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.323 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.327 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.327 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.443 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.443 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.444 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.466 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.466 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.466 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.466 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.466 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.466 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.466 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.471 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.471 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.471 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.476 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.476 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.476 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.476 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.476 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.477 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.542 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.544 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.561 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.561 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.561 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.561 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.561 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.561 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.567 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.567 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.568 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.568 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.568 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.568 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.568 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.584 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.584 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:43:05.584 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:43:05.584 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.585 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.717 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.718 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.718 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.740 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.740 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.740 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.740 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.745 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.745 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.745 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.745 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.746 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.746 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768613686883_r7s5ckair:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: '[syncTrueLayerAccounts] 📋 TrueLayer account IDs for connection tl_1768613686883_r7s5ckair:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.749 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.750 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.750 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.750 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:05.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.751 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.817 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.818 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.818 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.842 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.842 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.842 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.842 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.848 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768613686883_r7s5ckair:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.848 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:05.848 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:05.849 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.849 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.849 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.849 28247 28947 I ReactNativeJS: '[syncTrueLayerAccounts] ✅ Token verified unchanged after API call:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.856 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.856 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.856 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.856 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.856 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.856 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.953 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:05.953 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.953 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:05.953 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.953 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.954 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.954 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.959 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.959 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.980 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.980 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.980 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.980 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.980 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.980 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.981 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.985 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.985 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.985 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.985 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.985 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.986 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.990 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.990 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:05.991 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:05.991 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.991 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:05.991 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.067 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.068 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.068 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.090 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.090 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:06.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.095 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.095 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.095 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.095 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.095 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.095 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:06.095 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.100 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.100 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.100 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.100 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.100 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.100 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:06.100 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.192 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.194 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.194 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.215 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.215 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.215 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.217 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.222 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.222 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.222 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.222 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.226 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768613686883_r7s5ckair:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.227 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:06.227 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768613686883_r7s5ckair:
+01-17 01:43:06.228 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.228 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:06.229 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:06.229 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.392 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.393 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.394 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.394 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.494 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.495 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.515 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.515 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.515 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.521 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.521 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.522 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.582 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.582 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.584 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.584 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.667 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:07.668 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.668 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.715 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.715 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.717 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.739 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.739 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.740 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.744 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.744 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.745 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.750 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.750 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.750 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.751 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:07.752 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.752 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.752 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:07.752 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.752 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.840 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.841 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.841 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.864 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.864 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.864 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.864 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.864 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.864 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.864 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.869 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.869 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.869 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.869 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.869 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.869 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.875 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.875 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.875 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.875 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.875 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.875 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.956 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.957 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.958 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.984 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.984 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.984 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.984 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.992 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.992 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.992 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.993 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.993 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.993 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.993 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.997 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:07.997 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.997 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.997 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.997 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.998 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.998 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:07.998 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:07.998 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:07.998 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.089 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.091 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.111 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.112 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.112 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.118 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.118 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.118 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.118 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.118 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.118 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.123 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.123 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.124 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.124 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.204 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.219 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.219 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.219 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.219 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.219 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.219 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.219 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.289 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.303 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.303 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.303 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.303 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.335 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:08.335 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.336 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.455 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.475 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.475 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.475 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.476 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.476 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.476 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.556 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.574 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.574 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.574 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.574 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.574 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.574 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.574 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.702 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:43:08.702 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:43:08.768 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.785 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.785 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.785 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.786 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.792 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:08.792 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.792 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.821 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.822 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.913 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.915 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.933 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.933 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.933 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.933 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.933 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:08.933 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.939 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:08.939 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:08.939 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.005 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.019 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.019 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.019 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.019 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.019 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.019 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.019 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.129 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.145 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.145 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.145 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.145 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.390 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.390 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.395 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.395 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.396 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.396 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.478 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.479 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.480 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.506 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.506 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.506 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.510 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.510 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.511 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.516 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.516 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.516 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.638 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:09.638 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.639 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.679 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.679 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.680 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.680 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.776 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.776 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.777 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.805 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.805 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.805 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.805 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.805 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.805 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.811 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.811 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.811 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.811 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:09.811 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.811 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.818 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.818 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.818 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.819 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:09.819 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.819 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.895 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.895 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.896 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.918 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.918 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.919 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.919 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.919 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.919 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.919 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.925 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.925 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.925 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.925 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.925 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.925 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.931 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.931 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:09.931 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:09.931 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.931 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:09.932 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.028 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.029 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.029 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.058 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.058 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.059 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.059 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.064 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.064 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.064 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.064 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.064 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.064 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.064 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.069 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:10.069 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.070 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.070 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.070 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.162 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.162 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.186 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.186 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.186 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.186 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.192 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.192 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.192 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.192 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.192 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.192 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.198 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.198 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.198 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.198 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.286 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.301 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.301 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.302 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.302 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.302 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.302 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.302 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.370 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.401 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.401 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.401 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.401 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.424 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair', retryCount: 0 }
+01-17 01:43:10.426 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.426 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.520 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.536 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.536 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:43:10.536 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.536 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.536 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.536 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.652 28247 28947 W ReactNativeJS: '[truelayerService] getTokensFromFirestore: Token document not found:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:10.653 28247 28947 W ReactNativeJS: '[truelayerService] getTokens: Token not found for connectionId:', 'tl_1768613686883_r7s5ckair'
+01-17 01:43:10.653 28247 28947 E ReactNativeJS: '[truelayerService] getValidAccessToken: Token not found for connectionId:', { connectionId: 'tl_1768613686883_r7s5ckair' }
+01-17 01:43:10.656 28247 28950 E unknown:ReactNative: console.error: [truelayerService] getValidAccessToken: Token not found for connectionId: {"connectionId":"tl_1768613686883_r7s5ckair"}, stack:
+01-17 01:43:10.735 28247 28947 I ReactNativeJS: '[truelayerService] clearTokens: Deleted tokens from Firestore:', { connectionId: 'tl_1768613686883_r7s5ckair',
+01-17 01:43:14.506 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth flow started, marking as active
+01-17 01:43:14.506 28247 28947 I ReactNativeJS: [ConnectBankScreen] Opening OAuth URL...
+01-17 01:43:14.511 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:43:14.671 28247 28947 I ReactNativeJS: [truelayerService] Opening OAuth URL in WebBrowser (Android)
+01-17 01:43:14.671 28247 28947 I ReactNativeJS: '[truelayerService] Redirect URI:', 'penny://truelayer-callback'
+01-17 01:43:14.671 28247 28947 I ReactNativeJS: [truelayerService] OAuth flow marked as active - app should not reload
+01-17 01:43:37.051 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:43:37.051 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:43:37.052 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: '162913D452C3C470675F...',
+01-17 01:43:37.053 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code check: Not processed before
+01-17 01:43:37.053 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Code is already being processed, skipping duplicate call', { processingRef: false,
+01-17 01:43:37.098 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned, result type:', 'success'
+01-17 01:43:37.098 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned success with URL:', 'penny://truelayer-callback?code=162913D452C3C470675F2B0A6E490FC732830786F6EAABA6FBFDE2964ED9602F&scope=info%20accounts%20balance%20cards%20transactions%20direct_debits%20standing_orders%20offline_access&state=mkhn86dm_ytl8e3y56fh_5xpeq4dbtyi_mc11z2gxj7g'
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth URL opened, result:', 'received'
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: '[ConnectBankScreen] WebBrowser returned code', { codePrefix: '162913D452C3C470675F...',
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: [ConnectBankScreen] Clearing processing flags before handling WebBrowser result
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling handleOAuthCallback from WebBrowser result
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: '[ConnectBankScreen] handleOAuthCallback called', { codePrefix: '162913D452C3C470675F...',
+01-17 01:43:37.099 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processing to prevent duplicates
+01-17 01:43:37.100 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Starting OAuth callback processing', { codePrefix: '162913D452C3C470675F...',
+01-17 01:43:37.100 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling exchangeCodeForTokens...
+01-17 01:43:37.100 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'used_oauth_code_162913D452C3C470675F2B0A6E490FC732830786F6EAABA6FBFDE2964ED9602F',
+01-17 01:43:37.104 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'used_oauth_code_162913D452C3C470675F2B0A6E490FC732830786F6EAABA6FBFDE2964ED9602F',
+01-17 01:43:37.104 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'oauth_state_mkhn86dm_ytl8e3y56fh_5xpeq4dbtyi_mc11z2gxj7g',
+01-17 01:43:37.134 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:43:37.134 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:43:37.134 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:43:37.134 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: '162913D452C3C470675F...',
+01-17 01:43:37.134 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code is currently being processed, skipping duplicate call
+01-17 01:43:37.170 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'oauth_state_mkhn86dm_ytl8e3y56fh_5xpeq4dbtyi_mc11z2gxj7g',
+01-17 01:43:37.186 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Successfully decrypted token for key:', 'oauth_state_mkhn86dm_ytl8e3y56fh_5xpeq4dbtyi_mc11z2gxj7g'
+01-17 01:43:39.117 28247 28947 I ReactNativeJS: [truelayerService] Rate limit hit, retrying in 2000ms (attempt 1/3)
+01-17 01:43:41.131 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'used_oauth_code_162913D452C3C470675F2B0A6E490FC732830786F6EAABA6FBFDE2964ED9602F',
+01-17 01:43:41.132 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'used_oauth_code_162913D452C3C470675F2B0A6E490FC732830786F6EAABA6FBFDE2964ED9602F',
+01-17 01:43:42.220 28247 28947 E ReactNativeJS: '[ConnectBankScreen] Error handling OAuth callback:', [Error: Code has already been used]
+01-17 01:43:42.222 28247 28947 E ReactNativeJS: '[ConnectBankScreen] Error details:', { message: 'Code has already been used',
+01-17 01:43:42.224 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Code/state error - checking if connection was successful FIRST', { errorType: 'code_already_used' }
+01-17 01:43:42.232 28247 28950 E unknown:ReactNative: console.error: [ConnectBankScreen] Error handling OAuth callback: Error: Code has already been used, stack:
+01-17 01:43:42.233 28247 28950 E unknown:ReactNative: console.error: [ConnectBankScreen] Error details: {"message":"Code has already been used","stack":"Error: Code has already been used\n    at ?anon_0_ (address at index.android.bundle:1:1976566)\n    at...(truncated)..."}, stack:
+01-17 01:43:42.381 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processed (failed) to prevent retry loop
+01-17 01:43:42.393 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth callback processing finished, cleaning up
+01-17 01:43:42.413 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Already navigated or navigating away, skipping OAuth callback processing', { navigatingAway: true, hasNavigated: false }
+01-17 01:43:42.449 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:43:43.402 28247 28947 I ReactNativeJS: [ConnectBankScreen] Clearing OAuth flow flag
+01-17 01:43:56.083 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:43:56.098 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:43:56.098 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:01.594 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:01.608 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:01.608 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:01.891 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:06.465 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:06.465 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:09.954 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth flow started, marking as active
+01-17 01:44:09.954 28247 28947 I ReactNativeJS: [ConnectBankScreen] Opening OAuth URL...
+01-17 01:44:09.965 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:10.153 28247 28947 I ReactNativeJS: [truelayerService] Opening OAuth URL in WebBrowser (Android)
+01-17 01:44:10.154 28247 28947 I ReactNativeJS: '[truelayerService] Redirect URI:', 'penny://truelayer-callback'
+01-17 01:44:10.154 28247 28947 I ReactNativeJS: [truelayerService] OAuth flow marked as active - app should not reload
+01-17 01:44:32.947 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:32.947 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:44:32.947 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:32.947 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code check: Not processed before
+01-17 01:44:32.947 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Code is already being processed, skipping duplicate call', { processingRef: false,
+01-17 01:44:32.982 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned, result type:', 'success'
+01-17 01:44:32.982 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned success with URL:', 'penny://truelayer-callback?code=4ED301DB5546BAD3E6D63B1141D2962455B2FA5F9F52B8F3DC5E06FF0CF682F4&scope=info%20accounts%20balance%20cards%20transactions%20direct_debits%20standing_orders%20offline_access&state=mkhn9d5u_pd1uiy8j19s_c8z6kptq4oa_lpg5lbiwhdd'
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth URL opened, result:', 'received'
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: '[ConnectBankScreen] WebBrowser returned code', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: [ConnectBankScreen] Clearing processing flags before handling WebBrowser result
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling handleOAuthCallback from WebBrowser result
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: '[ConnectBankScreen] handleOAuthCallback called', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processing to prevent duplicates
+01-17 01:44:32.987 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Starting OAuth callback processing', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:32.988 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling exchangeCodeForTokens...
+01-17 01:44:32.988 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'used_oauth_code_4ED301DB5546BAD3E6D63B1141D2962455B2FA5F9F52B8F3DC5E06FF0CF682F4',
+01-17 01:44:33.020 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:33.020 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:33.020 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:44:33.021 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:33.021 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code is currently being processed, skipping duplicate call
+01-17 01:44:33.043 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'used_oauth_code_4ED301DB5546BAD3E6D63B1141D2962455B2FA5F9F52B8F3DC5E06FF0CF682F4',
+01-17 01:44:33.043 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'oauth_state_mkhn9d5u_pd1uiy8j19s_c8z6kptq4oa_lpg5lbiwhdd',
+01-17 01:44:33.056 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'oauth_state_mkhn9d5u_pd1uiy8j19s_c8z6kptq4oa_lpg5lbiwhdd',
+01-17 01:44:33.066 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Successfully decrypted token for key:', 'oauth_state_mkhn9d5u_pd1uiy8j19s_c8z6kptq4oa_lpg5lbiwhdd'
+01-17 01:44:35.344 28247 28947 I ReactNativeJS: '[truelayerService] Token exchange result:', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:35.344 28247 28947 I ReactNativeJS:   connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.484 28247 28947 I ReactNativeJS: '[truelayerService] storeTokensInFirestore: Stored and verified tokens in Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.484 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:36.484 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:36.486 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.592 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.614 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.614 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:36.614 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.614 28247 28947 I ReactNativeJS: '[truelayerService] storeTokens: Token storage verified:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.636 28247 28947 I ReactNativeJS: '[truelayerService] exchangeCodeForTokens: Token exchange completed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.729 28247 28947 I ReactNativeJS: '[ConnectBankScreen] exchangeCodeForTokens succeeded', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:36.729 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Token exchange details:', { codePrefix: '4ED301DB5546BAD3E6D6...',
+01-17 01:44:36.729 28247 28947 I ReactNativeJS:   connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.729 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processed after successful token exchange
+01-17 01:44:36.729 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: Clearing URL params immediately to prevent remount race condition
+01-17 01:44:36.734 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: URL params cleared
+01-17 01:44:36.734 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Fetching provider name for connection:', 'tl_1768614275334_nt6g6zlml'
+01-17 01:44:36.735 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Fetching provider name for connection:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:36.735 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.735 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:44:36.735 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:44:36.735 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:36.762 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:36.817 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.900 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.924 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml', retryCount: 0 }
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:36.924 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.008 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:37.008 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.075 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.077 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.110 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.110 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.110 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.111 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:37.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:37.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.117 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.117 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.118 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.208 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.235 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.235 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.235 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.235 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.235 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.235 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:37.236 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.349 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.369 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.369 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.369 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.369 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.369 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:37.370 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.465 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.478 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.478 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:37.478 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.478 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.484 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614275334_nt6g6zlml:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.484 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:37.484 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:37.485 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Found provider name:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.485 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER',
+01-17 01:44:37.610 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Successfully stored provider name:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.610 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER' }
+01-17 01:44:37.610 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Provider name fetched and stored:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:37.610 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER' }
+01-17 01:44:37.610 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: Waiting 500ms for Firestore to propagate providerName
+01-17 01:44:38.223 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:38.223 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.314 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.331 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.331 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:38.331 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.333 28247 28947 I ReactNativeJS: [ConnectBankScreen] Cleared connecting state and processing flags after navigation
+01-17 01:44:38.333 28247 28947 I ReactNativeJS: [ConnectBankScreen] Fetching transactions in background...
+01-17 01:44:38.344 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth callback processing finished, cleaning up
+01-17 01:44:38.356 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Already navigated or navigating away, skipping OAuth callback processing', { navigatingAway: true, hasNavigated: true }
+01-17 01:44:38.573 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:38.573 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.689 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.715 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.715 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:38.715 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.848 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.848 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:44:38.848 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:44:38.848 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:38.849 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.955 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.969 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.969 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:38.970 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.970 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:38.970 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml', retryCount: 0 }
+01-17 01:44:38.970 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:38.970 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.072 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.092 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.092 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:39.092 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.092 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:39.092 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:39.092 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.205 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.221 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.221 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:39.221 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.221 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.221 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:39.221 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:39.221 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.305 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.326 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.326 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:39.326 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.326 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:39.326 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:39.327 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.087 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.107 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.107 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:40.108 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.108 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.113 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614275334_nt6g6zlml:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.113 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:40.114 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:40.255 28247 28947 I ReactNativeJS: [ConnectBankScreen] Background transaction fetch completed
+01-17 01:44:40.362 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.363 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.487 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:40.488 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:40.543 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.563 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.563 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:40.563 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.645 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.645 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.721 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.721 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:44:40.721 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:44:40.721 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.722 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.777 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.778 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.797 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.797 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:40.797 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.809 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.809 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:40.809 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.809 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.810 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml', retryCount: 0 }
+01-17 01:44:40.810 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.810 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.927 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.941 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.941 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:40.941 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:40.941 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.941 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:40.942 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.069 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.083 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.083 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:41.083 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.083 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.083 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:41.083 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:41.084 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.177 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.197 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.197 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:41.197 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.197 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.198 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:41.198 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.285 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.304 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.304 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:41.304 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.304 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.308 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614275334_nt6g6zlml:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:41.308 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:41.308 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:44:41.343 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth flow flag cleared after delay (prevents navigation interference)
+01-17 01:44:41.602 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth flow started, marking as active
+01-17 01:44:41.602 28247 28947 I ReactNativeJS: [ConnectBankScreen] Opening OAuth URL...
+01-17 01:44:41.608 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:44:41.777 28247 28947 I ReactNativeJS: [truelayerService] Opening OAuth URL in WebBrowser (Android)
+01-17 01:44:41.777 28247 28947 I ReactNativeJS: '[truelayerService] Redirect URI:', 'penny://truelayer-callback'
+01-17 01:44:41.777 28247 28947 I ReactNativeJS: [truelayerService] OAuth flow marked as active - app should not reload
+01-17 01:44:56.288 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:56.288 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:44:56.289 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:56.289 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code check: Not processed before
+01-17 01:44:56.289 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Code is already being processed, skipping duplicate call', { processingRef: false,
+01-17 01:44:56.379 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned, result type:', 'success'
+01-17 01:44:56.379 28247 28947 I ReactNativeJS: '[truelayerService] WebBrowser returned success with URL:', 'penny://truelayer-callback?code=DF8B575B6E4424FDE13D2EDEAFA54017D8BA39E8B9CB17387D16DA8B72FDAE4C&scope=info%20accounts%20balance%20cards%20transactions%20direct_debits%20standing_orders%20offline_access&state=mkhna1ky_w3w799i80gr_2n0xvtir938_2ihvyq98mce'
+01-17 01:44:56.381 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth URL opened, result:', 'received'
+01-17 01:44:56.381 28247 28947 I ReactNativeJS: '[ConnectBankScreen] WebBrowser returned code', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:56.381 28247 28947 I ReactNativeJS: [ConnectBankScreen] Clearing processing flags before handling WebBrowser result
+01-17 01:44:56.381 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling handleOAuthCallback from WebBrowser result
+01-17 01:44:56.384 28247 28947 I ReactNativeJS: '[ConnectBankScreen] handleOAuthCallback called', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:56.384 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processing to prevent duplicates
+01-17 01:44:56.384 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Starting OAuth callback processing', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:56.384 28247 28947 I ReactNativeJS: [ConnectBankScreen] Calling exchangeCodeForTokens...
+01-17 01:44:56.384 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'used_oauth_code_DF8B575B6E4424FDE13D2EDEAFA54017D8BA39E8B9CB17387D16DA8B72FDAE4C',
+01-17 01:44:56.421 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:56.421 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:44:56.421 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: true,
+01-17 01:44:56.421 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth code received:', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:56.421 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code is currently being processed, skipping duplicate call
+01-17 01:44:56.472 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'used_oauth_code_DF8B575B6E4424FDE13D2EDEAFA54017D8BA39E8B9CB17387D16DA8B72FDAE4C',
+01-17 01:44:56.472 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Requesting key from SecureStore:', { key: 'oauth_state_mkhna1ky_w3w799i80gr_2n0xvtir938_2ihvyq98mce',
+01-17 01:44:56.494 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: SecureStore returned:', { key: 'oauth_state_mkhna1ky_w3w799i80gr_2n0xvtir938_2ihvyq98mce',
+01-17 01:44:56.504 28247 28947 I ReactNativeJS: '[truelayerService] secureTokenGet: Successfully decrypted token for key:', 'oauth_state_mkhna1ky_w3w799i80gr_2n0xvtir938_2ihvyq98mce'
+01-17 01:44:56.658 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:56.658 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.661 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:56.662 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.781 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.782 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.815 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.815 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:56.815 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.822 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:56.822 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:56.822 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:58.831 28247 28947 I ReactNativeJS: '[truelayerService] Token exchange result:', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:58.831 28247 28947 I ReactNativeJS:   connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:58.921 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:44:58.922 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:59.054 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:59.078 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:59.078 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:59.078 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:44:59.497 28247 28947 I ReactNativeJS: '[truelayerService] storeTokensInFirestore: Stored and verified tokens in Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.497 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:59.498 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:44:59.499 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.620 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.643 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.643 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:59.644 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.644 28247 28947 I ReactNativeJS: '[truelayerService] storeTokens: Token storage verified:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.668 28247 28947 I ReactNativeJS: '[truelayerService] exchangeCodeForTokens: Token exchange completed:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.757 28247 28947 I ReactNativeJS: '[ConnectBankScreen] exchangeCodeForTokens succeeded', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:44:59.758 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Token exchange details:', { codePrefix: 'DF8B575B6E4424FDE13D...',
+01-17 01:44:59.758 28247 28947 I ReactNativeJS:   connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.758 28247 28947 I ReactNativeJS: [ConnectBankScreen] Code marked as processed after successful token exchange
+01-17 01:44:59.758 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: Clearing URL params immediately to prevent remount race condition
+01-17 01:44:59.762 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: URL params cleared
+01-17 01:44:59.762 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Fetching provider name for connection:', 'tl_1768614298721_33u1n92yr'
+01-17 01:44:59.764 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Fetching provider name for connection:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:44:59.764 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.764 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:44:59.764 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:44:59.764 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:44:59.792 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen
+01-17 01:44:59.854 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.961 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.978 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.978 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:44:59.978 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.978 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:44:59.978 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr', retryCount: 0 }
+01-17 01:44:59.978 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:44:59.979 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.063 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:00.064 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:00.137 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.161 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.161 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:00.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:00.161 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.245 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:00.265 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:00.265 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.266 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:00.266 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:00.266 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.288 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.289 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.312 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.312 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.312 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.312 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.312 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.313 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:00.313 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.320 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.320 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.321 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.461 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.485 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.485 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.485 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.486 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.486 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:00.486 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.603 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.621 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.621 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:00.622 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.622 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.627 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614298721_33u1n92yr:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.627 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614298721_33u1n92yr:
+01-17 01:45:00.627 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614298721_33u1n92yr:
+01-17 01:45:00.628 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Found provider name:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.628 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER',
+01-17 01:45:00.739 28247 28947 I ReactNativeJS: '[truelayerService] fetchAndStoreProviderName: Successfully stored provider name:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.739 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER' }
+01-17 01:45:00.739 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Provider name fetched and stored:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:00.739 28247 28947 I ReactNativeJS:   providerName: 'SANTANDER' }
+01-17 01:45:00.740 28247 28947 I ReactNativeJS: [ConnectBankScreen] Android: Waiting 500ms for Firestore to propagate providerName
+01-17 01:45:02.092 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:02.093 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.213 28247 28947 I ReactNativeJS: [ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen
+01-17 01:45:02.213 28247 28947 I ReactNativeJS: '[ConnectBankScreen] OAuth callback effect triggered', { hasCode: false,
+01-17 01:45:02.273 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.297 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.297 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.297 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.298 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:02.298 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.341 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:02.342 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.400 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.415 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.415 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.416 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.416 28247 28947 I ReactNativeJS: [ConnectBankScreen] Cleared connecting state and processing flags after navigation
+01-17 01:45:02.417 28247 28947 I ReactNativeJS: [ConnectBankScreen] Fetching transactions in background...
+01-17 01:45:02.417 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth callback processing finished, cleaning up
+01-17 01:45:02.434 28247 28947 I ReactNativeJS: '[ConnectBankScreen] Already navigated or navigating away, skipping OAuth callback processing', { navigatingAway: true, hasNavigated: true }
+01-17 01:45:02.508 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.523 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.523 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.523 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.524 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:02.524 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.575 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:02.575 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.616 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.630 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.630 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.631 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.742 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.764 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.764 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.764 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:02.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:02.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.891 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.914 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:02.914 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:02.914 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.058 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.058 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:45:03.058 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:45:03.058 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.059 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.157 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.182 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.182 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.182 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.182 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.183 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml', retryCount: 0 }
+01-17 01:45:03.183 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.183 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.316 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.341 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.341 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.341 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.341 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.342 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.342 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.458 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.481 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.481 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.482 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.482 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.482 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.482 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.482 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.590 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.615 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.615 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.616 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.616 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.616 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:03.616 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.716 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.738 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.738 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.738 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.739 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.745 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614275334_nt6g6zlml:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:03.745 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:45:03.745 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:45:03.745 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.745 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:45:03.745 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:45:03.745 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:03.746 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.973 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.994 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.994 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:03.994 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.994 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:03.994 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr', retryCount: 0 }
+01-17 01:45:03.994 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:03.995 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.090 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.111 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.111 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:04.111 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:04.112 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.206 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.231 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.231 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.231 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.231 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.231 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.231 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:04.231 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.390 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.414 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.414 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.414 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.415 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.415 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:04.415 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.506 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.528 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.528 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.528 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.528 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.535 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614298721_33u1n92yr:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.535 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614298721_33u1n92yr:
+01-17 01:45:04.535 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614298721_33u1n92yr:
+01-17 01:45:04.631 28247 28947 I ReactNativeJS: [ConnectBankScreen] Background transaction fetch completed
+01-17 01:45:04.772 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:04.773 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:04.872 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:04.895 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:04.895 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:04.895 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:04.896 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:04.897 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:04.997 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:05.020 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:05.020 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.020 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:05.155 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.155 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:45:05.155 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:45:05.155 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.157 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.282 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.304 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.304 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.305 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.305 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.305 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml', retryCount: 0 }
+01-17 01:45:05.305 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.305 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.446 28247 28947 I ReactNativeJS: [ConnectBankScreen] OAuth flow flag cleared after delay (prevents navigation interference)
+01-17 01:45:05.446 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.459 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.459 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.459 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.459 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.459 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.460 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.571 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.586 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.586 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.586 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.586 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.586 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.586 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.586 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.721 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.765 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.765 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:05.765 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.863 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.881 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.881 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:05.881 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.881 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Making API call with token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.885 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: TrueLayer API response for connection tl_1768614275334_nt6g6zlml:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:05.885 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 1 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:45:05.885 28247 28947 I ReactNativeJS: [truelayerService] getAccounts: Account 2 from TrueLayer for connection tl_1768614275334_nt6g6zlml:
+01-17 01:45:05.885 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Called with connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:05.885 28247 28947 I ReactNativeJS:   connectionIdType: 'string',
+01-17 01:45:05.885 28247 28947 I ReactNativeJS:   connectionIdLength: 26 }
+01-17 01:45:05.885 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:05.886 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:05.996 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.013 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.013 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.014 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.014 28247 28947 I ReactNativeJS: '[truelayerService] getAccounts: Token verification passed:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.014 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr', retryCount: 0 }
+01-17 01:45:06.014 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:06.014 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.104 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.127 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.127 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.127 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.128 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Retrieving token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:06.128 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:06.128 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.229 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.246 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.246 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.246 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.247 28247 28947 I ReactNativeJS: '[truelayerService] getValidAccessToken: Got token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.247 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.247 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:06.247 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.287 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614275334_nt6g6zlml' }
+01-17 01:45:06.288 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:06.345 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.364 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.364 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.364 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.364 28247 28947 I ReactNativeJS: '[truelayerService] makeApiCallWithRetry: Got token for connectionId:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.364 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-17 01:45:06.364 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Querying Firestore for token:', { connectionId: 'tl_1768614298721_33u1n92yr',
+01-17 01:45:06.471 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Document retrieved:', { requestedConnectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:06.494 28247 28947 I ReactNativeJS: '[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:06.494 28247 28947 I ReactNativeJS:   connectionIdsMatch: true,
+01-17 01:45:06.495 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Token retrieved successfully:', { connectionId: 'tl_1768614275334_nt6g6zlml',
+01-17 01:45:06.496 28247 28947 I ReactNativeJS: '[truelayerService] getTokens: Retrieving tokens from Firestore:', { connectionId: 'tl_1768614298721_33u1n92yr' }
+01-

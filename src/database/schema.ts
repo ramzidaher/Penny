@@ -12,6 +12,7 @@ export interface Account {
   // TrueLayer-specific fields
   truelayerConnectionId?: string; // ID to track which TrueLayer connection
   truelayerAccountId?: string; // TrueLayer's account ID
+  truelayerProviderName?: string; // Provider name from TrueLayer (e.g., "SANTANDER", "HSBC")
   isSynced?: boolean; // Whether account is synced from TrueLayer
   lastSyncedAt?: string; // Last sync timestamp
   truelayerAccountType?: string; // Account type from TrueLayer (savings, current, etc.)

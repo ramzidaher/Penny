@@ -17,10 +17,11 @@ This finance application implements finance-grade security measures following GD
 
 ### Token Storage
 
-- **OAuth Tokens**: Stored exclusively in SecureStore (encrypted keychain/keystore)
-- **Additional Encryption Layer**: Tokens are encrypted with device-specific key before storage in SecureStore (XOR cipher + base64)
-- **No AsyncStorage Fallback**: If SecureStore is unavailable, the app fails securely rather than storing tokens in unencrypted storage
-- **Connection IDs**: Non-sensitive connection ID list can use AsyncStorage fallback
+- **OAuth Tokens**: Stored in Firestore (encrypted, server-side) under `users/{userId}/tokens/{connectionId}`
+- **Additional Encryption Layer**: Tokens are encrypted with device-specific key before storage in Firestore (XOR cipher + base64)
+- **User Isolation**: Each user can only access their own tokens (enforced by Firestore security rules)
+- **Connection ID Binding**: Tokens are stored with connectionId as document ID, preventing token mix-ups
+- **Connection IDs List**: Non-sensitive connection ID list stored locally for quick access
 
 ### Data Storage Strategy
 

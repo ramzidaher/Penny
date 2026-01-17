@@ -23,9 +23,10 @@ import {
   clearTokens,
   getAccounts as getTrueLayerAccounts,
   getAccountBalance,
+  fetchAndStoreProviderName,
 } from '../services/truelayerService';
 import { TrueLayerConnection } from '../types/truelayer';
-import { syncTrueLayerAccounts } from '../database/db';
+// import { syncTrueLayerAccounts } from '../database/db'; // Disabled for debugging
 import { refreshTransactions } from '../services/transactionService';
 import { formatDistanceToNow } from 'date-fns';
 import { setOAuthFlowActive } from '../services/oAuthFlowService';
@@ -111,6 +112,33 @@ export default function ConnectBankScreen() {
     }
 
     if (code) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:114',message:'FLOW_START: OAuth code detected in URL',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,existingConnectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
+      
+      // CRITICAL: Check if code was already processed BEFORE any other checks
+      // This prevents processing on remount when URL params haven't been cleared yet
+      cleanupExpiredCodes();
+      const processedTime = processedCodesGlobal.get(code);
+      if (processedTime && (Date.now() - processedTime) < CODE_EXPIRY_MS) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:119',message:'FLOW_SKIP: Code already processed',data:{codePrefix:code.substring(0,20)+'...',processedAge:Date.now()-processedTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+        // #endregion
+        console.log('[ConnectBankScreen] Code already processed - clearing URL and skipping (likely remount race condition)', {
+          codePrefix: code.substring(0, 20) + '...',
+          processedAge: Date.now() - processedTime,
+        });
+        // Clear URL immediately to prevent further processing
+        router.replace('/(tabs)/finance/accounts' as any);
+        navigatingAwayRef.current = true;
+        hasNavigatedRef.current = true;
+        return;
+      }
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:131',message:'FLOW_OAUTH_CODE_RECEIVED: Processing new OAuth code',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,existingConnectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
+      
       console.log('[ConnectBankScreen] OAuth code received:', {
         codePrefix: code.substring(0, 20) + '...',
         codeLength: code.length,
@@ -144,7 +172,6 @@ export default function ConnectBankScreen() {
       
       // Check if we've already processed this code (global check)
       // Only reject if it was processed recently (within expiry window)
-      const processedTime = processedCodesGlobal.get(code);
       const now = Date.now();
       if (processedTime) {
         const age = now - processedTime;
@@ -265,10 +292,26 @@ export default function ConnectBankScreen() {
   const loadConnections = async () => {
     try {
       setLoading(true);
+      console.log('[ConnectBankScreen] loadConnections: Starting to load connections...');
       const conns = await getAllConnections();
+      console.log('[ConnectBankScreen] loadConnections: Loaded connections:', {
+        count: conns.length,
+        connections: conns.map(c => ({
+          id: c.id,
+          providerName: c.providerName,
+          hasProviderName: !!c.providerName,
+          createdAt: c.createdAt,
+          connectionIdToProvider: `${c.id} -> ${c.providerName || 'NO_PROVIDER'}`,
+        })),
+      });
       setConnections(conns);
+      console.log('[ConnectBankScreen] loadConnections: Connections set in state:', {
+        count: conns.length,
+        connectionIds: conns.map(c => c.id),
+        providerNames: conns.map(c => c.providerName || 'NO_PROVIDER'),
+      });
     } catch (error) {
-      console.error('Error loading connections:', error);
+      console.error('[ConnectBankScreen] loadConnections: Error loading connections:', error);
     } finally {
       setLoading(false);
     }
@@ -385,6 +428,10 @@ export default function ConnectBankScreen() {
   }, []);
 
   const handleOAuthCallback = async (code: string, state?: string, forceProcess: boolean = false) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:403',message:'FLOW_HANDLE_OAUTH_CALLBACK: Starting OAuth callback handler',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,forceProcess},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    // #endregion
+    
     console.log('[ConnectBankScreen] handleOAuthCallback called', {
       codePrefix: code.substring(0, 20) + '...',
       codeLength: code.length,
@@ -461,11 +508,17 @@ export default function ConnectBankScreen() {
       fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:468',message:'Before exchangeCodeForTokens - setting processing flags',data:{codePrefix:code.substring(0,20)+'...',processingRef:true,processingGlobal:true,connecting:true,codeAlreadyProcessed:!!processedCodesGlobal.get(code)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
       
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:480',message:'FLOW_TOKEN_EXCHANGE_START: Calling exchangeCodeForTokens',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,state},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
+      
       console.log('[ConnectBankScreen] Calling exchangeCodeForTokens...');
       const { connectionId } = await exchangeCodeForTokens(code, undefined, state);
+      
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:473',message:'After exchangeCodeForTokens - success',data:{connectionId,codePrefix:code.substring(0,20)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:481',message:'FLOW_TOKEN_EXCHANGE_END: Token exchange completed - connectionId received',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,connectionId,codeToConnectionIdMapping:`${code.substring(0,20)}... -> ${connectionId}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
       // #endregion
+      
       console.log('[ConnectBankScreen] exchangeCodeForTokens succeeded', { connectionId });
       
       // Log token exchange details for debugging token/code reuse
@@ -484,83 +537,81 @@ export default function ConnectBankScreen() {
       fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:476',message:'After successful exchange - marking code as processed',data:{codePrefix:code.substring(0,20)+'...',connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
       // #endregion
 
-      // Sync accounts
-      console.log('[ConnectBankScreen] Syncing accounts for connection:', connectionId);
-      try {
-        await syncTrueLayerAccounts(connectionId);
-        console.log('[ConnectBankScreen] Accounts synced successfully');
-        
-        // CRITICAL: Verify accounts were actually created before navigating
-        // This ensures AccountsScreen will see the new accounts
-        let accountsCreated = false;
-        let retryCount = 0;
-        const maxRetries = 5;
-        
-        while (!accountsCreated && retryCount < maxRetries) {
-          const { getAccounts } = await import('../database/db');
-          const allAccounts = await getAccounts();
-          const accountsForConnection = allAccounts.filter(
-            acc => acc.truelayerConnectionId === connectionId
-          );
-          
-          console.log(`[ConnectBankScreen] Verification attempt ${retryCount + 1}: Found ${accountsForConnection.length} account(s) for connection ${connectionId}`);
-          
-          if (accountsForConnection.length > 0) {
-            accountsCreated = true;
-            console.log('[ConnectBankScreen] ✅ Accounts verified - accounts exist in database');
-          } else {
-            retryCount++;
-            if (retryCount < maxRetries) {
-              console.log(`[ConnectBankScreen] Accounts not found yet, waiting 500ms before retry ${retryCount}/${maxRetries}...`);
-              await new Promise(resolve => setTimeout(resolve, 500));
-            }
-          }
+      // CRITICAL FIX: Clear URL params IMMEDIATELY on Android to prevent remount from processing old code
+      // Do this BEFORE async operations to prevent race condition
+      if (Platform.OS === 'android') {
+        console.log('[ConnectBankScreen] Android: Clearing URL params immediately to prevent remount race condition');
+        navigatingAwayRef.current = true;
+        hasNavigatedRef.current = true;
+        try {
+          router.replace('/(tabs)/finance/accounts' as any);
+          console.log('[ConnectBankScreen] Android: URL params cleared');
+        } catch (navError) {
+          console.error('[ConnectBankScreen] Android: Error clearing URL params:', navError);
         }
-        
-        if (!accountsCreated) {
-          console.error('[ConnectBankScreen] ⚠️ WARNING: Accounts were not created after sync. This may indicate a sync issue.');
-          console.error('[ConnectBankScreen] Connection ID:', connectionId);
-          console.error('[ConnectBankScreen] Attempting to manually verify by checking all accounts...');
-          
-          // Final check: Get all accounts and log them for debugging
-          const { getAccounts } = await import('../database/db');
-          const allAccounts = await getAccounts();
-          console.error(`[ConnectBankScreen] Total accounts in database: ${allAccounts.length}`);
-          allAccounts.forEach(acc => {
-            console.error(`[ConnectBankScreen] Account: ${acc.name} (Connection: ${acc.truelayerConnectionId || 'none'}, TL Account: ${acc.truelayerAccountId || 'none'})`);
-          });
-          
-          // Still navigate - user can manually sync later or check accounts screen
-          // Show a warning toast (useToast is already available in component scope)
-          showError('Accounts may not have synced. Please check the accounts screen and sync manually if needed.');
-        }
-      } catch (syncError: any) {
-        console.error('[ConnectBankScreen] ❌ Error syncing accounts:', syncError);
-        console.error('[ConnectBankScreen] Error details:', {
-          message: syncError?.message,
-          stack: syncError?.stack?.substring(0, 300),
-        });
-        // Still show success but log the error - connection was established even if sync failed
-        const errorMessage = syncError?.message || 'Account sync had issues, but connection was established';
-        console.warn('[ConnectBankScreen]', errorMessage);
-        // User can manually sync accounts later from the accounts screen
       }
 
+      // Fetch and store provider name (for debugging - this will help identify if the correct token is being used)
+      console.log('[ConnectBankScreen] Fetching provider name for connection:', connectionId);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:519',message:'FLOW_PROVIDER_FETCH_START: About to fetch provider name',data:{connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
+      try {
+        const providerName = await fetchAndStoreProviderName(connectionId);
+        console.log('[ConnectBankScreen] Provider name fetched and stored:', {
+          connectionId,
+          providerName,
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:525',message:'FLOW_PROVIDER_FETCH_END: Provider name fetched and stored',data:{connectionId,providerName,connectionIdToProviderMapping:`${connectionId} -> ${providerName}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+        // #endregion
+        
+        // CRITICAL: Add a small delay on Android to ensure Firestore has propagated
+        if (Platform.OS === 'android') {
+          console.log('[ConnectBankScreen] Android: Waiting 500ms for Firestore to propagate providerName');
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (providerError: any) {
+        console.error('[ConnectBankScreen] ❌ Error fetching provider name:', providerError);
+        console.error('[ConnectBankScreen] Error details:', {
+          message: providerError?.message,
+          stack: providerError?.stack?.substring(0, 300),
+        });
+        // Continue even if provider name fetch fails - connection was established
+      }
+
+      // NOTE: Account syncing is disabled for debugging - we're only fetching provider names
+      // await syncTrueLayerAccounts(connectionId);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:537',message:'FLOW_CONNECTION_LOAD_START: Loading all connections',data:{connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
+      
       // Reload connections immediately
       await loadConnections();
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:540',message:'FLOW_CONNECTION_LOAD_END: Connections loaded',data:{connectionId,connectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+      // #endregion
 
       // Mark that we're navigating away and have navigated to prevent useEffect from processing again
-      navigatingAwayRef.current = true;
-      hasNavigatedRef.current = true;
+      // Do this BEFORE async operations if on Android (already done above), otherwise do it here
+      if (Platform.OS !== 'android') {
+        navigatingAwayRef.current = true;
+        hasNavigatedRef.current = true;
+      }
       
       // Navigate immediately without code/state params to clear URL and prevent re-processing
       // Use replace to prevent going back to this screen with the code param
-      console.log('[ConnectBankScreen] 🚀 NAVIGATING to accounts screen after successful connection');
-      try {
-        router.replace('/(tabs)/finance/accounts' as any);
-        console.log('[ConnectBankScreen] ✅ Navigation command sent successfully');
-      } catch (navError) {
-        console.error('[ConnectBankScreen] ❌ Navigation error:', navError);
+      // On Android, navigation already happened above, so skip here
+      if (Platform.OS !== 'android') {
+        console.log('[ConnectBankScreen] 🚀 NAVIGATING to accounts screen after successful connection');
+        try {
+          router.replace('/(tabs)/finance/accounts' as any);
+          console.log('[ConnectBankScreen] ✅ Navigation command sent successfully');
+        } catch (navError) {
+          console.error('[ConnectBankScreen] ❌ Navigation error:', navError);
+        }
       }
       showSuccess('Bank account connected successfully!');
       
@@ -736,10 +787,19 @@ export default function ConnectBankScreen() {
   const handleSync = async (connectionId: string) => {
     try {
       setRefreshing(true);
-      await syncTrueLayerAccounts(connectionId);
-      await refreshTransactions();
+      // Account syncing disabled for debugging - only fetching provider names
+      // await syncTrueLayerAccounts(connectionId);
+      // await refreshTransactions();
+      
+      // Just refresh the provider name for debugging
+      const providerName = await fetchAndStoreProviderName(connectionId);
+      console.log('[ConnectBankScreen] handleSync: Refreshed provider name:', {
+        connectionId,
+        providerName,
+      });
+      
       await loadConnections();
-      showSuccess('Account and transactions synced successfully');
+      showSuccess('Connection refreshed successfully');
     } catch (error: any) {
       console.error('Error syncing:', error);
       showError(error.message || 'Failed to sync account');
@@ -802,7 +862,9 @@ export default function ConnectBankScreen() {
                     <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
                   </View>
                   <View style={styles.connectionInfo}>
-                    <Text style={styles.connectionId}>Connection {connection.id.substring(3, 11)}</Text>
+                    <Text style={styles.connectionId}>
+                      {connection.providerName || 'Unknown Provider'} - {connection.id.substring(3, 11)}
+                    </Text>
                     <Text style={styles.connectionDate}>
                       Connected {formatDistanceToNow(new Date(connection.createdAt), { addSuffix: true })}
                     </Text>

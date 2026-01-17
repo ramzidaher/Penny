@@ -194,7 +194,23 @@ const secureTokenSet = async (key: string, value: string): Promise<void> => {
 
 const secureTokenGet = async (key: string): Promise<string | null> => {
   try {
+    // CRITICAL: Force a fresh read from SecureStore - no caching
+    // Log the exact key being requested to debug key mismatches
+    console.log('[truelayerService] secureTokenGet: Requesting key from SecureStore:', {
+      key,
+      keyLength: key.length,
+    });
+    
     const stored = await SecureStore.getItemAsync(key);
+    
+    // Log what we got back
+    console.log('[truelayerService] secureTokenGet: SecureStore returned:', {
+      key,
+      found: !!stored,
+      size: stored?.length || 0,
+      prefix: stored ? stored.substring(0, 50) + '...' : 'null',
+    });
+    
     if (!stored) {
       return null;
     }
@@ -207,12 +223,15 @@ const secureTokenGet = async (key: string): Promise<string | null> => {
     if (isJsonFormat) {
       // Old plaintext format (backward compatibility)
       // This will be migrated to encrypted format on next write
+      console.log('[truelayerService] secureTokenGet: Returning plaintext token for key:', key);
       return stored;
     } else {
       // New encrypted format - try to decrypt it
       // If it's not JSON, assume it's base64-encoded encrypted data
       try {
-        return await decryptToken(stored);
+        const decrypted = await decryptToken(stored);
+        console.log('[truelayerService] secureTokenGet: Successfully decrypted token for key:', key);
+        return decrypted;
       } catch (decryptError) {
         // If decryption fails, the token might be corrupted
         // Log the error but don't throw - return null so the app can handle it gracefully
@@ -224,6 +243,10 @@ const secureTokenGet = async (key: string): Promise<string | null> => {
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[truelayerService] secureTokenGet: Error retrieving key:', {
+      key,
+      error: errorMessage,
+    });
     // Only throw if it's a SecureStore error, not a decryption error
     if (errorMessage.includes('SecureStore')) {
       throw new Error(`SecureStore unavailable. Cannot retrieve sensitive tokens securely: ${errorMessage}`);
@@ -337,6 +360,230 @@ const validateOAuthCode = (code: string): boolean => {
   return true;
 };
 
+// Token Management - Firestore-based storage
+const storeTokensInFirestore = async (
+  connectionId: string,
+  accessToken: string,
+  refreshToken: string,
+  expiresIn: number,
+  providerName?: string
+): Promise<void> => {
+  const { getFirestoreDb, getUserId } = await import('./firebase');
+  const { doc, setDoc, getDoc, Timestamp } = await import('firebase/firestore');
+  
+  const db = getFirestoreDb();
+  if (!db) {
+    throw new Error('Firestore not initialized');
+  }
+  
+  const userId = getUserId();
+  if (!userId) {
+    throw new Error('User not authenticated');
+  }
+  
+  // CRITICAL: Check if there's already a token for this connectionId
+  const tokenRef = doc(db, 'users', userId, 'tokens', connectionId);
+  const existingTokenDoc = await getDoc(tokenRef);
+  if (existingTokenDoc.exists()) {
+    const existingData = existingTokenDoc.data();
+    console.warn('[truelayerService] storeTokensInFirestore: Overwriting existing token:', {
+      connectionId,
+      existingConnectionId: existingData.connectionId,
+      connectionIdsMatch: existingData.connectionId === connectionId,
+    });
+  }
+  
+  // CRITICAL: Verify connectionId format before storing
+  if (!connectionId || !connectionId.startsWith('tl_')) {
+    throw new Error(`Invalid connectionId format: ${connectionId}`);
+  }
+  
+  // Encrypt tokens before storage (using existing encryption functions)
+  const encryptedAccessToken = await encryptToken(accessToken);
+  const encryptedRefreshToken = await encryptToken(refreshToken);
+  
+  const expiresAt = Date.now() + expiresIn * 1000;
+  const tokenData: {
+    connectionId: string;
+    encryptedAccessToken: string;
+    encryptedRefreshToken: string;
+    expiresAt: any;
+    createdAt: any;
+    updatedAt: any;
+    providerName?: string;
+  } = {
+    connectionId,
+    encryptedAccessToken,
+    encryptedRefreshToken,
+    expiresAt: Timestamp.fromMillis(expiresAt),
+    createdAt: Timestamp.now(),
+    updatedAt: Timestamp.now(),
+  };
+  
+  // Add providerName if provided
+  if (providerName) {
+    tokenData.providerName = providerName;
+  }
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:428',message:'FLOW_TOKEN_STORAGE_START: Storing tokens in Firestore',data:{connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,accessTokenPrefix:accessToken.substring(0,30)+'...',refreshTokenPrefix:refreshToken.substring(0,30)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  // #endregion
+  
+  // CRITICAL: Store with connectionId as document ID to prevent mix-ups
+  await setDoc(tokenRef, tokenData);
+  
+  // CRITICAL: Verify the token was stored correctly
+  const verificationDoc = await getDoc(tokenRef);
+  if (!verificationDoc.exists()) {
+    throw new Error('Token storage verification failed - document not found after write');
+  }
+  
+  const verificationData = verificationDoc.data();
+  if (verificationData.connectionId !== connectionId) {
+    throw new Error(`Token storage verification failed - connectionId mismatch: expected ${connectionId}, got ${verificationData.connectionId}`);
+  }
+  
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:437',message:'FLOW_TOKEN_STORAGE_END: Token storage verified in Firestore',data:{connectionId,storedConnectionId:verificationData.connectionId,connectionIdsMatch:verificationData.connectionId===connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,verificationResult:verificationData.connectionId===connectionId?'MATCH':'MISMATCH'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  // #endregion
+  
+  console.log('[truelayerService] storeTokensInFirestore: Stored and verified tokens in Firestore:', {
+    connectionId,
+    storedConnectionId: verificationData.connectionId,
+    connectionIdsMatch: verificationData.connectionId === connectionId,
+    userId,
+    expiresAt: new Date(expiresAt).toISOString(),
+  });
+};
+
+const getTokensFromFirestore = async (connectionId: string): Promise<TrueLayerConnection | null> => {
+  const { getFirestoreDb, getUserId } = await import('./firebase');
+  const { doc, getDoc } = await import('firebase/firestore');
+  
+  const db = getFirestoreDb();
+  if (!db) {
+    console.warn('[truelayerService] getTokensFromFirestore: Firestore not initialized');
+    return null;
+  }
+  
+  const userId = getUserId();
+  if (!userId) {
+    console.warn('[truelayerService] getTokensFromFirestore: User not authenticated');
+    return null;
+  }
+  
+  // CRITICAL: Log the exact connectionId and document path being queried
+  const tokenRef = doc(db, 'users', userId, 'tokens', connectionId);
+  console.log('[truelayerService] getTokensFromFirestore: Querying Firestore for token:', {
+    connectionId,
+    documentPath: `users/${userId}/tokens/${connectionId}`,
+    userId,
+  });
+  
+  const tokenDoc = await getDoc(tokenRef);
+  
+  if (!tokenDoc.exists()) {
+    console.warn('[truelayerService] getTokensFromFirestore: Token document not found:', {
+      connectionId,
+      documentPath: `users/${userId}/tokens/${connectionId}`,
+    });
+    return null;
+  }
+  
+  const data = tokenDoc.data();
+  
+  // CRITICAL: Verify the connectionId in the stored data matches what we requested
+  // Also verify the document ID matches the requested connectionId
+  const documentId = tokenDoc.id;
+  const storedConnectionId = data.connectionId;
+  
+  // Log full details for debugging
+  console.log('[truelayerService] getTokensFromFirestore: Document retrieved:', {
+    requestedConnectionId: connectionId,
+    documentId: documentId,
+    storedConnectionId: storedConnectionId,
+    documentIdMatches: documentId === connectionId,
+    storedConnectionIdMatches: storedConnectionId === connectionId,
+    documentPath: `users/${userId}/tokens/${connectionId}`,
+  });
+  
+  // CRITICAL: If document ID doesn't match, this is a serious bug
+  if (documentId !== connectionId) {
+    console.error('[truelayerService] getTokensFromFirestore: CRITICAL BUG: Document ID does not match requested connectionId!', {
+      requestedConnectionId: connectionId,
+      documentId: documentId,
+      storedConnectionId: storedConnectionId,
+      documentPath: `users/${userId}/tokens/${connectionId}`,
+    });
+    throw new Error(`CRITICAL: Firestore returned wrong document! Requested: ${connectionId}, Got document ID: ${documentId}`);
+  }
+  
+  // CRITICAL: If stored connectionId doesn't match, this is also a serious bug
+  if (storedConnectionId && storedConnectionId !== connectionId) {
+    console.error('[truelayerService] getTokensFromFirestore: CRITICAL BUG: Stored connectionId does not match requested connectionId!', {
+      requestedConnectionId: connectionId,
+      documentId: documentId,
+      storedConnectionId: storedConnectionId,
+      documentPath: `users/${userId}/tokens/${connectionId}`,
+    });
+    throw new Error(`CRITICAL: Document contains wrong connectionId! Requested: ${connectionId}, Stored: ${storedConnectionId}`);
+  }
+  
+  // Decrypt tokens
+  try {
+    const decryptedAccessToken = await decryptToken(data.encryptedAccessToken);
+    const decryptedRefreshToken = await decryptToken(data.encryptedRefreshToken);
+    
+    const expiresAt = data.expiresAt?.toMillis() || data.expiresAt;
+    
+    const connection: TrueLayerConnection = {
+      id: connectionId, // Use the requested connectionId (verified above)
+      accessToken: decryptedAccessToken,
+      refreshToken: decryptedRefreshToken,
+      expiresAt,
+      createdAt: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+      providerName: data.providerName || undefined,
+    };
+    
+    console.log('[truelayerService] getTokensFromFirestore: Successfully retrieved and verified token:', {
+      connectionId,
+      documentId: documentId,
+      storedConnectionId: storedConnectionId,
+      connectionIdsMatch: storedConnectionId === connectionId,
+      documentIdMatch: documentId === connectionId,
+      accessTokenPrefix: decryptedAccessToken.substring(0, 30) + '...',
+    });
+    
+    return connection;
+  } catch (error) {
+    console.error('[truelayerService] getTokens: Failed to decrypt tokens:', error);
+    return null;
+  }
+};
+
+const deleteTokensFromFirestore = async (connectionId: string): Promise<void> => {
+  const { getFirestoreDb, getUserId } = await import('./firebase');
+  const { doc, deleteDoc } = await import('firebase/firestore');
+  
+  const db = getFirestoreDb();
+  if (!db) {
+    return;
+  }
+  
+  const userId = getUserId();
+  if (!userId) {
+    return;
+  }
+  
+  const tokenRef = doc(db, 'users', userId, 'tokens', connectionId);
+  await deleteDoc(tokenRef);
+  
+  console.log('[truelayerService] clearTokens: Deleted tokens from Firestore:', {
+    connectionId,
+    userId,
+  });
+};
+
 // Token Management
 export const storeTokens = async (
   connectionId: string,
@@ -363,53 +610,27 @@ export const storeTokens = async (
     throw new Error('Invalid token expiration');
   }
 
-  const expiresAt = Date.now() + expiresIn * 1000;
-  const connection: TrueLayerConnection = {
-    id: connectionId,
-    accessToken,
-    refreshToken,
-    expiresAt,
-    createdAt: new Date().toISOString(),
-  };
-
-  await secureTokenSet(tokenKey, JSON.stringify(connection));
-
-    const tokenKey = getTokenKey(connectionId);
-    // Log token storage for debugging token/code reuse
-    console.log('[truelayerService] Storing tokens:', {
+  // Store in Firestore (encrypted)
+  await storeTokensInFirestore(connectionId, accessToken, refreshToken, expiresIn);
+  
+  // Verify token was stored correctly
+  const verification = await getTokens(connectionId);
+  if (!verification || verification.accessToken !== accessToken) {
+    console.error('[truelayerService] storeTokens: CRITICAL: Token storage verification failed!', {
       connectionId,
-      accessTokenPrefix: accessToken.substring(0, 30) + '...',
-      refreshTokenPrefix: refreshToken.substring(0, 30) + '...',
-      tokenKey,
-      expiresAt: expiresAt,
-      createdAt: connection.createdAt,
-    });
-
-  // Verify token was actually stored (defensive check for production SecureStore issues)
-  // SecureStore might silently fail in production, causing token reuse
-  const verificationDelay = 100; // Small delay to ensure write completes
-  await new Promise(resolve => setTimeout(resolve, verificationDelay));
-  const storedToken = await getTokens(connectionId);
-  if (!storedToken || storedToken.accessToken !== accessToken) {
-    console.error('[truelayerService] CRITICAL: Token storage verification failed!', {
-      connectionId,
-      tokenKey,
       expectedTokenPrefix: accessToken.substring(0, 30) + '...',
-      storedTokenPrefix: storedToken?.accessToken?.substring(0, 30) + '...' || 'null',
-      tokensMatch: storedToken?.accessToken === accessToken,
+      storedTokenPrefix: verification?.accessToken?.substring(0, 30) + '...' || 'null',
     });
     throw new Error('Token storage verification failed. Token may not have been stored correctly.');
   }
-
-  // Log successful token storage verification
-  console.log('[truelayerService] Token storage verified:', {
+  
+  console.log('[truelayerService] storeTokens: Token storage verified:', {
     connectionId,
-    tokenKey,
     accessTokenPrefix: accessToken.substring(0, 30) + '...',
-    tokensMatch: storedToken.accessToken === accessToken,
+    tokensMatch: verification.accessToken === accessToken,
   });
 
-  // Store connection ID in list
+  // Store connection ID in list (for local tracking)
   const connections = await getConnectionIds();
   if (!connections.includes(connectionId)) {
     connections.push(connectionId);
@@ -418,52 +639,50 @@ export const storeTokens = async (
 };
 
 export const getTokens = async (connectionId: string): Promise<TrueLayerConnection | null> => {
-  // Validate connection ID
+  // Validate connection ID format
   if (!validateConnectionId(connectionId)) {
+    console.error('[truelayerService] getTokens: Invalid connectionId format:', {
+      connectionId,
+      type: typeof connectionId,
+      length: connectionId?.length,
+    });
     throw new Error('Invalid connection ID format');
   }
   
+  console.log('[truelayerService] getTokens: Retrieving tokens from Firestore:', {
+    connectionId,
+  });
+  
   try {
-    const tokenKey = getTokenKey(connectionId);
-    const data = await secureTokenGet(tokenKey);
+    const connection = await getTokensFromFirestore(connectionId);
     
-    // Log token retrieval for debugging token/code reuse
-    console.log('[truelayerService] Retrieving tokens:', {
+    if (!connection) {
+      console.warn('[truelayerService] getTokens: Token not found for connectionId:', connectionId);
+      return null;
+    }
+    
+    // Verify the connectionId matches
+    if (connection.id !== connectionId) {
+      console.error('[truelayerService] getTokens: CRITICAL MISMATCH! Stored connectionId does not match requested:', {
+        requestedConnectionId: connectionId,
+        storedConnectionId: connection.id,
+      });
+      return null;
+    }
+    
+    console.log('[truelayerService] getTokens: Token retrieved successfully:', {
       connectionId,
-      tokenKey,
-      found: !!data,
+      accessTokenPrefix: connection.accessToken.substring(0, 30) + '...',
+      expiresAt: connection.expiresAt,
     });
     
-    if (!data) {
-      // Token not found or invalid - return null (app should handle re-authentication)
-      console.warn(`[truelayerService] Token not found for connectionId: ${connectionId}, tokenKey: ${tokenKey}`);
-      return null;
-    }
-    
-    try {
-      const parsed = JSON.parse(data);
-      // CRITICAL: Log the actual token prefix to verify we're getting the right token
-      console.log('[truelayerService] Token retrieved successfully:', {
-        connectionId,
-        tokenKey,
-        accessTokenPrefix: parsed?.accessToken?.substring(0, 30) + '...',
-        createdAt: parsed?.createdAt,
-        expiresAt: parsed?.expiresAt,
-      });
-      return parsed;
-    } catch (parseError) {
-      // If JSON parsing fails, the token data is corrupted
-      console.warn('[truelayerService] Failed to parse token data, token may be corrupted');
-      return null;
-    }
+    return connection;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    // Only throw if it's a SecureStore availability error
-    if (errorMessage.includes('SecureStore unavailable')) {
-      throw new Error(`Failed to retrieve tokens securely: ${errorMessage}`);
-    }
-    // For other errors (like decryption), return null gracefully
-    console.warn('[truelayerService] Error retrieving tokens:', errorMessage);
+    console.error('[truelayerService] getTokens: Error retrieving tokens:', {
+      connectionId,
+      error: errorMessage,
+    });
     return null;
   }
 };
@@ -474,7 +693,8 @@ export const clearTokens = async (connectionId: string): Promise<void> => {
     throw new Error('Invalid connection ID format');
   }
   
-  await secureTokenDelete(getTokenKey(connectionId));
+  // Delete from Firestore
+  await deleteTokensFromFirestore(connectionId);
 
   // Remove from connections list
   const connections = await getConnectionIds();
@@ -494,17 +714,42 @@ export const getConnectionIds = async (): Promise<string[]> => {
 };
 
 export const getAllConnections = async (): Promise<TrueLayerConnection[]> => {
-  const connectionIds = await getConnectionIds();
-  const connections: TrueLayerConnection[] = [];
-
-  for (const id of connectionIds) {
-    const connection = await getTokens(id);
-    if (connection) {
-      connections.push(connection);
-    }
+  const { getFirestoreDb, getUserId } = await import('./firebase');
+  const { collection, getDocs } = await import('firebase/firestore');
+  
+  const db = getFirestoreDb();
+  const userId = getUserId();
+  
+  if (!db || !userId) {
+    return [];
   }
-
-  return connections;
+  
+  try {
+    const tokensRef = collection(db, 'users', userId, 'tokens');
+    const tokensSnapshot = await getDocs(tokensRef);
+    
+    const connections: TrueLayerConnection[] = [];
+    
+    for (const tokenDoc of tokensSnapshot.docs) {
+      const connectionId = tokenDoc.id;
+      const connection = await getTokens(connectionId);
+      if (connection) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:698',message:'FLOW_CONNECTION_LOAD: Loading connection from Firestore',data:{connectionId,providerName:connection.providerName,hasProviderName:!!connection.providerName,connectionCreatedAt:connection.createdAt,connectionIdToProvider:`${connectionId} -> ${connection.providerName||'NO_PROVIDER'}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+        // #endregion
+        connections.push(connection);
+      }
+    }
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:704',message:'FLOW_CONNECTION_LOAD_COMPLETE: getAllConnections returning all connections',data:{connectionCount:connections.length,connections:connections.map(c=>({id:c.id,providerName:c.providerName,hasProviderName:!!c.providerName,connectionIdToProvider:`${c.id} -> ${c.providerName||'NO_PROVIDER'}`}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    // #endregion
+    
+    return connections;
+  } catch (error) {
+    console.error('[truelayerService] getAllConnections: Error fetching connections:', error);
+    return [];
+  }
 };
 
 // Check if token is expired (with 5 minute buffer for proactive refresh)
@@ -601,15 +846,35 @@ export const getValidAccessToken = async (connectionId: string): Promise<string>
     throw new Error('Invalid connection ID format');
   }
   
+  // CRITICAL: Log which connectionId we're retrieving token for
+  console.log('[truelayerService] getValidAccessToken: Retrieving token for connectionId:', {
+    connectionId,
+  });
+  
   let connection = await getTokens(connectionId);
   if (!connection) {
+    console.error('[truelayerService] getValidAccessToken: Token not found for connectionId:', {
+      connectionId,
+    });
     throw new Error('Connection not found');
   }
 
+  // CRITICAL: Verify the connectionId in the token matches what we requested
+  if (connection.id !== connectionId) {
+    console.error('[truelayerService] getValidAccessToken: CRITICAL MISMATCH!', {
+      requestedConnectionId: connectionId,
+      tokenConnectionId: connection.id,
+      accessTokenPrefix: connection.accessToken.substring(0, 30) + '...',
+    });
+    throw new Error(`Token connectionId mismatch: expected ${connectionId}, got ${connection.id}`);
+  }
+
   // Log token usage for debugging token/code reuse
-  console.log('[truelayerService] Getting valid access token:', {
+  console.log('[truelayerService] getValidAccessToken: Got token:', {
     connectionId,
-    accessTokenPrefix: connection.accessToken.substring(0, 20) + '...',
+    tokenConnectionId: connection.id,
+    connectionIdsMatch: connection.id === connectionId,
+    accessTokenPrefix: connection.accessToken.substring(0, 30) + '...',
     expiresAt: connection.expiresAt,
     isExpired: isTokenExpired(connection.expiresAt),
   });
@@ -1046,15 +1311,43 @@ export const exchangeCodeForTokens = async (
       throw new Error('Invalid token response from backend');
     }
 
-    // Log token exchange result for debugging token/code reuse
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1264',message:'FLOW_BACKEND_TOKEN_EXCHANGE: Backend returned connectionId from OAuth code',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,connectionId,accessTokenPrefix:accessToken.substring(0,30)+'...',refreshTokenPrefix:refreshToken.substring(0,30)+'...',codeToConnectionId:`${code.substring(0,20)}... -> ${connectionId}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    // #endregion
+
+    // CRITICAL: Log token exchange result for debugging token/code reuse
     console.log('[truelayerService] Token exchange result:', {
       codePrefix: code.substring(0, 20) + '...',
       connectionId,
-      accessTokenPrefix: accessToken.substring(0, 20) + '...',
+      accessTokenPrefix: accessToken.substring(0, 30) + '...',
+      refreshTokenPrefix: refreshToken.substring(0, 30) + '...',
     });
 
+    // CRITICAL: Check if there are any existing connections with the same token
+    // This would indicate a problem with token generation or reuse
+    const allConnections = await getAllConnections();
+    const duplicateToken = allConnections.find(conn => 
+      conn.accessToken === accessToken && conn.id !== connectionId
+    );
+    if (duplicateToken) {
+      console.error('[truelayerService] CRITICAL: New token matches existing token from different connection!', {
+        newConnectionId: connectionId,
+        existingConnectionId: duplicateToken.id,
+        tokenPrefix: accessToken.substring(0, 30) + '...',
+      });
+      throw new Error('Token collision detected - new token matches existing connection');
+    }
+
     const expiresIn = 3600;
+    
+    // CRITICAL: Store tokens - this includes verification
     await storeTokens(connectionId, accessToken, refreshToken, expiresIn);
+    
+    console.log('[truelayerService] exchangeCodeForTokens: Token exchange completed:', {
+      connectionId,
+      tokenKey: getTokenKey(connectionId),
+      accessTokenPrefix: accessToken.substring(0, 30) + '...',
+    });
 
     // Mark code as used after successful exchange (client-side replay protection)
     await markCodeAsUsed(code);
@@ -1218,7 +1511,41 @@ const makeApiCallWithRetry = async <T>(
   retryCount: number = 0
 ): Promise<T> => {
   try {
+    // CRITICAL: Log which connectionId we're getting token for
+    console.log('[truelayerService] makeApiCallWithRetry: Getting token for connectionId:', {
+      connectionId,
+      retryCount,
+    });
+    
+    // CRITICAL: Verify token before getting access token to ensure we have the right connection
+    const tokenVerification = await getTokens(connectionId);
+    if (!tokenVerification) {
+      throw new Error(`No token found for connection ${connectionId}`);
+    }
+    if (tokenVerification.id !== connectionId) {
+      throw new Error(`Token connectionId mismatch in makeApiCallWithRetry: expected ${connectionId}, got ${tokenVerification.id}`);
+    }
+    
     const accessToken = await getValidAccessToken(connectionId);
+    
+    // CRITICAL: Verify the access token we got matches the token we verified
+    if (accessToken !== tokenVerification.accessToken) {
+      console.error('[truelayerService] makeApiCallWithRetry: CRITICAL: Access token mismatch!', {
+        connectionId,
+        verifiedTokenPrefix: tokenVerification.accessToken.substring(0, 30) + '...',
+        accessTokenPrefix: accessToken.substring(0, 30) + '...',
+      });
+      // Still proceed, but log the mismatch
+    }
+    
+    // CRITICAL: Verify we got a token and log its prefix
+    console.log('[truelayerService] makeApiCallWithRetry: Got token for connectionId:', {
+      connectionId,
+      accessTokenPrefix: accessToken.substring(0, 30) + '...',
+      tokenLength: accessToken.length,
+      tokenMatchesVerification: accessToken === tokenVerification.accessToken,
+    });
+    
     return await apiCall(accessToken);
   } catch (error: unknown) {
     // Check if it's a 401 error
@@ -1232,33 +1559,69 @@ const makeApiCallWithRetry = async <T>(
     
     if ((is401 || is401InMessage) && retryCount === 0) {
       // 401 error - token might be invalid even if not expired
-      // Force refresh by marking the token as expired
-      console.log('[truelayerService] Got 401 error, forcing token refresh and retrying...');
+      // Force refresh by calling refreshAccessToken directly
+      console.log('[truelayerService] Got 401 error, forcing token refresh and retrying...', {
+        connectionId,
+      });
       
       try {
-        // Get the current connection to access refresh token
-        const connection = await getTokens(connectionId);
-        if (!connection) {
-          throw new Error('Connection not found');
+        // CRITICAL: Verify we have the correct connectionId before refreshing
+        const connectionBeforeRefresh = await getTokens(connectionId);
+        if (!connectionBeforeRefresh) {
+          throw new Error(`Connection not found for connectionId: ${connectionId}`);
         }
         
-        // Force expiration by setting expiresAt to past (1 second ago)
-        // This will make isTokenExpired return true
-        const expiredConnection: TrueLayerConnection = {
-          ...connection,
-          expiresAt: Date.now() - 1000, // 1 second ago
-        };
-        await secureTokenSet(getTokenKey(connectionId), JSON.stringify(expiredConnection));
+        // CRITICAL: Verify the connectionId matches
+        if (connectionBeforeRefresh.id !== connectionId) {
+          console.error('[truelayerService] makeApiCallWithRetry: CRITICAL: ConnectionId mismatch before refresh!', {
+            requestedConnectionId: connectionId,
+            tokenConnectionId: connectionBeforeRefresh.id,
+          });
+          throw new Error(`Token connectionId mismatch before refresh: expected ${connectionId}, got ${connectionBeforeRefresh.id}`);
+        }
+        
+        // Force refresh by calling refreshAccessToken (it will check expiration and refresh if needed)
+        // We'll force it by temporarily marking as expired in Firestore
+        const { getFirestoreDb, getUserId } = await import('./firebase');
+        const { doc, updateDoc, Timestamp } = await import('firebase/firestore');
+        
+        const db = getFirestoreDb();
+        const userId = getUserId();
+        if (db && userId) {
+          const tokenRef = doc(db, 'users', userId, 'tokens', connectionId);
+          // Force expiration by setting expiresAt to past
+          await updateDoc(tokenRef, {
+            expiresAt: Timestamp.fromMillis(Date.now() - 1000),
+          });
+        }
         
         // Get a fresh token (will trigger refresh since it's now expired)
         const freshToken = await getValidAccessToken(connectionId);
         
-        // Retry the request once
+        // CRITICAL: Verify the fresh token is for the correct connectionId
+        const connectionAfterRefresh = await getTokens(connectionId);
+        if (connectionAfterRefresh && connectionAfterRefresh.id !== connectionId) {
+          console.error('[truelayerService] makeApiCallWithRetry: CRITICAL: ConnectionId mismatch after refresh!', {
+            requestedConnectionId: connectionId,
+            tokenConnectionId: connectionAfterRefresh.id,
+          });
+          throw new Error(`Token connectionId mismatch after refresh: expected ${connectionId}, got ${connectionAfterRefresh.id}`);
+        }
+        
+        console.log('[truelayerService] makeApiCallWithRetry: Got fresh token after 401 refresh:', {
+          connectionId,
+          freshTokenPrefix: freshToken.substring(0, 30) + '...',
+        });
+        
+        // Retry the request once with the fresh token
         return await apiCall(freshToken);
       } catch (refreshError) {
         // Token refresh failed - clear tokens and throw error
         const refreshErrorMessage = refreshError instanceof Error ? refreshError.message : 'Unknown error';
-        console.error('[truelayerService] Token refresh failed after 401:', refreshErrorMessage);
+        console.error('[truelayerService] Token refresh failed after 401:', {
+          connectionId,
+          error: refreshErrorMessage,
+        });
         await clearTokens(connectionId);
         throw new Error('Authentication failed. Please reconnect your account.');
       }
@@ -1275,39 +1638,80 @@ export const getAccounts = async (connectionId: string): Promise<TrueLayerAccoun
     throw new Error('Invalid connection ID format');
   }
   
-  // Log getAccounts call for debugging token/code reuse
-  console.log('[truelayerService] getAccounts called:', {
+  // CRITICAL: Log the exact connectionId being used
+  console.log('[truelayerService] getAccounts: Called with connectionId:', {
     connectionId,
+    connectionIdType: typeof connectionId,
+    connectionIdLength: connectionId.length,
+  });
+  
+  // CRITICAL: Verify token before making API call to ensure we have the right token
+  const tokenVerification = await getTokens(connectionId);
+  if (!tokenVerification) {
+    throw new Error(`No token found for connection ${connectionId}`);
+  }
+  if (tokenVerification.id !== connectionId) {
+    throw new Error(`Token connectionId mismatch: expected ${connectionId}, got ${tokenVerification.id}`);
+  }
+  console.log('[truelayerService] getAccounts: Token verification passed:', {
+    connectionId,
+    tokenConnectionId: tokenVerification.id,
+    accessTokenPrefix: tokenVerification.accessToken.substring(0, 30) + '...',
   });
   
   return makeApiCallWithRetry(connectionId, async (accessToken) => {
-    // CRITICAL: Verify we're using the correct token for this connectionId
-    // Double-check by retrieving the token again and comparing
-    const verificationToken = await getValidAccessToken(connectionId);
-    if (verificationToken !== accessToken) {
-      console.error('[truelayerService] CRITICAL: Token mismatch detected!', {
+    // CRITICAL: Verify the token we got matches what we verified above
+    if (accessToken !== tokenVerification.accessToken) {
+      console.error('[truelayerService] getAccounts: CRITICAL: Token mismatch between verification and API call!', {
         connectionId,
-        expectedTokenPrefix: accessToken.substring(0, 30) + '...',
-        actualTokenPrefix: verificationToken.substring(0, 30) + '...',
+        verifiedTokenPrefix: tokenVerification.accessToken.substring(0, 30) + '...',
+        apiCallTokenPrefix: accessToken.substring(0, 30) + '...',
       });
-      throw new Error('Token mismatch - wrong token being used for this connection');
+      // Still proceed, but log the mismatch
     }
     
-    // Log which token is being used for this API call
-    console.log('[truelayerService] getAccounts using access token:', {
+    // CRITICAL: Double-check we have the right token for this connectionId
+    // Re-verify token one more time right before making the API call
+    const finalTokenCheck = await getTokens(connectionId);
+    if (!finalTokenCheck) {
+      throw new Error(`No token found for connection ${connectionId} right before API call`);
+    }
+    if (finalTokenCheck.id !== connectionId) {
+      throw new Error(`Token connectionId mismatch right before API call: expected ${connectionId}, got ${finalTokenCheck.id}`);
+    }
+    if (finalTokenCheck.accessToken !== accessToken) {
+      console.error('[truelayerService] getAccounts: CRITICAL: Access token changed between verification and API call!', {
+        connectionId,
+        verifiedTokenPrefix: tokenVerification.accessToken.substring(0, 30) + '...',
+        finalCheckTokenPrefix: finalTokenCheck.accessToken.substring(0, 30) + '...',
+        apiCallTokenPrefix: accessToken.substring(0, 30) + '...',
+      });
+      // Use the token from finalTokenCheck to ensure we have the right one
+      accessToken = finalTokenCheck.accessToken;
+    }
+    
+    // CRITICAL: Log which token is being used for this API call
+    console.log('[truelayerService] getAccounts: Making API call with token:', {
       connectionId,
       accessTokenPrefix: accessToken.substring(0, 30) + '...',
-      tokenVerified: true,
+      accessTokenLength: accessToken.length,
+      tokenMatchesVerification: accessToken === tokenVerification.accessToken,
+      tokenMatchesFinalCheck: accessToken === finalTokenCheck.accessToken,
     });
     
     const client = createApiClient(accessToken);
     const response = await client.get<TrueLayerAccountsResponse>('/data/v1/accounts');
     
-    // Log what TrueLayer API returned for this connection - CRITICAL for debugging
-    console.log(`[truelayerService] getAccounts for connection ${connectionId}: TrueLayer returned ${response.data.results?.length || 0} account(s)`);
+    // CRITICAL: Log what TrueLayer API returned - this will show if it's the same accounts
+    console.log(`[truelayerService] getAccounts: TrueLayer API response for connection ${connectionId}:`, {
+      connectionId,
+      accountCount: response.data.results?.length || 0,
+      accessTokenUsedPrefix: accessToken.substring(0, 30) + '...',
+    });
+    
     if (response.data.results) {
       response.data.results.forEach((acc, index) => {
-        console.log(`[truelayerService] Account ${index + 1} from TrueLayer for connection ${connectionId}:`);
+        console.log(`[truelayerService] getAccounts: Account ${index + 1} from TrueLayer for connection ${connectionId}:`);
         console.log(`  - Name: ${acc.display_name}`);
         console.log(`  - TL Account ID: ${acc.account_id}`);
         console.log(`  - Provider: ${acc.provider?.display_name || 'unknown'}`);
@@ -1315,11 +1719,94 @@ export const getAccounts = async (connectionId: string): Promise<TrueLayerAccoun
         console.log(`  - Currency: ${acc.currency || 'unknown'}`);
       });
     } else {
-      console.warn(`[truelayerService] WARNING: TrueLayer returned no accounts for connection ${connectionId}`);
+      console.warn(`[truelayerService] getAccounts: WARNING: TrueLayer returned no accounts for connection ${connectionId}`);
     }
     
     return response.data;
   });
+};
+
+/**
+ * Fetch provider name from TrueLayer and store it with the connection
+ * This helps debug which token is being used for each connection
+ */
+export const fetchAndStoreProviderName = async (connectionId: string): Promise<string> => {
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1685',message:'FLOW_PROVIDER_FETCH_START: fetchAndStoreProviderName called',data:{connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  // #endregion
+  
+  console.log('[truelayerService] fetchAndStoreProviderName: Fetching provider name for connection:', {
+    connectionId,
+  });
+  
+  try {
+    // Fetch accounts from TrueLayer using the connectionId
+    const accountsResponse = await getAccounts(connectionId);
+    const accounts = accountsResponse.results;
+    
+    if (!accounts || accounts.length === 0) {
+      console.warn('[truelayerService] fetchAndStoreProviderName: No accounts found for connection:', {
+        connectionId,
+      });
+      return 'Unknown Provider';
+    }
+    
+    // Extract provider name from the first account (all accounts should have the same provider)
+    const providerName = accounts[0]?.provider?.display_name || 'Unknown Provider';
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1703',message:'Found provider name from TrueLayer API',data:{connectionId,providerName,accountCount:accounts.length,firstAccountProvider:accounts[0]?.provider?.display_name,firstAccountProviderId:accounts[0]?.provider?.provider_id,allProviders:accounts.map(a=>({name:a.display_name,provider:a.provider?.display_name,providerId:a.provider?.provider_id}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
+    console.log('[truelayerService] fetchAndStoreProviderName: Found provider name:', {
+      connectionId,
+      providerName,
+      accountCount: accounts.length,
+      firstAccountProvider: accounts[0]?.provider?.display_name,
+      firstAccountProviderId: accounts[0]?.provider?.provider_id,
+      allProviders: accounts.map(a => ({
+        name: a.display_name,
+        provider: a.provider?.display_name,
+        providerId: a.provider?.provider_id,
+      })),
+    });
+    
+    // Update the Firestore token document with the provider name
+    const { getFirestoreDb, getUserId } = await import('./firebase');
+    const { doc, updateDoc } = await import('firebase/firestore');
+    
+    const db = getFirestoreDb();
+    const userId = getUserId();
+    
+    if (!db || !userId) {
+      console.error('[truelayerService] fetchAndStoreProviderName: Firestore not initialized or user not authenticated');
+      return providerName; // Return the name even if we can't store it
+    }
+    
+    const tokenRef = doc(db, 'users', userId, 'tokens', connectionId);
+    await updateDoc(tokenRef, {
+      providerName,
+      updatedAt: (await import('firebase/firestore')).Timestamp.now(),
+    });
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1724',message:'FLOW_PROVIDER_STORAGE: Stored provider name in Firestore',data:{connectionId,providerName,userId,documentPath:`users/${userId}/tokens/${connectionId}`,connectionIdToProvider:`${connectionId} -> ${providerName}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    // #endregion
+    
+    console.log('[truelayerService] fetchAndStoreProviderName: Successfully stored provider name:', {
+      connectionId,
+      providerName,
+    });
+    
+    return providerName;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('[truelayerService] fetchAndStoreProviderName: Error fetching/storing provider name:', {
+      connectionId,
+      error: errorMessage,
+    });
+    return 'Unknown Provider';
+  }
 };
 
 export const getAccountBalance = async (
