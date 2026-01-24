@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useNavigation } from '../utils/navigation';
@@ -21,297 +20,58 @@ import {
   exchangeCodeForTokens,
   getAllConnections,
   clearTokens,
-  getAccounts as getTrueLayerAccounts,
-  getAccountBalance,
   fetchAndStoreProviderName,
 } from '../services/truelayerService';
 import { TrueLayerConnection } from '../types/truelayer';
-// import { syncTrueLayerAccounts } from '../database/db'; // Disabled for debugging
-import { refreshTransactions } from '../services/transactionService';
-import { formatDistanceToNow } from 'date-fns';
 import { setOAuthFlowActive } from '../services/oAuthFlowService';
-
-// Module-level tracking to persist across component mounts/unmounts
-// Use Map with timestamps to auto-expire old entries (prevent stale codes from blocking new ones)
-const processedCodesGlobal = new Map<string, number>();
-const CODE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes - codes should be processed quickly
-const processingGlobal = { current: false };
-
-// Clean up expired codes periodically
-const cleanupExpiredCodes = () => {
-  const now = Date.now();
-  for (const [code, timestamp] of processedCodesGlobal.entries()) {
-    if (now - timestamp > CODE_EXPIRY_MS) {
-      processedCodesGlobal.delete(code);
-    }
-  }
-};
+import { syncTrueLayerAccounts } from '../database/db';
 
 export default function ConnectBankScreen() {
   const navigation = useNavigation();
-  const router = useRouter();
   const dialog = useDialog();
+  const router = useRouter();
   const { code, state, error } = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [connections, setConnections] = useState<TrueLayerConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const processingRef = useRef(false);
-  const navigatingAwayRef = useRef(false);
-  const hasNavigatedRef = useRef(false);
   const { showSuccess, showError } = useToast();
+  const processedCodeRef = useRef<string | null>(null);
 
+  // Load connections on mount
   useEffect(() => {
-    console.log('[ConnectBankScreen] 🔵 SCREEN MOUNTED - ConnectBankScreen');
     loadConnections();
-    return () => {
-      console.log('[ConnectBankScreen] 🔴 SCREEN UNMOUNTED - ConnectBankScreen');
-    };
   }, []);
 
+  // Handle OAuth callback
   useEffect(() => {
-    // Handle OAuth callback from deep link (mobile)
-    // On Android, the app may reload when returning from OAuth, so WebBrowser.openAuthSessionAsync
-    // might not return. In this case, we process the deep link callback immediately.
-    // On iOS, WebBrowser should return, but we handle deep link as fallback.
-    
-    // If we're navigating away or have already navigated, don't process anything
-    if (navigatingAwayRef.current || hasNavigatedRef.current) {
-      console.log('[ConnectBankScreen] Already navigated or navigating away, skipping OAuth callback processing', {
-        navigatingAway: navigatingAwayRef.current,
-        hasNavigated: hasNavigatedRef.current,
-      });
-      return;
+    // Prevent re-processing the same code if the screen re-renders or the user navigates back to this route.
+    if (code && !connecting && processedCodeRef.current !== code) {
+      processedCodeRef.current = code;
+      handleOAuthCallback(code, state);
     }
-    
-    console.log('[ConnectBankScreen] OAuth callback effect triggered', {
-      hasCode: !!code,
-      hasError: !!error,
-      hasState: !!state,
-      codeLength: code?.length,
-      errorValue: error,
-      processingRef: processingRef.current,
-      processingGlobal: processingGlobal.current,
-      connecting,
-      processedCodesCount: processedCodesGlobal.size,
-    });
-    
     if (error) {
-      // Only show error if we haven't processed it already
-      const errorKey = `error_${error}`;
-      cleanupExpiredCodes(); // Clean up before checking
-      if (!processedCodesGlobal.has(errorKey)) {
-        processedCodesGlobal.set(errorKey, Date.now());
         showError(`Connection failed: ${error}`);
-        // Clear OAuth flow flag on error
-        setTimeout(() => {
-          setOAuthFlowActive(false);
-        }, 1000);
-      }
-      return;
-    }
-
-    if (code) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:114',message:'FLOW_START: OAuth code detected in URL',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,existingConnectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-      
-      // CRITICAL: Check if code was already processed BEFORE any other checks
-      // This prevents processing on remount when URL params haven't been cleared yet
-      cleanupExpiredCodes();
-      const processedTime = processedCodesGlobal.get(code);
-      if (processedTime && (Date.now() - processedTime) < CODE_EXPIRY_MS) {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:119',message:'FLOW_SKIP: Code already processed',data:{codePrefix:code.substring(0,20)+'...',processedAge:Date.now()-processedTime},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-        // #endregion
-        console.log('[ConnectBankScreen] Code already processed - clearing URL and skipping (likely remount race condition)', {
-          codePrefix: code.substring(0, 20) + '...',
-          processedAge: Date.now() - processedTime,
-        });
-        // Clear URL immediately to prevent further processing
-        router.replace('/(tabs)/finance/accounts' as any);
-        navigatingAwayRef.current = true;
-        hasNavigatedRef.current = true;
-        return;
-      }
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:131',message:'FLOW_OAUTH_CODE_RECEIVED: Processing new OAuth code',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,existingConnectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-      
-      console.log('[ConnectBankScreen] OAuth code received:', {
-        codePrefix: code.substring(0, 20) + '...',
-        codeLength: code.length,
-        state,
-        processingRef: processingRef.current,
-        processingGlobal: processingGlobal.current,
-        connecting,
-        existingConnectionsCount: connections.length,
-      });
-      
-      // NOTE: We DON'T check if connections exist here because:
-      // 1. User might be connecting a second/third bank account
-      // 2. Each OAuth code creates a new connection with a unique connectionId
-      // 3. The code itself is checked for duplicates below (processedCodesGlobal)
-      // 4. Checking for existing connections would prevent connecting multiple banks
-      
-      // Clean up expired codes first
-      const beforeCleanup = processedCodesGlobal.size;
-      cleanupExpiredCodes();
-      const afterCleanup = processedCodesGlobal.size;
-      if (beforeCleanup !== afterCleanup) {
-        console.log(`[ConnectBankScreen] Cleaned up ${beforeCleanup - afterCleanup} expired codes`);
-      }
-      
-      // Check if code is currently being processed (check processing marker)
-      const processingCodesKey = `processing_${code}`;
-      if (processedCodesGlobal.has(processingCodesKey)) {
-        console.log('[ConnectBankScreen] Code is currently being processed, skipping duplicate call');
-        return;
-      }
-      
-      // Check if we've already processed this code (global check)
-      // Only reject if it was processed recently (within expiry window)
-      const now = Date.now();
-      if (processedTime) {
-        const age = now - processedTime;
-        console.log('[ConnectBankScreen] Code check:', {
-          wasProcessed: true,
-          processedAge: age,
-          expiryWindow: CODE_EXPIRY_MS,
-          isExpired: age >= CODE_EXPIRY_MS,
-        });
-      } else {
-        console.log('[ConnectBankScreen] Code check: Not processed before');
-      }
-      
-      // Early exit: If THIS SPECIFIC code was already processed, navigate away to prevent duplicate processing
-      // NOTE: We don't check if connections exist because user might be connecting a second/third bank
-      // Each OAuth code creates a new connection with a unique connectionId
-      if (processedTime && (now - processedTime) < CODE_EXPIRY_MS) {
-        console.log('[ConnectBankScreen] This specific code was already processed recently - navigating away', {
-          processedAge: now - processedTime,
-          expiryWindow: CODE_EXPIRY_MS,
-        });
-        // Navigate away to clear URL params and prevent retry
-        navigatingAwayRef.current = true;
-        router.replace('/(tabs)/finance/accounts' as any);
-        return;
-      }
-
-      // If code exists but is expired, remove it and allow processing (expired codes can be reused)
-      if (processedTime && (now - processedTime) >= CODE_EXPIRY_MS) {
-        console.log('[ConnectBankScreen] Code was processed but expired, allowing reprocessing', {
-          processedAge: now - processedTime,
-        });
-        processedCodesGlobal.delete(code);
-      }
-
-      // CRITICAL: Check if code is currently being processed to prevent duplicate calls
-      // If processing flags are set, another call is already in progress - don't start another one
-      if (processingRef.current || processingGlobal.current || connecting) {
-        console.log('[ConnectBankScreen] Code is already being processed, skipping duplicate call', {
-          processingRef: processingRef.current,
-          processingGlobal: processingGlobal.current,
-          connecting,
-        });
-        return;
-      }
-
-      // On Android, if the app reloaded, processing flags will be reset
-      // So if flags are NOT set, it means the app reloaded and we should process immediately
-      // If flags ARE set, WebBrowser might still return, so wait a short time
-      const processCallback = () => {
-        // Check again if already processing (might have started while waiting)
-        if (processingRef.current || processingGlobal.current || connecting) {
-          console.log('[ConnectBankScreen] Code already being processed, skipping timeout callback');
-          return;
-        }
-        
-        // Reset processing flags if they're still set (WebBrowser didn't return)
-        if (processingRef.current || processingGlobal.current) {
-          console.log('[ConnectBankScreen] WebBrowser did not return, processing deep link callback');
-          processingRef.current = false;
-          processingGlobal.current = false;
           setConnecting(false);
+          // Clear params so we don't keep re-showing this error on re-render.
+          requestAnimationFrame(() => {
+            router.replace('/connect-bank' as any);
+          });
         }
-        
-        // Process the callback from deep link (fallback scenario) with state parameter
-        // Pass forceProcess=true to allow processing even if flags are set
-        // Don't mark code as processed here - let handleOAuthCallback do it after success
-        console.log('[ConnectBankScreen] Processing OAuth callback from deep link');
-        handleOAuthCallback(code, state, true);
-      };
-
-      // On Android, if processing flags are NOT set, the app likely reloaded
-      // Process immediately without waiting for WebBrowser
-      if (Platform.OS === 'android' && !processingRef.current && !processingGlobal.current && !connecting) {
-        console.log('[ConnectBankScreen] Android: App reloaded, processing deep link callback immediately', {
-          codePrefix: code.substring(0, 20) + '...',
-          state,
-        });
-        // Don't mark code as processed here - let handleOAuthCallback do it after success
-        console.log('[ConnectBankScreen] Calling handleOAuthCallback with forceProcess=true');
-        handleOAuthCallback(code, state, true);
-        return;
-      }
-
-      // If processing flags are set, wait a bit for WebBrowser to return
-      // On iOS, WebBrowser should return quickly
-      // On Android, if flags are set, WebBrowser might still return (app didn't reload)
-      if (processingRef.current || processingGlobal.current || connecting) {
-        // On Android, use shorter delay since WebBrowser should return quickly if app didn't reload
-        // On iOS, also use short delay
-        const delay = Platform.OS === 'android' ? 200 : 300;
-        console.log(`[ConnectBankScreen] Waiting ${delay}ms for WebBrowser to return, will process deep link if it doesn't...`, {
-          processingRef: processingRef.current,
-          processingGlobal: processingGlobal.current,
-          connecting,
-        });
-        const timeout = setTimeout(() => {
-          console.log('[ConnectBankScreen] Timeout reached, executing processCallback');
-          processCallback();
-        }, delay);
-        return () => {
-          console.log('[ConnectBankScreen] Cleaning up timeout');
-          clearTimeout(timeout);
-        };
-      } else {
-        // No processing flags set (iOS case or direct navigation)
-        console.log('[ConnectBankScreen] No processing flags set, processing deep link callback immediately', {
-          codePrefix: code.substring(0, 20) + '...',
-          state,
-        });
-        // Don't mark code as processed here - let handleOAuthCallback do it after success
-        console.log('[ConnectBankScreen] Calling handleOAuthCallback with forceProcess=false');
-        handleOAuthCallback(code, state, false);
-      }
-    }
-  }, [code, error, connecting, state]);
+  }, [code, error, connecting, router, state]);
 
   const loadConnections = async () => {
     try {
       setLoading(true);
-      console.log('[ConnectBankScreen] loadConnections: Starting to load connections...');
       const conns = await getAllConnections();
-      console.log('[ConnectBankScreen] loadConnections: Loaded connections:', {
-        count: conns.length,
-        connections: conns.map(c => ({
-          id: c.id,
-          providerName: c.providerName,
-          hasProviderName: !!c.providerName,
-          createdAt: c.createdAt,
-          connectionIdToProvider: `${c.id} -> ${c.providerName || 'NO_PROVIDER'}`,
-        })),
-      });
-      setConnections(conns);
-      console.log('[ConnectBankScreen] loadConnections: Connections set in state:', {
-        count: conns.length,
-        connectionIds: conns.map(c => c.id),
-        providerNames: conns.map(c => c.providerName || 'NO_PROVIDER'),
-      });
+      // Defensive: de-dupe by connection id (should already be unique, but prevents weird UI states).
+      const unique = new Map<string, TrueLayerConnection>();
+      for (const c of conns) {
+        if (c?.id) unique.set(c.id, c);
+      }
+      setConnections(Array.from(unique.values()));
     } catch (error) {
-      console.error('[ConnectBankScreen] loadConnections: Error loading connections:', error);
+      console.error('Error loading connections:', error);
     } finally {
       setLoading(false);
     }
@@ -319,492 +79,82 @@ export default function ConnectBankScreen() {
 
   const handleConnect = async () => {
     try {
-      // Mark OAuth flow as active FIRST to prevent any reloads or navigation interference
+      // Ensure RootLayout doesn't lock/unmount navigation while the user is in the bank/OAuth flow.
+      // (On iOS this is especially important because we leave the app via Safari.)
       setOAuthFlowActive(true);
-      console.log('[ConnectBankScreen] OAuth flow started, marking as active');
-      
       setConnecting(true);
-      processingRef.current = true;
-      processingGlobal.current = true;
-      
-      // On iOS, openAuthUrl uses system browser and returns null
-      // On Android, it uses WebBrowser and returns a result
-      // Note: On Android, opening WebBrowser may cause app to reload in development mode
-      // The deep link handler will process the callback when user returns
-      console.log('[ConnectBankScreen] Opening OAuth URL...');
       const result = await openAuthUrl();
-      console.log('[ConnectBankScreen] OAuth URL opened, result:', result ? 'received' : 'null (will use deep link)');
-      
-      if (result === null) {
-        // On iOS, system browser was opened
-        // The deep link handler will process the callback when user returns to app
-        console.log('[ConnectBankScreen] Opened system browser (iOS), waiting for deep link callback...');
-        // Keep connecting state true and OAuth flow active
-        // Don't reset processing flags - let deep link handler process it
-        // The deep link handler will reset these when it processes the callback
-        return;
-      }
-      
-      // Android path: WebBrowser returned a result
-      // Keep connecting state true until callback is processed or error occurs
       
       if (result?.error) {
-        // Reset connecting state on error
+        showError(`Connection failed: ${result.error}`);
         setConnecting(false);
-        processingRef.current = false;
-        processingGlobal.current = false;
-        // Clear OAuth flow flag on error
         setOAuthFlowActive(false);
-        if (result.error !== 'Authentication cancelled by user' && result.error !== 'Authentication dismissed') {
-          showError(`Connection failed: ${result.error}`);
-        }
         return;
       }
       
       if (result?.code) {
-        console.log('[ConnectBankScreen] WebBrowser returned code', {
-          codePrefix: result.code.substring(0, 20) + '...',
-          codeLength: result.code.length,
-          state: result.state,
-        });
-        
-        // Check if we've already processed this code (shouldn't happen, but safety check)
-        cleanupExpiredCodes();
-        const processedTime = processedCodesGlobal.get(result.code);
-        if (processedTime && (Date.now() - processedTime) < CODE_EXPIRY_MS) {
-          console.log('[ConnectBankScreen] Code already processed via WebBrowser, ignoring', {
-            processedAge: Date.now() - processedTime,
-          });
-          setConnecting(false);
-          processingRef.current = false;
-          processingGlobal.current = false;
-          setOAuthFlowActive(false);
-          return;
-        }
-        
-        // CRITICAL: Clear processing flags BEFORE calling handleOAuthCallback
-        // The flags were set when handleConnect was called, but now WebBrowser has returned
-        // We need to clear them so handleOAuthCallback can process the code
-        console.log('[ConnectBankScreen] Clearing processing flags before handling WebBrowser result');
-        processingRef.current = false;
-        processingGlobal.current = false;
-        setConnecting(false);
-        
-        // DON'T mark as processed yet - let handleOAuthCallback mark it after successful processing
-        // This prevents the code from being rejected if component remounts before processing completes
-        console.log('[ConnectBankScreen] Calling handleOAuthCallback from WebBrowser result');
-        
-        // Process the OAuth callback directly with state parameter
-        // handleOAuthCallback will set the flags and mark as processed after success
+        // WebBrowser returned code directly (Android)
         await handleOAuthCallback(result.code, result.state);
-      } else {
-        // No code and no error - unexpected result, reset state
-        setConnecting(false);
-        processingRef.current = false;
-        processingGlobal.current = false;
-        setOAuthFlowActive(false);
       }
+      // On iOS, deep link will handle the callback
     } catch (error: any) {
       console.error('Error opening auth URL:', error);
-      setConnecting(false);
-      processingRef.current = false;
-      processingGlobal.current = false;
-      // Clear OAuth flow flag on error
-      setOAuthFlowActive(false);
       showError(error.message || 'Failed to open TrueLayer authentication');
+      setConnecting(false);
+      setOAuthFlowActive(false);
     }
   };
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      // Reset processing flags on unmount to prevent blocking
-      processingRef.current = false;
-      processingGlobal.current = false;
-      // Clear OAuth flow flag if component unmounts during OAuth (shouldn't happen, but safety)
-      // Note: We don't clear it here if connecting is true, as the callback might still be processing
-      // The finally block in handleOAuthCallback will clear it
-    };
-  }, []);
-
-  const handleOAuthCallback = async (code: string, state?: string, forceProcess: boolean = false) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:403',message:'FLOW_HANDLE_OAUTH_CALLBACK: Starting OAuth callback handler',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,codeLength:code.length,state,forceProcess},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-    // #endregion
-    
-    console.log('[ConnectBankScreen] handleOAuthCallback called', {
-      codePrefix: code.substring(0, 20) + '...',
-      codeLength: code.length,
-      state,
-      forceProcess,
-      processingRef: processingRef.current,
-      processingGlobal: processingGlobal.current,
-      connecting,
-    });
-    
-    // Early exit: Check if THIS SPECIFIC code was already processed
-    // NOTE: We don't check if connections exist because user might be connecting a second/third bank
-    // Each OAuth code creates a new connection with a unique connectionId
-    cleanupExpiredCodes();
-    const processedTime = processedCodesGlobal.get(code);
-    if (processedTime && (Date.now() - processedTime) < CODE_EXPIRY_MS) {
-      // This specific code was already processed - navigate away to prevent duplicate processing
-      console.log('[ConnectBankScreen] This specific code was already processed recently - navigating away', {
-        processedAge: Date.now() - processedTime,
-        expiryWindow: CODE_EXPIRY_MS,
-      });
-      // Navigate without code params to clear URL
-      router.replace('/(tabs)/finance/accounts' as any);
-      // Clear states immediately
-      setConnecting(false);
-      processingRef.current = false;
-      processingGlobal.current = false;
-      setOAuthFlowActive(false);
-      return;
-    }
-    
-    // CRITICAL: Prevent duplicate processing - check if already processing this exact code
-    // Use a Set to track codes currently being processed (separate from processed codes)
-    const processingCodesKey = `processing_${code}`;
-    if (processedCodesGlobal.has(processingCodesKey)) {
-      console.log('[ConnectBankScreen] Code is already being processed (marked in map), ignoring duplicate');
-      return;
-    }
-    
-    // Prevent duplicate processing (check both local and global)
-    // But allow processing if forceProcess is true (deep link callback on iOS production)
-    if ((processingRef.current || processingGlobal.current) && !forceProcess) {
-      console.log('[ConnectBankScreen] OAuth callback already being processed (flags set), ignoring duplicate');
-      return;
-    }
-    
-    // Mark code as "processing" immediately to prevent duplicate calls
-    // Use a special key to distinguish from "processed" codes
-    processedCodesGlobal.set(processingCodesKey, Date.now());
-    console.log('[ConnectBankScreen] Code marked as processing to prevent duplicates');
-    
-    // If processing flags are set but we're forcing processing (deep link callback), reset them
-    // This handles the case where WebBrowser.openAuthSessionAsync() hung on iOS production
-    if ((processingRef.current || processingGlobal.current) && forceProcess) {
-      console.log('[ConnectBankScreen] Processing deep link callback, resetting flags');
-      processingRef.current = false;
-      processingGlobal.current = false;
-      setConnecting(false);
-    }
-
+  const handleOAuthCallback = async (code: string, state?: string) => {
     try {
-      console.log('[ConnectBankScreen] Starting OAuth callback processing', {
-        codePrefix: code.substring(0, 20) + '...',
-        state,
-        forceProcess,
-      });
-      
-      // Use processing flags to prevent duplicate processing during same session
-      // Don't mark code as processed yet - only mark after successful exchange
-      processingRef.current = true;
-      processingGlobal.current = true;
+      // Callback processing is part of the OAuth flow; keep the app in "OAuth active" mode
+      // until we're fully done exchanging + storing.
+      setOAuthFlowActive(true);
       setConnecting(true);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:468',message:'Before exchangeCodeForTokens - setting processing flags',data:{codePrefix:code.substring(0,20)+'...',processingRef:true,processingGlobal:true,connecting:true,codeAlreadyProcessed:!!processedCodesGlobal.get(code)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:480',message:'FLOW_TOKEN_EXCHANGE_START: Calling exchangeCodeForTokens',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,state},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-      
-      console.log('[ConnectBankScreen] Calling exchangeCodeForTokens...');
+      // Exchange code for tokens
       const { connectionId } = await exchangeCodeForTokens(code, undefined, state);
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:481',message:'FLOW_TOKEN_EXCHANGE_END: Token exchange completed - connectionId received',data:{codePrefix:code.substring(0,20)+'...',fullCode:code,connectionId,codeToConnectionIdMapping:`${code.substring(0,20)}... -> ${connectionId}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-      
-      console.log('[ConnectBankScreen] exchangeCodeForTokens succeeded', { connectionId });
-      
-      // Log token exchange details for debugging token/code reuse
-      console.log('[ConnectBankScreen] Token exchange details:', {
-        codePrefix: code.substring(0, 20) + '...',
-        fullCode: code, // For debugging
-        connectionId,
-        timestamp: Date.now()
-      });
-      
-      // Remove "processing" marker and mark code as processed ONLY after successful token exchange
-      processedCodesGlobal.delete(processingCodesKey);
-      processedCodesGlobal.set(code, Date.now());
-      console.log('[ConnectBankScreen] Code marked as processed after successful token exchange');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:476',message:'After successful exchange - marking code as processed',data:{codePrefix:code.substring(0,20)+'...',connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
+      // Fetch and store provider name
+      await fetchAndStoreProviderName(connectionId);
 
-      // CRITICAL FIX: Clear URL params IMMEDIATELY on Android to prevent remount from processing old code
-      // Do this BEFORE async operations to prevent race condition
-      if (Platform.OS === 'android') {
-        console.log('[ConnectBankScreen] Android: Clearing URL params immediately to prevent remount race condition');
-        navigatingAwayRef.current = true;
-        hasNavigatedRef.current = true;
-        try {
-          router.replace('/(tabs)/finance/accounts' as any);
-          console.log('[ConnectBankScreen] Android: URL params cleared');
-        } catch (navError) {
-          console.error('[ConnectBankScreen] Android: Error clearing URL params:', navError);
-        }
-      }
-
-      // Fetch and store provider name (for debugging - this will help identify if the correct token is being used)
-      console.log('[ConnectBankScreen] Fetching provider name for connection:', connectionId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:519',message:'FLOW_PROVIDER_FETCH_START: About to fetch provider name',data:{connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-      try {
-        const providerName = await fetchAndStoreProviderName(connectionId);
-        console.log('[ConnectBankScreen] Provider name fetched and stored:', {
-          connectionId,
-          providerName,
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:525',message:'FLOW_PROVIDER_FETCH_END: Provider name fetched and stored',data:{connectionId,providerName,connectionIdToProviderMapping:`${connectionId} -> ${providerName}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-        // #endregion
-        
-        // CRITICAL: Add a small delay on Android to ensure Firestore has propagated
-        if (Platform.OS === 'android') {
-          console.log('[ConnectBankScreen] Android: Waiting 500ms for Firestore to propagate providerName');
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      } catch (providerError: any) {
-        console.error('[ConnectBankScreen] ❌ Error fetching provider name:', providerError);
-        console.error('[ConnectBankScreen] Error details:', {
-          message: providerError?.message,
-          stack: providerError?.stack?.substring(0, 300),
-        });
-        // Continue even if provider name fetch fails - connection was established
-      }
-
-      // NOTE: Account syncing is disabled for debugging - we're only fetching provider names
-      // await syncTrueLayerAccounts(connectionId);
-
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:537',message:'FLOW_CONNECTION_LOAD_START: Loading all connections',data:{connectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
+      // Immediately sync accounts for this connection so Accounts screen reflects the new bank right away.
+      // This is especially important on Android where users expect to see the newly connected accounts instantly.
+      await syncTrueLayerAccounts(connectionId);
       
-      // Reload connections immediately
+      // Reload connections
       await loadConnections();
       
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:540',message:'FLOW_CONNECTION_LOAD_END: Connections loaded',data:{connectionId,connectionsCount:connections.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
-      // #endregion
-
-      // Mark that we're navigating away and have navigated to prevent useEffect from processing again
-      // Do this BEFORE async operations if on Android (already done above), otherwise do it here
-      if (Platform.OS !== 'android') {
-        navigatingAwayRef.current = true;
-        hasNavigatedRef.current = true;
-      }
+      showSuccess('Bank connected successfully!');
       
-      // Navigate immediately without code/state params to clear URL and prevent re-processing
-      // Use replace to prevent going back to this screen with the code param
-      // On Android, navigation already happened above, so skip here
-      if (Platform.OS !== 'android') {
-        console.log('[ConnectBankScreen] 🚀 NAVIGATING to accounts screen after successful connection');
-        try {
-          router.replace('/(tabs)/finance/accounts' as any);
-          console.log('[ConnectBankScreen] ✅ Navigation command sent successfully');
-        } catch (navError) {
-          console.error('[ConnectBankScreen] ❌ Navigation error:', navError);
-        }
-      }
-      showSuccess('Bank account connected successfully!');
-      
-      // Clear connecting state and processing flags AFTER navigation
-      // Keep connecting state true until navigation completes so UI shows "Connecting..." until we leave
+      // Don't navigate automatically - let user see the new connection
+      // They can navigate back manually
       setConnecting(false);
-      processingRef.current = false;
-      processingGlobal.current = false;
-      console.log('[ConnectBankScreen] Cleared connecting state and processing flags after navigation');
-      
-      // Keep OAuth flow flag active for a bit longer to prevent navigation effect from interfering
-      // This prevents screen switching after OAuth completes
-      setTimeout(() => {
-        setOAuthFlowActive(false);
-        console.log('[ConnectBankScreen] OAuth flow flag cleared after delay (prevents navigation interference)');
-      }, 3000); // 3 second delay to prevent navigation effect from interfering
-
-      // Fetch transactions in background (non-blocking)
-      // This allows user to see accounts immediately while transactions load
-      console.log('[ConnectBankScreen] Fetching transactions in background...');
-      refreshTransactions()
-        .then(() => {
-          console.log('[ConnectBankScreen] Background transaction fetch completed');
-        })
-        .catch((error) => {
-          console.error('[ConnectBankScreen] Background transaction fetch failed (non-critical):', error);
-        });
-      
-      // Stop all further processing - return early
-      return;
-    } catch (error: any) {
-      // Remove "processing" marker on error so code can be retried
-      processedCodesGlobal.delete(processingCodesKey);
-      
-      console.error('[ConnectBankScreen] Error handling OAuth callback:', error);
-      console.error('[ConnectBankScreen] Error details:', {
-        message: error?.message,
-        code: error?.code,
-        stack: error?.stack?.substring(0, 200),
+      setOAuthFlowActive(false);
+      // Clear the OAuth params so the callback is not re-processed if the user revisits this route.
+      requestAnimationFrame(() => {
+        router.replace('/connect-bank' as any);
       });
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:520',message:'Error in handleOAuthCallback',data:{codePrefix:code.substring(0,20)+'...',errorMessage:error?.message,codeAlreadyProcessed:!!processedCodesGlobal.get(code)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
-      const errorMessage = error.message || 'Failed to connect bank account';
-      
-      // Check if error is "code already used" or "invalid state" - this might mean it was successfully processed
-      // but the component remounted and tried again
-      const isCodeAlreadyUsed = errorMessage.includes('invalid_grant') || 
-                                 errorMessage.includes('Invalid grant') || 
-                                 errorMessage.includes('authorization code has already been used') ||
-                                 errorMessage.includes('Code has already been used');
-      const isInvalidState = errorMessage.includes('Invalid or expired state') || 
-                            errorMessage.includes('invalid state') ||
-                            errorMessage.includes('Invalid state parameter');
-      
-      // IMPORTANT: Check for existing connections FIRST before showing any error
-      // If connection exists, treat as success (code was already used because it succeeded before)
-      if (isCodeAlreadyUsed || isInvalidState) {
-        console.log('[ConnectBankScreen] Code/state error - checking if connection was successful FIRST', {
-          errorType: isCodeAlreadyUsed ? 'code_already_used' : 'invalid_state',
-        });
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:541',message:'Code/state error - checking connections',data:{isCodeAlreadyUsed,isInvalidState,codePrefix:code.substring(0,20)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
-        
-        // Check if connection was actually created by loading connections directly
-        try {
-          const existingConnections = await getAllConnections();
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:548',message:'Error handler - connections check result',data:{connectionCount:existingConnections.length,hasConnections:existingConnections.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
-          // If we have connections, the code was successfully processed before
-          // This happens when component remounts after successful processing
-          if (existingConnections.length > 0) {
-            console.log('[ConnectBankScreen] Connection already exists - treating as success (no error shown)', {
-              connectionCount: existingConnections.length,
-              errorType: isCodeAlreadyUsed ? 'code_already_used' : 'invalid_state',
-            });
-            // Mark code as processed now (connection exists, so it was successful)
-            processedCodesGlobal.set(code, Date.now());
-            // Reload connections state
-            await loadConnections();
-            // Navigate without code params to clear URL and show success (connection was already established)
-            router.replace('/(tabs)/finance/accounts' as any);
-            showSuccess('Bank account connected successfully!');
-            // Clear states immediately
-            setConnecting(false);
-            processingRef.current = false;
-            processingGlobal.current = false;
-            setOAuthFlowActive(false);
-            return;
-          }
-        } catch (checkError) {
-          console.error('[ConnectBankScreen] Error checking existing connections:', checkError);
-          // Continue to show error if we can't check
-        }
-      }
-      
-      // Processing marker already removed above
-      // Mark code as processed (failed) to prevent infinite retry loop
-      // This prevents the useEffect from retrying when code param stays in URL
-      processedCodesGlobal.set(code, Date.now());
-      console.log('[ConnectBankScreen] Code marked as processed (failed) to prevent retry loop');
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ConnectBankScreen.tsx:577',message:'Error handler - marking code as processed (failed)',data:{codePrefix:code.substring(0,20)+'...',willShowError:true,processingMarkerRemoved:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
-      // Mark that we're navigating away to prevent useEffect from processing again
-      navigatingAwayRef.current = true;
-      
-      // Navigate away IMMEDIATELY to clear URL params and prevent useEffect from retrying
-      // Do this before showing error so URL is cleared right away
-      router.replace('/(tabs)/finance/accounts' as any);
-      
-      // Show error for actual failures (toast will still show even after navigation)
-      if (isCodeAlreadyUsed) {
-        showError('This authorization code has already been used. Please try connecting again.');
-      } else if (isInvalidState) {
-        showError('The authorization session has expired. Please try connecting again.');
-      } else {
-        showError(errorMessage);
-      }
-    } finally {
-      console.log('[ConnectBankScreen] OAuth callback processing finished, cleaning up');
-      // Only clear states if they weren't already cleared in the success path
-      // (success path clears them immediately after token exchange)
-      if (processingRef.current || processingGlobal.current || connecting) {
+    } catch (error: any) {
+      console.error('Error handling OAuth callback:', error);
+      showError(error.message || 'Failed to connect bank');
       setConnecting(false);
-      processingRef.current = false;
-      processingGlobal.current = false;
-        // Clear OAuth flow flag after error handling
-      setTimeout(() => {
-          console.log('[ConnectBankScreen] Clearing OAuth flow flag');
-        setOAuthFlowActive(false);
-      }, 1000);
-      }
+      setOAuthFlowActive(false);
+      // Clear the OAuth params to avoid retry loops (e.g., "code already used").
+      requestAnimationFrame(() => {
+        router.replace('/connect-bank' as any);
+      });
     }
   };
 
   const handleDisconnect = async (connectionId: string) => {
-    await dialog.showDialog(
-      'Disconnect Account',
-      'Are you sure you want to disconnect this account? All linked accounts and their data will be removed.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disconnect',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Delete all accounts linked to this connection
-              const { cloudDeleteAccountsByConnection } = await import('../services/cloudDb');
-              await cloudDeleteAccountsByConnection(connectionId);
-              
-              // Clear tokens
-              await clearTokens(connectionId);
-              
-              // Reload connections
-              await loadConnections();
-              
-              showSuccess('Account disconnected successfully');
-            } catch (error: any) {
-              console.error('Error disconnecting:', error);
-              showError(error.message || 'Failed to disconnect account');
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  const handleSync = async (connectionId: string) => {
     try {
-      setRefreshing(true);
-      // Account syncing disabled for debugging - only fetching provider names
-      // await syncTrueLayerAccounts(connectionId);
-      // await refreshTransactions();
-      
-      // Just refresh the provider name for debugging
-      const providerName = await fetchAndStoreProviderName(connectionId);
-      console.log('[ConnectBankScreen] handleSync: Refreshed provider name:', {
-        connectionId,
-        providerName,
-      });
-      
+      await clearTokens(connectionId);
       await loadConnections();
-      showSuccess('Connection refreshed successfully');
+      showSuccess('Bank disconnected');
     } catch (error: any) {
-      console.error('Error syncing:', error);
-      showError(error.message || 'Failed to sync account');
-    } finally {
-      setRefreshing(false);
+      console.error('Error disconnecting:', error);
+      showError(error.message || 'Failed to disconnect bank');
     }
   };
 
@@ -814,94 +164,69 @@ export default function ConnectBankScreen() {
     setRefreshing(false);
   };
 
-  if (loading && connections.length === 0) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading connections...</Text>
-        </View>
-      </View>
-    );
-  }
-
   return (
     <ScrollView
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      <View style={styles.content}>
-        <Text style={styles.title}>Connect Bank Account</Text>
-        <Text style={styles.subtitle}>
-          Securely connect your bank account using TrueLayer to automatically sync your accounts and balances.
-        </Text>
-
-        {connecting && (
-          <View style={styles.connectingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.connectingText}>Connecting...</Text>
+      {!!code && connecting && (
+        <View style={styles.finalizingBanner}>
+          <ActivityIndicator color={colors.primary} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.finalizingTitle}>Finalizing connection…</Text>
+            <Text style={styles.finalizingSubtitle}>This can take a few seconds. Please keep the app open.</Text>
           </View>
-        )}
-
+        </View>
+      )}
+      <View style={styles.header}>
+        <Text style={styles.title}>Connected Banks</Text>
         <TouchableOpacity
           style={[styles.connectButton, connecting && styles.connectButtonDisabled]}
           onPress={handleConnect}
           disabled={connecting}
         >
-          <Ionicons name="link" size={24} color={colors.background} />
-          <Text style={styles.connectButtonText}>Connect with TrueLayer</Text>
+          {connecting ? (
+            <ActivityIndicator color={colors.background} />
+          ) : (
+            <>
+              <Ionicons name="add-circle-outline" size={20} color={colors.background} />
+              <Text style={styles.connectButtonText}>Connect Bank</Text>
+            </>
+          )}
         </TouchableOpacity>
+      </View>
 
-        {connections.length > 0 && (
-          <View style={styles.connectionsSection}>
-            <Text style={styles.sectionTitle}>Connected Accounts</Text>
+      {loading && connections.length === 0 ? (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : connections.length === 0 ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyText}>No banks connected</Text>
+          <Text style={styles.emptySubtext}>Tap "Connect Bank" to get started</Text>
+        </View>
+      ) : (
+        <View style={styles.connectionsList}>
             {connections.map((connection) => (
               <View key={connection.id} style={styles.connectionCard}>
-                <View style={styles.connectionHeader}>
-                  <View style={styles.connectionIcon}>
-                    <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                  </View>
                   <View style={styles.connectionInfo}>
-                    <Text style={styles.connectionId}>
-                      {connection.providerName || 'Unknown Provider'} - {connection.id.substring(3, 11)}
-                    </Text>
-                    <Text style={styles.connectionDate}>
-                      Connected {formatDistanceToNow(new Date(connection.createdAt), { addSuffix: true })}
+                <Text style={styles.connectionName}>
+                  {connection.providerName || 'Unknown Provider'}
+                </Text>
+                <Text style={styles.connectionId}>
+                  {connection.id ? `Connection • ${connection.id.substring(3, 11)}` : ''}
                     </Text>
                   </View>
-                </View>
-                <View style={styles.connectionActions}>
-                  <TouchableOpacity
-                    style={styles.syncButton}
-                    onPress={() => handleSync(connection.id)}
-                    disabled={refreshing}
-                  >
-                    <Ionicons name="refresh" size={18} color={colors.primary} />
-                    <Text style={styles.syncButtonText}>Sync</Text>
-                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.disconnectButton}
                     onPress={() => handleDisconnect(connection.id)}
                   >
-                    <Ionicons name="trash-outline" size={18} color={colors.error} />
-                    <Text style={styles.disconnectButtonText}>Disconnect</Text>
+                <Ionicons name="trash-outline" size={20} color={colors.error} />
                   </TouchableOpacity>
-                </View>
               </View>
             ))}
           </View>
         )}
-
-        {connections.length === 0 && !loading && (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="wallet-outline" size={64} color={colors.textSecondary} />
-            <Text style={styles.emptyText}>No connected accounts</Text>
-            <Text style={styles.emptySubtext}>
-              Connect your bank account to automatically sync balances and transactions
-            </Text>
-          </View>
-        )}
-      </View>
     </ScrollView>
   );
 }
@@ -911,150 +236,94 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  content: {
-    padding: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
+  finalizingBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    padding: 16,
+    margin: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  loadingText: {
+  finalizingTitle: {
     ...typography.body,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  finalizingSubtitle: {
+    ...typography.caption,
     color: colors.textSecondary,
-    marginTop: 12,
+  },
+  header: {
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   title: {
     ...typography.h1,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  subtitle: {
-    ...typography.body,
-    color: colors.textSecondary,
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  connectingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderRadius: 12,
     marginBottom: 16,
-  },
-  connectingText: {
-    ...typography.body,
-    color: colors.text,
-    marginLeft: 12,
   },
   connectButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 32,
+    padding: 12,
+    borderRadius: 8,
+    gap: 8,
   },
   connectButtonDisabled: {
     opacity: 0.6,
   },
   connectButtonText: {
     ...typography.body,
-    color: colors.background,
     fontWeight: '600',
-    marginLeft: 8,
+    color: colors.background,
   },
-  connectionsSection: {
-    marginTop: 8,
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 40,
   },
-  sectionTitle: {
-    ...typography.h3,
-    color: colors.text,
-    marginBottom: 16,
+  emptyText: {
+    ...typography.h2,
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  connectionsList: {
+    padding: 20,
   },
   connectionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: colors.surface,
-    borderRadius: 12,
     padding: 16,
+    borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  connectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  connectionIcon: {
-    marginRight: 12,
-  },
   connectionInfo: {
     flex: 1,
   },
-  connectionId: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
+  connectionName: {
+    ...typography.h3,
     marginBottom: 4,
   },
-  connectionDate: {
+  connectionId: {
     ...typography.caption,
     color: colors.textSecondary,
-  },
-  connectionActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  syncButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  syncButtonText: {
-    ...typography.caption,
-    color: colors.primary,
-    fontWeight: '600',
-    marginLeft: 4,
   },
   disconnectButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: 8,
-    paddingHorizontal: 12,
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.error,
-  },
-  disconnectButtonText: {
-    ...typography.caption,
-    color: colors.error,
-    fontWeight: '600',
-    marginLeft: 4,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    ...typography.h3,
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: 40,
   },
 });

@@ -39,7 +39,7 @@ const menuItems: ActionMenuItem[] = [
   {
     label: 'Connect Bank',
     icon: 'card-outline',
-    route: '/(tabs)/finance/connect-bank',
+    route: '/connect-bank',
     description: 'Link your bank account',
   },
   {

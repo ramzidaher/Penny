@@ -18,8 +18,8 @@ import PINSetupScreen from '../src/components/PINSetupScreen';
 import { getOAuthFlowActive } from '../src/services/oAuthFlowService';
 import type { User } from 'firebase/auth';
 
-// Module-level storage for TrueLayer callback URL to prevent route matching
-let truelayerCallbackUrl: string | null = null;
+// NOTE: TrueLayer callback is handled by `app/truelayer-callback.tsx` (a real route).
+// RootLayout should avoid storing/redirecting callback URLs to prevent double-navigation.
 
 function RootLayoutInner() {
   // Font loading kept for future use but not blocking app
@@ -44,8 +44,8 @@ function RootLayoutInner() {
   const hasCheckedInitialLock = useRef(false); // Track if we've checked lock on initial load
   const authStateChangedFired = useRef(false); // Track if onAuthStateChanged has fired at least once
 
-  // Handle deep links for TrueLayer OAuth callback
-  // We need to prevent Expo Router from trying to route penny://truelayer-callback URLs
+  // Handle deep links for TrueLayer OAuth callback.
+  // RootLayout should NOT navigate/redirect on callback URLs (double redirects can crash React Navigation).
   useEffect(() => {
     // Track processed codes to prevent duplicate navigation
     const processedCodes = new Set<string>();
@@ -145,14 +145,9 @@ function RootLayoutInner() {
           const parsedUrl = Linking.parse(url);
           const token = parsedUrl.queryParams?.token as string;
           
-          if (token) {
-            const code = extractCodeFromToken(token);
-            if (code) {
-              // Store for navigation after auth is ready
-              truelayerCallbackUrl = `penny://truelayer-callback?code=${code}`;
-              return;
-            }
-          }
+          // Let the browser continue; we expect to receive the final `penny://truelayer-callback?...` deep link.
+          // We do not perform any navigation here.
+          return;
         } catch (error) {
           console.error('[RootLayout] Error handling redirect URL:', error);
         }
@@ -164,6 +159,9 @@ function RootLayoutInner() {
       if (url.includes('truelayer-callback') || (url.startsWith('penny://') && url.includes('truelayer-callback'))) {
         console.log('[RootLayout] Received TrueLayer callback deep link:', url);
         console.log('[RootLayout] Platform:', Platform.OS);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'_layout.tsx:callback',message:'RootLayout received callback deep link',data:{platform:Platform.OS},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+        // #endregion
         // Mark OAuth flow as active to prevent lock screen interference
         const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
         setOAuthFlowActive(true);
@@ -181,90 +179,10 @@ function RootLayoutInner() {
 
           console.log('[RootLayout] Parsed OAuth callback:', { hasCode: !!code, hasError: !!error, hasState: !!state });
 
-          // On Android, if the app reloaded, we should navigate immediately
-          // On iOS, WebBrowser might still return, so we can wait a bit
-          if (code) {
-            // Check if we've already processed this code
-            if (processedCodes.has(code)) {
-              console.log('[RootLayout] Code already processed, ignoring duplicate');
-              // Clear OAuth flow flag after processing - ConnectBankScreen will handle re-locking
-              setTimeout(() => {
-                setOAuthFlowActive(false);
-              }, 2000);
-              return;
-            }
-            
-            // Mark as processed
-            processedCodes.add(code);
-            
-            // On Android, navigate immediately since app might have reloaded
-            // On iOS, wait a short time for WebBrowser to potentially return
-            const delay = Platform.OS === 'android' ? 0 : 200;
-            
-            if (delay > 0) {
-              console.log(`[RootLayout] Waiting ${delay}ms for WebBrowser to process, then handling deep link...`);
-            } else {
-              console.log('[RootLayout] Android: Navigating immediately (app may have reloaded)');
-            }
-            
-            setTimeout(() => {
-              if (user && isAuthReady) {
-                // Note: ConnectBankScreen will check processedCodesGlobal and ignore if already processed
-                console.log('[RootLayout] Navigating to connect-bank with OAuth code');
-                try {
-                  router.replace({
-                    pathname: '/(tabs)/finance/connect-bank' as any,
-                    params: { code: code, ...(state ? { state } : {}) },
-                  });
-                } catch (navError) {
-                  console.error('[RootLayout] Navigation error:', navError);
-                  // Retry navigation after a short delay
-                  setTimeout(() => {
-                    try {
-                      router.replace({
-                        pathname: '/(tabs)/finance/connect-bank' as any,
-                        params: { code: code, ...(state ? { state } : {}) },
-                      });
-                    } catch (retryError) {
-                      console.error('[RootLayout] Retry navigation error:', retryError);
-                    }
-                  }, 500);
-                }
-              } else {
-                console.log('[RootLayout] User or auth not ready, will navigate when ready');
-                console.log('[RootLayout] User:', !!user, 'AuthReady:', isAuthReady);
-              }
-              // Keep OAuth flow flag active longer to prevent navigation interference
-              // ConnectBankScreen will clear it after successful processing
-              // Use longer timeout to prevent navigation effect from interfering
-              setTimeout(() => {
-                const { getOAuthFlowActive } = require('../src/services/oAuthFlowService');
-                // Only clear if still active (ConnectBankScreen might have cleared it already)
-                if (getOAuthFlowActive()) {
-                  console.log('[RootLayout] Clearing OAuth flow flag after timeout');
-                  setOAuthFlowActive(false);
-                }
-              }, 5000); // Increased from 1000ms to 5000ms to prevent navigation interference
-            }, delay);
-            return;
-          }
-
-          if (error) {
-            console.error('[RootLayout] TrueLayer OAuth error:', error);
-            if (user && isAuthReady) {
-              // For errors, navigate immediately (no WebBrowser processing)
-              console.log('[RootLayout] Navigating to connect-bank with OAuth error');
-              router.replace({
-                pathname: '/(tabs)/finance/connect-bank' as any,
-                params: { error: error },
-              });
-            }
-            // Clear OAuth flow flag after error handling - ConnectBankScreen will handle re-locking
-            setTimeout(() => {
-              setOAuthFlowActive(false);
-            }, 2000);
-            return;
-          }
+          // Do NOT navigate here. The callback is routed to `app/truelayer-callback.tsx`,
+          // which forwards params into the Connect Bank screen safely.
+          // Keep OAuth flow flag active; ConnectBankScreen will clear it after processing.
+          return;
         } catch (error) {
           console.error('[RootLayout] Error handling deep link:', error);
           // Clear OAuth flow flag on error
@@ -274,9 +192,9 @@ function RootLayoutInner() {
       }
     };
 
-    // Handle initial URL - check if it's a TrueLayer callback or redirect and handle it BEFORE routing
-    // On Android, this is critical - we need to intercept before Expo Router tries to match the route
-    // Run this immediately, don't wait for dependencies
+    // Handle initial URL - check if it's a TrueLayer callback or redirect.
+    // We no longer perform any router navigation here (the callback is a real route).
+    // Run this immediately, don't wait for dependencies.
     (async () => {
       try {
         // CRITICAL: Check if OAuth flow is active - if so, don't process initial URL
@@ -306,32 +224,9 @@ function RootLayoutInner() {
           // Mark OAuth flow as active
           const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
           setOAuthFlowActive(true);
-          try {
-            const parsedUrl = Linking.parse(url);
-            const token = parsedUrl.queryParams?.token as string;
-            
-            if (token) {
-              // Extract code from JWT token
-              const code = extractCodeFromToken(token);
-              if (code) {
-                truelayerCallbackUrl = `penny://truelayer-callback?code=${code}`;
-                // On Android, try to navigate immediately if possible to prevent route error
-                if (Platform.OS === 'android' && isAuthReady && user) {
-                  // Use requestAnimationFrame for immediate navigation
-                  requestAnimationFrame(() => {
-                    router.replace({
-                      pathname: '/(tabs)/finance/connect-bank' as any,
-                      params: { code: code },
-                    });
-                  });
-                }
-                return;
-              }
-            }
-          } catch (error) {
-            console.error('[RootLayout] Error handling redirect URL:', error);
-          }
-          // If we can't extract, let WebBrowser handle it
+          // Do not attempt to parse/navigate on the intermediate redirect URL.
+          // We expect the flow to continue and eventually deep link back with `penny://truelayer-callback?...`,
+          // which is handled by `app/truelayer-callback.tsx`.
           return;
         }
         
@@ -342,59 +237,7 @@ function RootLayoutInner() {
           // Mark OAuth flow as active
           const { setOAuthFlowActive } = await import('../src/services/oAuthFlowService');
           setOAuthFlowActive(true);
-          // Store the URL to handle after auth is ready
-          // We'll navigate in the navigation effect below to prevent route matching
-          truelayerCallbackUrl = url;
-          // On Android, try to navigate immediately if possible to prevent route error
-          if (Platform.OS === 'android' && isAuthReady && user) {
-            try {
-              const parsedUrl = Linking.parse(url);
-              const code = parsedUrl.queryParams?.code as string;
-              const error = parsedUrl.queryParams?.error as string;
-              const state = parsedUrl.queryParams?.state as string;
-              
-              console.log('[RootLayout] Android: Navigating immediately with OAuth callback');
-              console.log('[RootLayout] Parsed params:', { hasCode: !!code, hasError: !!error, hasState: !!state });
-              // Use a small delay to ensure router is ready
-              setTimeout(() => {
-                try {
-                  if (code) {
-                    router.replace({
-                      pathname: '/(tabs)/finance/connect-bank' as any,
-                      params: { code: code, ...(state ? { state } : {}) },
-                    });
-                  } else if (error) {
-                    router.replace({
-                      pathname: '/(tabs)/finance/connect-bank' as any,
-                      params: { error: error },
-                    });
-                  }
-                } catch (navError) {
-                  console.error('[RootLayout] Navigation error in initial URL handler:', navError);
-                  // Retry after a longer delay
-                  setTimeout(() => {
-                    try {
-                      if (code) {
-                        router.replace({
-                          pathname: '/(tabs)/finance/connect-bank' as any,
-                          params: { code: code, ...(state ? { state } : {}) },
-                        });
-                      } else if (error) {
-                        router.replace({
-                          pathname: '/(tabs)/finance/connect-bank' as any,
-                          params: { error: error },
-                        });
-                      }
-                    } catch (retryError) {
-                      console.error('[RootLayout] Retry navigation error:', retryError);
-                    }
-                  }, 1000);
-                }
-              }, 100);
-            } catch (err) {
-              console.error('[RootLayout] Error in immediate Android navigation:', err);
-            }
-          }
+          // No navigation here — router will load `app/truelayer-callback.tsx`.
         }
       } catch (error) {
         console.error('[RootLayout] Error getting initial URL:', error);
@@ -436,10 +279,6 @@ function RootLayoutInner() {
     hasCheckedInitialLock.current = false;
     setLockStateDetermined(false); // Reset lock state determination
     authStateChangedFired.current = false; // Reset auth state change flag
-    
-    // Clear any stale OAuth callback URLs on app start
-    // Only process OAuth callbacks that come in during the current session
-    truelayerCallbackUrl = null;
     
     const initialize = async () => {
       await initFirebase();
@@ -681,46 +520,7 @@ function RootLayoutInner() {
       return;
     }
 
-    // Check if we have a stored TrueLayer callback URL to handle first
-    // This prevents Expo Router from trying to match the route
-    // CRITICAL: Only navigate if user is authenticated AND app is not locked
-    // This prevents navigating to connect-bank when app is locked (user can't interact)
-    if (truelayerCallbackUrl && user && !isAppLocked && !pinSetupRequired) {
-      const storedUrl = truelayerCallbackUrl;
-      truelayerCallbackUrl = null; // Clear it immediately
-      
-      try {
-        const parsedUrl = Linking.parse(storedUrl);
-        const code = parsedUrl.queryParams?.code as string;
-        const error = parsedUrl.queryParams?.error as string;
-        
-        // Navigate immediately to prevent route matching
-        // Use a very short delay to ensure router is ready, especially on Android
-        const navigateDelay = Platform.OS === 'android' ? 50 : 0;
-        
-        setTimeout(() => {
-          if (code) {
-            router.replace({
-              pathname: '/(tabs)/finance/connect-bank' as any,
-              params: { code: code },
-            });
-          } else if (error) {
-            router.replace({
-              pathname: '/(tabs)/finance/connect-bank' as any,
-              params: { error: error },
-            });
-          }
-        }, navigateDelay);
-        
-        return; // Don't process normal navigation
-      } catch (err) {
-        console.error('[RootLayout] Error handling stored callback URL:', err);
-      }
-    } else if (truelayerCallbackUrl && user && (isAppLocked || pinSetupRequired)) {
-      // If app is locked or PIN setup required, store the callback URL to process after unlock
-      // Don't clear truelayerCallbackUrl - it will be processed after unlock
-      console.log('[RootLayout] OAuth callback received but app is locked, will process after unlock');
-    }
+    // TrueLayer callback navigation is handled by `app/truelayer-callback.tsx`.
 
     const inAuthGroup = segments[0] === '(auth)';
     const inTabsGroup = segments[0] === '(tabs)';
@@ -783,35 +583,7 @@ function RootLayoutInner() {
     appWentToBackgroundRef.current = false; // Reset background flag after successful unlock
     hasCheckedInitialLock.current = true; // Mark as checked so we don't lock again on this session
     
-    // If there's a stored OAuth callback URL, process it after unlock
-    if (truelayerCallbackUrl && user) {
-      const storedUrl = truelayerCallbackUrl;
-      truelayerCallbackUrl = null; // Clear it immediately
-      
-      try {
-        const parsedUrl = Linking.parse(storedUrl);
-        const code = parsedUrl.queryParams?.code as string;
-        const error = parsedUrl.queryParams?.error as string;
-        
-        // Navigate to connect-bank to process the OAuth callback
-        setTimeout(() => {
-          if (code) {
-            router.replace({
-              pathname: '/(tabs)/finance/connect-bank' as any,
-              params: { code: code },
-            });
-          } else if (error) {
-            router.replace({
-              pathname: '/(tabs)/finance/connect-bank' as any,
-              params: { error: error },
-            });
-          }
-        }, 100);
-        return; // Don't navigate to tabs if we're processing OAuth
-      } catch (err) {
-        console.error('[RootLayout] Error handling stored callback URL after unlock:', err);
-      }
-    }
+    // TrueLayer callback navigation is handled by `app/truelayer-callback.tsx`.
     
     // If user is in auth group after unlock, navigate to tabs
     // This handles the case where user just registered and unlocked

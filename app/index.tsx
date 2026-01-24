@@ -1,7 +1,6 @@
-import { Redirect, useRouter, useLocalSearchParams } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { getCurrentUser } from '../src/services/firebase';
-import { useEffect, useState, useRef } from 'react';
-import * as Linking from 'expo-linking';
+import { useEffect, useState } from 'react';
 
 /**
  * Root index page - required for Android to prevent "Unmatched Route" errors
@@ -11,43 +10,11 @@ import * as Linking from 'expo-linking';
 export default function Index() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const hasCheckedUrl = useRef(false);
 
   useEffect(() => {
-    // Check for initial URL immediately - this runs before Expo Router processes it
-    const checkInitialUrl = async () => {
-      if (hasCheckedUrl.current) return;
-      hasCheckedUrl.current = true;
-      
-      try {
-        const url = await Linking.getInitialURL();
-        if (url) {
-          // If it's a TrueLayer callback, redirect immediately to prevent route matching
-          if (url.includes('truelayer-callback') || url.includes('penny://truelayer-callback')) {
-            console.log('[Index] TrueLayer callback detected, redirecting immediately');
-            const parsedUrl = Linking.parse(url);
-            const code = parsedUrl.queryParams?.code as string;
-            const error = parsedUrl.queryParams?.error as string;
-            
-            if (code || error) {
-              // Redirect immediately using requestAnimationFrame
-              requestAnimationFrame(() => {
-                router.replace({
-                  pathname: '/(tabs)/finance/connect-bank' as any,
-                  params: code ? { code } : { error },
-                });
-              });
-              return;
-            }
-          }
-        }
-      } catch (error) {
-        console.error('[Index] Error checking initial URL:', error);
-      }
-    };
-
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.tsx:mount',message:'Index mounted',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
+    // #endregion
     // Get current user to determine redirect
     const checkUser = () => {
       const currentUser = getCurrentUser();
@@ -55,25 +22,8 @@ export default function Index() {
       setLoading(false);
     };
 
-    // Run both checks
-    checkInitialUrl();
     checkUser();
-  }, [router]);
-
-  // Check if we have callback params (in case they were passed via route)
-  useEffect(() => {
-    if (params.code || params.error) {
-      console.log('[Index] Callback params detected, redirecting to connect-bank');
-      // Redirect to connect-bank with params immediately
-      requestAnimationFrame(() => {
-        router.replace({
-          pathname: '/(tabs)/finance/connect-bank' as any,
-          params: params.code ? { code: params.code as string } : { error: params.error as string },
-        });
-      });
-      return;
-    }
-  }, [params, router]);
+  }, []);
 
   // Show nothing while loading - _layout.tsx will handle navigation
   if (loading) {

@@ -13,7 +13,6 @@
 
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as WebBrowser from 'expo-web-browser';
 import axios, { AxiosInstance } from 'axios';
 import { httpsCallable } from 'firebase/functions';
 import { getFirebaseFunctions } from './firebase';
@@ -26,6 +25,7 @@ import {
   TrueLayerConnection,
 } from '../types/truelayer';
 import { Platform, Linking } from 'react-native';
+import { setOAuthFlowActive } from './oAuthFlowService';
 
 const CLIENT_ID = process.env.EXPO_PUBLIC_TRUELAYER_CLIENT_ID || '';
 // CLIENT_SECRET removed - token exchange and refresh now handled by backend
@@ -585,12 +585,26 @@ const deleteTokensFromFirestore = async (connectionId: string): Promise<void> =>
 };
 
 // Token Management
+// Serialize token writes/refreshes per connectionId to avoid races where concurrent refresh/store
+// operations overwrite each other and cause "wrong bank" symptoms (token from another session wins).
+const connectionTokenLocks = new Map<string, Promise<unknown>>();
+
+const withConnectionTokenLock = async <T>(connectionId: string, fn: () => Promise<T>): Promise<T> => {
+  const prev = connectionTokenLocks.get(connectionId) ?? Promise.resolve();
+  // Always continue the chain even if the previous operation failed.
+  const next = prev.then(fn, fn);
+  // Store a swallow-catch promise so future operations aren't blocked by rejections.
+  connectionTokenLocks.set(connectionId, next.catch(() => {}));
+  return next;
+};
+
 export const storeTokens = async (
   connectionId: string,
   accessToken: string,
   refreshToken: string,
   expiresIn: number
 ): Promise<void> => {
+  return withConnectionTokenLock(connectionId, async () => {
   // Validate connection ID
   if (!validateConnectionId(connectionId)) {
     throw new Error('Invalid connection ID format');
@@ -636,6 +650,7 @@ export const storeTokens = async (
     connections.push(connectionId);
     await storageSetItem(getConnectionsKey(), JSON.stringify(connections));
   }
+  });
 };
 
 export const getTokens = async (connectionId: string): Promise<TrueLayerConnection | null> => {
@@ -773,6 +788,7 @@ export const isTokenRevoked = async (connectionId: string): Promise<boolean> => 
 
 // Refresh access token (now uses backend service)
 export const refreshAccessToken = async (connectionId: string): Promise<TrueLayerConnection | null> => {
+  return withConnectionTokenLock(connectionId, async () => {
   // Validate connection ID
   if (!validateConnectionId(connectionId)) {
     throw new Error('Invalid connection ID format');
@@ -837,6 +853,7 @@ export const refreshAccessToken = async (connectionId: string): Promise<TrueLaye
 
     throw new Error(errorMsg || 'Token refresh failed. Please reconnect your account.');
   }
+  });
 };
 
 // Get valid access token (refresh if needed, check revocation)
@@ -886,19 +903,31 @@ export const getValidAccessToken = async (connectionId: string): Promise<string>
   }
 
   if (isTokenExpired(connection.expiresAt)) {
-    try {
-    connection = await refreshAccessToken(connectionId);
-    if (!connection) {
-      throw new Error('Failed to refresh token');
-    }
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      if (errorMessage.includes('401') || errorMessage.includes('403')) {
-        await clearTokens(connectionId);
-        throw new Error('Token refresh failed. Please reconnect your account.');
+    // Refresh is serialized per-connection to avoid concurrent refresh overwrites.
+    return withConnectionTokenLock(connectionId, async () => {
+      // Re-read inside the lock in case another operation refreshed already.
+      let lockedConnection = await getTokens(connectionId);
+      if (!lockedConnection) {
+        throw new Error('Connection not found');
       }
-      throw error;
-    }
+      if (!isTokenExpired(lockedConnection.expiresAt)) {
+        return lockedConnection.accessToken;
+      }
+      try {
+        lockedConnection = await refreshAccessToken(connectionId);
+        if (!lockedConnection) {
+          throw new Error('Failed to refresh token');
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        if (errorMessage.includes('401') || errorMessage.includes('403')) {
+          await clearTokens(connectionId);
+          throw new Error('Token refresh failed. Please reconnect your account.');
+        }
+        throw error;
+      }
+      return lockedConnection.accessToken;
+    });
   }
 
   if (!validateTokenFormat(connection.accessToken)) {
@@ -1115,12 +1144,16 @@ const parseUrlParams = (url: string): { [key: string]: string } => {
 };
 
 export const openAuthUrl = async (): Promise<{ code?: string; state?: string; error?: string } | null> => {
+  // Mark OAuth flow active BEFORE sending the app to background (Safari / bank app / etc).
+  // This prevents RootLayout's AppState lock logic from locking the app mid-OAuth.
+  setOAuthFlowActive(true);
+
   const url = await buildAuthUrl();
   const redirectUri = getRedirectUri();
   
-  // On iOS, use system browser (Safari) instead of in-app browser
-  // This provides better OAuth flow when going through multiple apps (bank app, Chrome, etc.)
-  // On Android, we can use WebBrowser for better integration
+  // Use the system browser for OAuth.
+  // This avoids Android Custom Tabs/AuthSession caching quirks that can auto-reuse the previous bank session,
+  // making it hard for users to switch to a different bank/login.
   if (Platform.OS === 'ios') {
     try {
       // Use system browser (Safari) on iOS
@@ -1132,80 +1165,40 @@ export const openAuthUrl = async (): Promise<{ code?: string; state?: string; er
         // Return null - deep link handler will process the callback
         return null;
       } else {
+        // OAuth never actually started; clear the flag so the app can lock normally.
+        setOAuthFlowActive(false);
         throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
       }
     } catch (error: any) {
       console.error('Error opening URL in system browser:', error);
+      // OAuth failed to start; clear the flag so the app can lock normally.
+      setOAuthFlowActive(false);
       throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
     }
   } else if (Platform.OS === 'android') {
-    // On Android, use WebBrowser for better OAuth handling
     try {
-      console.log('[truelayerService] Opening OAuth URL in WebBrowser (Android)');
+      console.log('[truelayerService] Opening OAuth URL in system browser (Android)');
       console.log('[truelayerService] Redirect URI:', redirectUri);
-      console.log('[truelayerService] OAuth flow marked as active - app should not reload');
-      // Note: WebBrowser.openAuthSessionAsync may cause app to go to background
-      // The deep link handler will process the callback when user returns
-      const result = await WebBrowser.openAuthSessionAsync(url, redirectUri);
-      console.log('[truelayerService] WebBrowser returned, result type:', result.type);
-      
-      if (result.type === 'success' && result.url) {
-        console.log('[truelayerService] WebBrowser returned success with URL:', result.url);
-        // Validate deep link security
-        const validation = validateDeepLink(result.url);
-        if (!validation.valid) {
-          return { error: validation.error || 'Invalid deep link' };
-        }
-        
-        const { code, state, error } = validation;
-        
-        if (error) {
-          console.error('OAuth error in callback:', error);
-          return { error };
-        }
-        
-        if (code && state) {
-          return { code, state };
-        } else if (code) {
-          // State missing from URL - try to retrieve from storage
-          console.log('[truelayerService] State missing from URL, attempting to retrieve from storage...');
-          const storedState = await getMostRecentState();
-          if (storedState) {
-            console.log('[truelayerService] Retrieved state from storage');
-            return { code, state: storedState };
-          } else {
-            return { error: 'Missing state parameter. OAuth flow may have been tampered with.' };
-          }
-        } else {
-          return { error: 'No authorization code received' };
-        }
-      } else if (result.type === 'cancel') {
-        console.log('[truelayerService] WebBrowser cancelled by user');
-        return { error: 'Authentication cancelled by user' };
-      } else if (result.type === 'dismiss') {
-        console.log('[truelayerService] WebBrowser dismissed');
-        return { error: 'Authentication dismissed' };
-      }
-      
-      console.log('[truelayerService] WebBrowser returned unexpected result, falling back to deep link handler');
-      return null;
-    } catch (error: any) {
-      console.error('WebBrowser error:', error);
-      // Fallback to regular Linking if WebBrowser fails
       const canOpen = await Linking.canOpenURL(url);
       if (canOpen) {
         await Linking.openURL(url);
-        // With Linking, we rely on deep link handler
+        // Return null - deep link handler will process the callback
         return null;
       } else {
+        setOAuthFlowActive(false);
         throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
       }
+    } catch (error: any) {
+      console.error('Error opening URL in system browser (Android):', error);
+      setOAuthFlowActive(false);
+      throw new Error('Cannot open TrueLayer authentication URL. Please ensure the app is properly configured.');
     }
   } else {
     // Web fallback (not primary platform)
     if (typeof window !== 'undefined') {
       window.location.href = url;
     } else {
+      setOAuthFlowActive(false);
       throw new Error('Cannot open TrueLayer authentication URL');
     }
     return null;
@@ -1753,6 +1746,24 @@ export const fetchAndStoreProviderName = async (connectionId: string): Promise<s
     
     // Extract provider name from the first account (all accounts should have the same provider)
     const providerName = accounts[0]?.provider?.display_name || 'Unknown Provider';
+    
+    // CRITICAL: Check if this provider already exists in another connection
+    // This detects when TrueLayer returns the wrong provider (e.g., returns REVOLUT when SANTANDER was selected)
+    const existingConnections = await getAllConnections();
+    const duplicateProvider = existingConnections.find(
+      conn => conn.id !== connectionId && conn.providerName === providerName
+    );
+    
+    if (duplicateProvider) {
+      console.error('[truelayerService] fetchAndStoreProviderName: CRITICAL - Provider name matches existing connection!', {
+        connectionId,
+        providerName,
+        existingConnectionId: duplicateProvider.id,
+        existingProviderName: duplicateProvider.providerName,
+        warning: 'TrueLayer may have returned the wrong provider data. This connection might be linked to the wrong bank.',
+      });
+      // Still store it, but log the issue for debugging
+    }
     
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1703',message:'Found provider name from TrueLayer API',data:{connectionId,providerName,accountCount:accounts.length,firstAccountProvider:accounts[0]?.provider?.display_name,firstAccountProviderId:accounts[0]?.provider?.provider_id,allProviders:accounts.map(a=>({name:a.display_name,provider:a.provider?.display_name,providerId:a.provider?.provider_id}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});

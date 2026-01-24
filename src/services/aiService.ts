@@ -151,12 +151,20 @@ Provide a concise, helpful answer. If asked about purchasing something, analyze 
     // Fallback if response structure is unexpected
     return 'Sorry, I received an unexpected response format. Please try again.';
   } catch (error: any) {
-    console.error('AI Service Error:', error);
+    // Avoid noisy red-console logs for expected network/API failures.
+    // Keep the returned message user-friendly instead.
+    const message = error?.message || 'Failed to get AI response';
+    console.warn('AI Service Error:', message);
     
     // Handle Gemini API specific error format
     if (error.response?.data?.error) {
       const geminiError = error.response.data.error;
       return `Error: ${geminiError.message || geminiError.status || 'Failed to get AI response'}`;
+    }
+
+    // Axios "Network Error" is common on iOS if the device is offline / captive portal / DNS issues.
+    if (message === 'Network Error') {
+      return 'Error: Network unavailable. Please check your internet connection and try again.';
     }
     
     return `Error: ${error.message || 'Failed to get AI response'}`;

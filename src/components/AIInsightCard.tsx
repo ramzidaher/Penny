@@ -36,29 +36,22 @@ export default function AIInsightCard({
   currencyCode,
 }: AIInsightCardProps) {
   const [insight, setInsight] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const topicIndexRef = useRef<number>(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    generateInsight();
-    
-    // Set up interval to regenerate insight every minute
-    intervalRef.current = setInterval(() => {
-      generateInsight();
-    }, 60 * 1000); // 60 seconds = 1 minute
-    
-    // Cleanup interval on unmount
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
+    // Intentionally do NOT auto-generate insights.
+    // Auto-calling the AI endpoint causes noisy "Network Error" logs (and unnecessary cost)
+    // during app startup / bank OAuth / background transitions.
+    setInsight('');
+    setError(false);
+    setLoading(false);
   }, [accounts, transactions, budgets, subscriptions, filterPeriod]);
 
   const generateInsight = async () => {
     try {
+      if (loading) return; // prevent double-taps
       setLoading(true);
       setError(false);
       
@@ -79,7 +72,7 @@ export default function AIInsightCard({
       
       setInsight(truncatedInsight);
     } catch (err) {
-      console.error('Error generating AI insight:', err);
+      // Avoid noisy red-screen style logs for expected network/API failures.
       setError(true);
       setInsight('Unable to generate insight at this time.');
     } finally {

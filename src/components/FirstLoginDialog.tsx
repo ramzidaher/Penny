@@ -73,7 +73,7 @@ export default function FirstLoginDialog({ userId, isAppUnlocked }: FirstLoginDi
                   // Mark as shown
                   await AsyncStorage.setItem(`${FIRST_LOGIN_DIALOG_KEY}_${userId}`, 'true');
                   // Navigate to connect bank screen
-                  routerRef.current.push('/(tabs)/finance/connect-bank');
+                  routerRef.current.push('/connect-bank');
                 },
               },
             ]
