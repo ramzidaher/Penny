@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useRouter, usePathname, useSegments, Slot } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/contexts/ThemeContext';
@@ -87,7 +88,12 @@ export default function TabLayout() {
   const selectedLabelColor = isDark ? colors.dark.text : colors.text;
   const floatingGap = 6;
   const horizontalMargin = 14;
-  const showDebug = true;
+  const showDebug = false;
+  const barGradientColors = isDark
+    ? ['rgba(18,18,18,0.45)', 'rgba(18,18,18,0.25)', 'rgba(18,18,18,0.12)']
+    : ['rgba(250,249,246,0.85)', 'rgba(250,249,246,0.55)', 'rgba(250,249,246,0.3)'];
+  const blurTint = isDark ? 'dark' : 'light';
+  const blurIntensity = Platform.OS === 'android' ? 25 : isDark ? 70 : 80;
   const debugColors = {
     content: 'rgba(255,0,0,0.5)',
     wrapper: 'rgba(0,128,255,0.5)',
@@ -156,6 +162,25 @@ export default function TabLayout() {
             },
           ]}
         >
+          <View
+            style={styles.tabBarSurface}
+            pointerEvents="none"
+            renderToHardwareTextureAndroid
+            needsOffscreenAlphaCompositing
+          >
+            <BlurView
+              tint={blurTint}
+              intensity={blurIntensity}
+              blurReductionFactor={0.7}
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.tabBarBlur}
+            />
+            <View style={styles.tabBarGradient}>
+              {barGradientColors.map((color, index) => (
+                <View key={`${color}-${index}`} style={[styles.gradientStop, { backgroundColor: color }]} />
+              ))}
+            </View>
+          </View>
           {tabs.map((tab) => {
             const isActive = activeTab === tab.name;
             const iconName = isActive ? tab.iconFilled : tab.icon;
@@ -217,6 +242,21 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.14,
     shadowRadius: 12,
+  },
+  tabBarSurface: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  tabBarBlur: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  tabBarGradient: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'column',
+  },
+  gradientStop: {
+    flex: 1,
   },
   tabItem: {
     flex: 1,

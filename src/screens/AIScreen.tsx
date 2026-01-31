@@ -383,7 +383,8 @@ export default function AIScreen() {
 
   // On iOS, `NativeTabs` can overlay content (tab bar is “floating/glass”).
   // Safe-area bottom inset does NOT account for the tab bar height, so we add an offset.
-  const tabBarOverlayOffset = Platform.OS === 'ios' ? 58 : Platform.OS === 'web' ? 70 : 0;
+  const tabBarOverlayOffset =
+    Platform.OS === 'ios' ? 58 : Platform.OS === 'android' ? 72 : Platform.OS === 'web' ? 70 : 0;
 
   // Reset to landing on tab reselect:
   // - iOS NativeTabs: React Navigation emits `tabPress`. We only reset when already focused (reselect).
