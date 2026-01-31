@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect, usePathname, useSegments, useRouter } from 'expo-router';
@@ -7,10 +7,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
 import { getSettings, updateSettings } from '../services/settingsService';
 import { AppSettings } from '../database/settingsSchema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
+import { accentPresets, isValidHexColor, normalizeHex } from '../theme/themePresets';
 import { typography } from '../theme/typography';
 import { waitForFirebase, getUserEmail, verifyPassword, getCurrentUser } from '../services/firebase';
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
+import { ensureDemoSeeded } from '../services/demoSeed';
+import { isDemoUser } from '../services/demoUser';
 import {
   isBiometricAvailable,
   getBiometricType,
@@ -36,6 +39,8 @@ export default function SettingsScreen() {
   const router = useRouter();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
+  const { colors, setAccentPreset, setAccentCustomHex } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const pathname = usePathname();
   const segments = useSegments();
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -52,6 +57,9 @@ export default function SettingsScreen() {
   const [pinConfirm, setPinConfirm] = useState('');
   const [pinSet, setPinSet] = useState(false);
   const [settingPIN, setSettingPIN] = useState(false);
+  const [showAccentModal, setShowAccentModal] = useState(false);
+  const [accentHexInput, setAccentHexInput] = useState('');
+  const [seedingDemo, setSeedingDemo] = useState(false);
 
   // Removed logging for better performance
 
@@ -250,6 +258,28 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSeedDemoData = async () => {
+    if (seedingDemo) return;
+    const choice = await dialog.showDialog(
+      'Seed demo data',
+      'This will add up to 5 demo accounts and 100 demo transactions to this user. Continue?',
+      [{ text: 'Cancel' }, { text: 'Seed' }]
+    );
+
+    if (choice !== 'Seed') return;
+
+    try {
+      setSeedingDemo(true);
+      await ensureDemoSeeded();
+      dialog.alert('Done', 'Demo data added. Pull to refresh your accounts and transactions.');
+    } catch (error: any) {
+      console.error('Error seeding demo data:', error);
+      dialog.alert('Error', error.message || 'Failed to seed demo data');
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
   if (loading || !settings) {
     return (
       <View style={styles.container}>
@@ -321,6 +351,83 @@ export default function SettingsScreen() {
               ))}
             </View>
           )}
+        </View>
+      </View>
+
+      {/* Appearance */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Appearance</Text>
+        <View style={styles.sectionCard}>
+          <Text style={styles.settingLabel}>Accent color</Text>
+          <Text style={styles.settingDescription}>
+            Used for buttons, highlights, and charts.
+          </Text>
+
+          <View style={styles.accentGrid}>
+            {accentPresets.map((preset) => {
+              const selected =
+                (settings.accentMode ?? 'preset') === 'preset' &&
+                (settings.accentPresetId ?? 'midnight') === preset.id;
+
+              return (
+                <TouchableOpacity
+                  key={preset.id}
+                  style={[styles.accentOption, selected && styles.accentOptionSelected]}
+                  activeOpacity={0.8}
+                  onPress={async () => {
+                    // Update UI immediately
+                    setAccentPreset(preset.id);
+                    setSettings(prev => (prev ? ({ ...prev, accentMode: 'preset', accentPresetId: preset.id } as any) : prev));
+                    // Persist
+                    await handleUpdate({ accentMode: 'preset', accentPresetId: preset.id });
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.accentSwatch,
+                      { backgroundColor: preset.hex, borderColor: selected ? colors.primary : colors.border },
+                    ]}
+                  />
+                  <Text style={[styles.accentOptionLabel, selected && styles.accentOptionLabelSelected]}>
+                    {preset.name}
+                  </Text>
+                  {selected && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            activeOpacity={0.7}
+            onPress={() => {
+              setAccentHexInput(settings.accentCustomHex ?? '');
+              setShowAccentModal(true);
+            }}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Custom color</Text>
+              <Text style={styles.settingDescription}>
+                {normalizeHex(settings.accentCustomHex ?? '') || 'Enter a hex color like #1D4ED8'}
+              </Text>
+            </View>
+            <View style={styles.accentPreview}>
+              <View
+                style={[
+                  styles.accentPreviewDot,
+                  {
+                    backgroundColor:
+                      (settings.accentMode ?? 'preset') === 'custom' && isValidHexColor(settings.accentCustomHex ?? '')
+                        ? normalizeHex(settings.accentCustomHex ?? '')
+                        : colors.primary,
+                  },
+                ]}
+              />
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -679,6 +786,19 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/connect-bank' as any)}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Bank connections</Text>
+              <Text style={styles.settingDescription}>Connect or disconnect your bank</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+          
+          <View style={styles.divider} />
+
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Email</Text>
@@ -687,6 +807,28 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+
+          {isDemoUser() && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.settingInfo}>
+                <Text style={styles.settingLabel}>Demo data</Text>
+                <Text style={styles.settingDescription}>
+                  Create demo accounts and transactions for this user.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.testButton, seedingDemo && styles.buttonDisabled]}
+                onPress={handleSeedDemoData}
+                disabled={seedingDemo}
+              >
+                <Ionicons name="sparkles-outline" size={20} color={colors.background} />
+                <Text style={styles.testButtonText}>
+                  {seedingDemo ? 'Seeding...' : 'Seed demo data'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -747,6 +889,75 @@ export default function SettingsScreen() {
                 <Text style={styles.modalButtonConfirmText}>
                   {verifyingPassword ? 'Verifying...' : 'Enable'}
                 </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Accent Color Modal */}
+      <Modal
+        visible={showAccentModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowAccentModal(false);
+          setAccentHexInput('');
+        }}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Custom accent color</Text>
+            <Text style={styles.modalDescription}>
+              Enter a hex color in the format #RRGGBB (example: #1D4ED8).
+            </Text>
+
+            <View style={styles.accentModalRow}>
+              <View style={[styles.accentPreviewDot, { backgroundColor: colors.primary }]} />
+              <TextInput
+                style={[styles.modalInput, styles.accentModalInput]}
+                placeholder="#1D4ED8"
+                placeholderTextColor={colors.textLight}
+                value={accentHexInput}
+                onChangeText={setAccentHexInput}
+                autoCapitalize="characters"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowAccentModal(false);
+                  setAccentHexInput('');
+                }}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={async () => {
+                  const normalized = normalizeHex(accentHexInput);
+                  if (!isValidHexColor(normalized)) {
+                    dialog.alert('Invalid color', 'Please enter a valid hex color like #1D4ED8.');
+                    return;
+                  }
+
+                  // Update UI immediately
+                  setAccentCustomHex(normalized);
+                  setSettings(prev => (prev ? ({ ...prev, accentMode: 'custom', accentCustomHex: normalized } as any) : prev));
+                  // Persist
+                  await handleUpdate({ accentMode: 'custom', accentCustomHex: normalized });
+
+                  setShowAccentModal(false);
+                  setAccentHexInput('');
+                }}
+              >
+                <Text style={styles.modalButtonConfirmText}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -826,7 +1037,7 @@ export default function SettingsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -883,6 +1094,67 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: 16,
+  },
+  accentGrid: {
+    marginTop: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  accentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
+  },
+  accentOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+  },
+  accentSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  accentOptionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  accentOptionLabelSelected: {
+    color: colors.primary,
+  },
+  accentPreview: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  accentPreviewDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  accentModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  accentModalInput: {
+    flex: 1,
+    marginBottom: 0,
   },
   settingRow: {
     flexDirection: 'row',
@@ -1004,6 +1276,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.background,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   bottomPadding: {
     height: 40,

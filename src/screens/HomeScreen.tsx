@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -6,8 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions, updateTransaction } from '../database/db';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
 import { TransactionType } from '../utils/categories';
-import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
 import CategoryPickerDialog from '../components/CategoryPickerDialog';
@@ -28,6 +27,8 @@ import { convertAmountsToCurrency } from '../services/currencyConversionService'
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -47,6 +48,9 @@ export default function HomeScreen() {
   const [convertedTotalBalance, setConvertedTotalBalance] = useState<number | null>(null);
   const [convertedPeriodIncome, setConvertedPeriodIncome] = useState<number | null>(null);
   const [convertedPeriodExpenses, setConvertedPeriodExpenses] = useState<number | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
+    'right-income-left-expense'
+  );
   const hasLoadedRef = useRef(false);
 
   const loadData = async (showLoading = false) => {
@@ -71,6 +75,7 @@ export default function HomeScreen() {
       setBudgets(buds);
       setSubscriptions(subs);
       setCurrencyCode(settings.defaultCurrency);
+      setSwipeDirection(settings.swipeDirection);
       hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading data:', error);
@@ -95,7 +100,7 @@ export default function HomeScreen() {
   };
 
   // Calculate totals with currency conversion
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   
   // Filter transactions by selected period
   const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
@@ -114,7 +119,7 @@ export default function HomeScreen() {
       try {
         // Convert account balances
         const accountAmounts = accounts.map(acc => ({
-          amount: acc.balance,
+          amount: acc.balance ?? 0,
           currency: acc.currency || currencyCode || 'USD',
         }));
         const convertedBalance = await convertAmountsToCurrency(accountAmounts, currencyCode);
@@ -165,17 +170,19 @@ export default function HomeScreen() {
     .slice(0, 3);
   
   const handleSwipeRight = async (transaction: Transaction) => {
-    const suggestion = await suggestCategory(transaction.description || '', 'income', transaction.amount);
+    const rightSwipeType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+    const suggestion = await suggestCategory(transaction.description || '', rightSwipeType, transaction.amount);
     setSelectedTransaction(transaction);
-    setSelectedType('income');
+    setSelectedType(rightSwipeType);
     setSuggestedCategory(suggestion.category);
     setCategoryPickerVisible(true);
   };
   
   const handleSwipeLeft = async (transaction: Transaction) => {
-    const suggestion = await suggestCategory(transaction.description || '', 'expense', transaction.amount);
+    const leftSwipeType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+    const suggestion = await suggestCategory(transaction.description || '', leftSwipeType, transaction.amount);
     setSelectedTransaction(transaction);
-    setSelectedType('expense');
+    setSelectedType(leftSwipeType);
     setSuggestedCategory(suggestion.category);
     setCategoryPickerVisible(true);
   };
@@ -421,6 +428,7 @@ export default function HomeScreen() {
                   onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
                   onSwipeRight={() => handleSwipeRight(transaction)}
                   onSwipeLeft={() => handleSwipeLeft(transaction)}
+                  swipeDirection={swipeDirection}
                 />
               );
             })}
@@ -528,7 +536,7 @@ export default function HomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   balanceCard: {
     backgroundColor: colors.primary,
     marginHorizontal: 20,

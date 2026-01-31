@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 /**
  * Root index page - required for Android to prevent "Unmatched Route" errors
  * This handles the root route (/) and redirects based on auth state
- * Also checks for TrueLayer callback URLs immediately to prevent route errors
  */
 export default function Index() {
   const [user, setUser] = useState<any>(null);

@@ -58,7 +58,8 @@
     "typescript": "5.9.2"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "react-refresh": "^0.18.0"
   },
   "private": true
 }

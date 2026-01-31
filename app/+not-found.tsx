@@ -21,8 +21,6 @@ export default function NotFound() {
     hasRedirected.current = true;
     
     // Generic redirect for unmatched routes.
-    // TrueLayer callback is now handled by `app/truelayer-callback.tsx`, so we avoid doing any callback-specific
-    // navigation here (double redirects during deep-link hydration can crash React Navigation on Android).
     const redirect = async () => {
       const user = getCurrentUser();
       

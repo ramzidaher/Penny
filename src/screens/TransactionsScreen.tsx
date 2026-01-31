@@ -8,7 +8,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { getTransactions, deleteTransaction, updateTransaction, untagTransaction } from '../database/db';
 import { refreshTransactions } from '../services/transactionService';
-import { Transaction, TransactionType } from '../database/schema';
+import { Transaction } from '../database/schema';
+import { TransactionType } from '../utils/categories';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
@@ -46,6 +47,9 @@ export default function TransactionsScreen() {
   const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
   const [debtDialogVisible, setDebtDialogVisible] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
+    'right-income-left-expense'
+  );
 
   const loadTransactions = async () => {
     try {
@@ -58,6 +62,7 @@ export default function TransactionsScreen() {
       console.log(`[TransactionsScreen] Loaded ${trans.length} transactions`);
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
+      setSwipeDirection(settings.swipeDirection);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[TransactionsScreen] Error loading transactions:', errorMessage);
@@ -120,8 +125,7 @@ export default function TransactionsScreen() {
   
   const handleSwipeRight = async (transaction: Transaction) => {
     // Get swipe direction preference
-    const settings = await getSettings();
-    const rightSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+    const rightSwipeType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
     
     // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
     if (rightSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
@@ -141,8 +145,7 @@ export default function TransactionsScreen() {
   
   const handleSwipeLeft = async (transaction: Transaction) => {
     // Get swipe direction preference
-    const settings = await getSettings();
-    const leftSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+    const leftSwipeType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
     
     // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
     if (leftSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
@@ -495,6 +498,7 @@ export default function TransactionsScreen() {
               onDelete={() => handleDelete(item.id)}
               onUncategorize={(item.subscriptionId || item.debtId) ? () => handleUncategorize(item) : undefined}
               showTagBadges={true}
+              swipeDirection={swipeDirection}
             />
           )}
           contentContainerStyle={styles.listContent}

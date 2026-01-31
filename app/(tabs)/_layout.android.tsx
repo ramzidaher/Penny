@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, usePathname, useSegments, Slot } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { useActionMenu } from '../../src/contexts/ActionMenuContext';
 
 interface TabItem {
   name: string;
@@ -52,18 +53,16 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const isDark = colorScheme === 'dark';
-  
-  // Determine active tab based on pathname or segments
+  const { hideMenu } = useActionMenu();
+  const { colors } = useTheme();
+
   const getActiveTab = () => {
-    // Check if we're on the home/index route
     if (pathname === '/(tabs)' || pathname === '/(tabs)/' || pathname === '/') {
       return 'index';
     }
-    // Extract tab name from pathname
     const pathParts = pathname.split('/');
     const tabName = pathParts[pathParts.length - 1];
-    
-    // Map route names to tab names
+
     if (tabName === 'finance' || pathname.includes('/finance')) {
       return 'finance';
     }
@@ -73,61 +72,123 @@ export default function TabLayout() {
     if (tabName === 'add' || pathname.includes('/add')) {
       return 'add';
     }
-    
-    // Fallback to segments
-    const tabSegment = segments[1];
-    return tabSegment || 'index';
+
+    return 'index';
   };
-  
+
   const activeTab = getActiveTab();
-  
-  // Use theme colors
-  const backgroundColor = isDark ? colors.dark.background : colors.background;
-  const activeColor = isDark ? colors.dark.primary : colors.primary;
+
+  const contentBackground = isDark ? colors.dark.background : colors.background;
+  const barBackground = 'transparent';
+  const barBorderColor = isDark ? colors.dark.border : colors.border;
   const inactiveColor = isDark ? colors.dark.textSecondary : colors.textSecondary;
-  const borderColor = isDark ? colors.dark.border : colors.border;
-  
+  const pillBackground = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.07)';
+  const circleBackground = isDark ? colors.dark.primary : colors.primary;
+  const selectedLabelColor = isDark ? colors.dark.text : colors.text;
+  const floatingGap = 6;
+  const horizontalMargin = 14;
+  const showDebug = true;
+  const debugColors = {
+    content: 'rgba(255,0,0,0.5)',
+    wrapper: 'rgba(0,128,255,0.5)',
+    bar: 'rgba(0,255,128,0.6)',
+  };
+
   const handleTabPress = (tab: TabItem) => {
+    const isActive = activeTab === tab.name;
+
+    if (isActive) {
+      if (tab.name === 'index') {
+        router.replace('/(tabs)' as any);
+        return;
+      }
+      if (tab.name === 'finance') {
+        router.replace('/(tabs)/finance' as any);
+        return;
+      }
+      if (tab.name === 'ai') {
+        router.replace('/(tabs)/ai' as any);
+        return;
+      }
+      if (tab.name === 'add') {
+        hideMenu();
+        return;
+      }
+    }
+
     router.push(tab.route as any);
   };
-  
+
   return (
-    <View style={[styles.container, { backgroundColor }]}>
-      <View style={styles.content}>
+    <View style={[styles.container, { backgroundColor: contentBackground }]}>
+      <View
+        style={[
+          styles.content,
+          {
+            borderColor: showDebug ? debugColors.content : 'transparent',
+            borderWidth: showDebug ? 2 : 0,
+          },
+        ]}
+      >
         <Slot />
       </View>
-      <View style={[
-        styles.tabBar, 
-        { 
-          backgroundColor, 
-          borderTopColor: borderColor,
-          paddingBottom: Math.max(insets.bottom, 8),
-        }
-      ]}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.name;
-          const iconName = isActive ? tab.iconFilled : tab.icon;
-          const iconColor = isActive ? activeColor : inactiveColor;
-          const labelColor = isActive ? activeColor : inactiveColor;
-          
-          return (
-            <TouchableOpacity
-              key={tab.name}
-              style={styles.tabItem}
-              onPress={() => handleTabPress(tab)}
-              activeOpacity={0.7}
-            >
-              <Ionicons 
-                name={iconName} 
-                size={24} 
-                color={iconColor}
-              />
-              <Text style={[styles.tabLabel, { color: labelColor }]}>
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      <View
+        style={[
+          styles.tabBarWrapper,
+          {
+            paddingHorizontal: horizontalMargin,
+            bottom: Math.max(insets.bottom, 0) + floatingGap,
+            borderColor: showDebug ? debugColors.wrapper : 'transparent',
+            borderWidth: showDebug ? 2 : 0,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.tabBar,
+            {
+              backgroundColor: barBackground,
+              borderColor: showDebug ? debugColors.bar : barBorderColor,
+              borderWidth: showDebug ? 2 : 1,
+              paddingTop: 6,
+              paddingBottom: 6,
+              borderRadius: 999,
+            },
+          ]}
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.name;
+            const iconName = isActive ? tab.iconFilled : tab.icon;
+            const iconColor = isActive ? '#000000' : inactiveColor;
+            const labelColor = isActive ? selectedLabelColor : inactiveColor;
+
+            const tabContent = (
+              <>
+                <Ionicons name={iconName} size={24} color={iconColor} />
+                <Text style={[styles.tabLabel, { color: labelColor }]} numberOfLines={1}>
+                  {tab.label}
+                </Text>
+              </>
+            );
+
+            return (
+              <TouchableOpacity
+                key={tab.name}
+                style={styles.tabItem}
+                onPress={() => handleTabPress(tab)}
+                activeOpacity={0.7}
+              >
+                {isActive ? (
+                  <View style={[styles.pill, { backgroundColor: pillBackground }]}>
+                    {tabContent}
+                  </View>
+                ) : (
+                  tabContent
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
     </View>
   );
@@ -140,24 +201,40 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
+  tabBarWrapper: {
+    width: '100%',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   tabBar: {
     flexDirection: 'row',
     minHeight: 60,
-    borderTopWidth: 1,
-    paddingTop: 8,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     width: '100%',
+    elevation: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.14,
+    shadowRadius: 12,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minWidth: 0, // Ensures tabs can shrink on small screens
+    gap: 2,
+    minWidth: 0,
+    paddingHorizontal: 6,
+  },
+  pill: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 4,
+    alignSelf: 'stretch',
+    gap: 2,
   },
   tabLabel: {
     fontSize: 12,

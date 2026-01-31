@@ -10,6 +10,7 @@ import { useFonts } from 'expo-font';
 import { initDatabase } from './src/database/db';
 import { initializeNotifications } from './src/services/notifications';
 import { initFirebase, isAuthenticated, onAuthStateChanged, getAuth, setCurrentUser, setAuthStateCallback, getIsSigningOut } from './src/services/firebase';
+import { ensureDemoSeeded } from './src/services/demoSeed';
 import type { User } from 'firebase/auth';
 import { colors } from './src/theme/colors';
 
@@ -67,71 +68,7 @@ export default function App() {
   const [user, setUser] = useState<any>(null);
   const navigationRef = useRef<NavigationContainerRef<any>>(null);
 
-  // Handle deep links for TrueLayer OAuth callback (mobile-first)
-  useEffect(() => {
-    const handleDeepLink = async (event: { url: string }) => {
-      const { url } = event;
-      
-      // Mobile: Check if this is a TrueLayer callback (app scheme)
-      // Format: penny://truelayer-callback?code=XXX or penny://truelayer-callback?error=XXX
-      if (url.includes('truelayer-callback') || url.includes('penny://')) {
-        try {
-          const parsedUrl = Linking.parse(url);
-          const code = parsedUrl.queryParams?.code as string;
-          const error = parsedUrl.queryParams?.error as string;
-
-          if (error) {
-            console.error('TrueLayer OAuth error:', error);
-            // Navigate to ConnectBank screen with error
-            if (navigationRef.current && user) {
-              // Small delay to ensure navigation is ready
-              setTimeout(() => {
-                navigationRef.current?.navigate('Finance', {
-                  screen: 'ConnectBank',
-                  params: { error: error },
-                });
-              }, 100);
-            }
-            return;
-          }
-
-          if (code) {
-            // Navigate to ConnectBank screen with code
-            if (navigationRef.current && user) {
-              // Small delay to ensure navigation is ready
-              setTimeout(() => {
-                navigationRef.current?.navigate('Finance', {
-                  screen: 'ConnectBank',
-                  params: { code: code },
-                });
-              }, 100);
-            }
-          }
-        } catch (error) {
-          console.error('Error handling deep link:', error);
-        }
-      }
-    };
-
-    // Handle initial URL (if app was opened via deep link on mobile)
-    // This is important for when the app is closed and opened via deep link
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleDeepLink({ url });
-      }
-    }).catch((error) => {
-      console.error('Error getting initial URL:', error);
-    });
-
-    // Listen for deep links while app is running (mobile)
-    const subscription = Linking.addEventListener('url', (event) => {
-      handleDeepLink(event);
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [user]);
+  // NOTE: Bank-linking OAuth deep links removed (manual-only mode).
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -159,6 +96,7 @@ export default function App() {
             // User is signed in, initialize app features
             await initDatabase();
             await initializeNotifications();
+            await ensureDemoSeeded();
           }
         };
         
@@ -173,6 +111,13 @@ export default function App() {
         setCurrentUser(initialUser);
         setUser(initialUser);
         setIsAuthReady(true);
+
+        if (initialUser) {
+          // Ensure core features run on cold-start with existing session
+          await initDatabase();
+          await initializeNotifications();
+          await ensureDemoSeeded();
+        }
       } else {
         setIsAuthReady(true);
       }

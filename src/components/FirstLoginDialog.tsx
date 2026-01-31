@@ -50,14 +50,14 @@ export default function FirstLoginDialog({ userId, isAppUnlocked }: FirstLoginDi
 
         // If no accounts, show the dialog
         if (accounts.length === 0) {
-          console.log('[FirstLoginDialog] No accounts found, showing connect bank dialog');
+          console.log('[FirstLoginDialog] No accounts found, showing add account dialog');
           hasShownDialog.current = true;
 
           // Don't await the dialog - let it resolve in the background
           // This prevents blocking the UI thread
           dialogRef.current.showDialog(
-            'Connect Your First Bank',
-            'Get started by connecting your bank account to track your finances and transactions.',
+            'Add Your First Account',
+            'Get started by adding your first account so you can track your finances.',
             [
               {
                 text: 'Maybe Later',
@@ -68,12 +68,12 @@ export default function FirstLoginDialog({ userId, isAppUnlocked }: FirstLoginDi
                 },
               },
               {
-                text: 'Connect Bank',
+                text: 'Add Account',
                 onPress: async () => {
                   // Mark as shown
                   await AsyncStorage.setItem(`${FIRST_LOGIN_DIALOG_KEY}_${userId}`, 'true');
-                  // Navigate to connect bank screen
-                  routerRef.current.push('/connect-bank');
+                  // Navigate to manual add account screen
+                  routerRef.current.push('/(tabs)/finance/add-account');
                 },
               },
             ]

@@ -8,70 +8,50 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { useToast } from '../contexts/ToastContext';
-import {
-  openAuthUrl,
-  exchangeCodeForTokens,
-  getAllConnections,
-  clearTokens,
-  fetchAndStoreProviderName,
-} from '../services/truelayerService';
-import { TrueLayerConnection } from '../types/truelayer';
 import { setOAuthFlowActive } from '../services/oAuthFlowService';
-import { syncTrueLayerAccounts } from '../database/db';
+import { isDemoUser } from '../services/demoUser';
+import {
+  createPlaidHostedLinkToken,
+  exchangePlaidPublicToken,
+  listPlaidItems,
+  plaidLinkTokenGet,
+  removePlaidItem,
+  type PlaidEnvironment,
+  type PlaidItemSummary,
+} from '../services/plaidService';
 
 export default function ConnectBankScreen() {
   const navigation = useNavigation();
   const dialog = useDialog();
   const router = useRouter();
-  const { code, state, error } = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
-  const [connections, setConnections] = useState<TrueLayerConnection[]>([]);
+  const [items, setItems] = useState<PlaidItemSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const { showSuccess, showError } = useToast();
-  const processedCodeRef = useRef<string | null>(null);
+  const activeLinkTokenRef = useRef<string | null>(null);
 
-  // Load connections on mount
+  // Load Plaid items on mount
   useEffect(() => {
-    loadConnections();
+    loadItems();
   }, []);
 
-  // Handle OAuth callback
-  useEffect(() => {
-    // Prevent re-processing the same code if the screen re-renders or the user navigates back to this route.
-    if (code && !connecting && processedCodeRef.current !== code) {
-      processedCodeRef.current = code;
-      handleOAuthCallback(code, state);
-    }
-    if (error) {
-        showError(`Connection failed: ${error}`);
-          setConnecting(false);
-          // Clear params so we don't keep re-showing this error on re-render.
-          requestAnimationFrame(() => {
-            router.replace('/connect-bank' as any);
-          });
-        }
-  }, [code, error, connecting, router, state]);
-
-  const loadConnections = async () => {
+  const loadItems = async () => {
     try {
       setLoading(true);
-      const conns = await getAllConnections();
-      // Defensive: de-dupe by connection id (should already be unique, but prevents weird UI states).
-      const unique = new Map<string, TrueLayerConnection>();
-      for (const c of conns) {
-        if (c?.id) unique.set(c.id, c);
-      }
-      setConnections(Array.from(unique.values()));
+      const next = await listPlaidItems();
+      setItems(next);
     } catch (error) {
-      console.error('Error loading connections:', error);
+      console.error('Error loading Plaid items:', error);
     } finally {
       setLoading(false);
     }
@@ -79,78 +59,91 @@ export default function ConnectBankScreen() {
 
   const handleConnect = async () => {
     try {
-      // Ensure RootLayout doesn't lock/unmount navigation while the user is in the bank/OAuth flow.
-      // (On iOS this is especially important because we leave the app via Safari.)
       setOAuthFlowActive(true);
       setConnecting(true);
-      const result = await openAuthUrl();
-      
-      if (result?.error) {
-        showError(`Connection failed: ${result.error}`);
+
+      // Demo users are always sandbox; everyone else uses configured env (defaults to sandbox).
+      const configuredEnv = (process.env.EXPO_PUBLIC_PLAID_ENV as PlaidEnvironment | undefined) || 'sandbox';
+      const environment: PlaidEnvironment = isDemoUser() ? 'sandbox' : (configuredEnv === 'production' ? 'production' : 'sandbox');
+
+      const { link_token, hosted_link_url } = await createPlaidHostedLinkToken(environment);
+      if (!hosted_link_url) {
+        throw new Error('Plaid did not return hosted_link_url. Make sure Hosted Link is enabled.');
+      }
+
+      activeLinkTokenRef.current = link_token;
+
+      const completionRedirectUri = 'penny://plaid-callback';
+      const result = await WebBrowser.openAuthSessionAsync(hosted_link_url, completionRedirectUri);
+
+      if (result.type !== 'success') {
+        // User cancelled or dismissed
         setConnecting(false);
         setOAuthFlowActive(false);
         return;
       }
-      
-      if (result?.code) {
-        // WebBrowser returned code directly (Android)
-        await handleOAuthCallback(result.code, result.state);
+
+      // Poll /link/token/get to obtain public_token (Hosted Link does not return it via redirect)
+      const publicTokenPayload = await pollForPublicToken(link_token);
+      const publicToken = publicTokenPayload?.public_token;
+      if (!publicToken) {
+        throw new Error('Unable to obtain public_token from link session.');
       }
-      // On iOS, deep link will handle the callback
-    } catch (error: any) {
-      console.error('Error opening auth URL:', error);
-      showError(error.message || 'Failed to open TrueLayer authentication');
-      setConnecting(false);
-      setOAuthFlowActive(false);
-    }
-  };
 
-  const handleOAuthCallback = async (code: string, state?: string) => {
-    try {
-      // Callback processing is part of the OAuth flow; keep the app in "OAuth active" mode
-      // until we're fully done exchanging + storing.
-      setOAuthFlowActive(true);
-      setConnecting(true);
-      
-      // Exchange code for tokens
-      const { connectionId } = await exchangeCodeForTokens(code, undefined, state);
-      
-      // Fetch and store provider name
-      await fetchAndStoreProviderName(connectionId);
-
-      // Immediately sync accounts for this connection so Accounts screen reflects the new bank right away.
-      // This is especially important on Android where users expect to see the newly connected accounts instantly.
-      await syncTrueLayerAccounts(connectionId);
-      
-      // Reload connections
-      await loadConnections();
-      
-      showSuccess('Bank connected successfully!');
-      
-      // Don't navigate automatically - let user see the new connection
-      // They can navigate back manually
-      setConnecting(false);
-      setOAuthFlowActive(false);
-      // Clear the OAuth params so the callback is not re-processed if the user revisits this route.
-      requestAnimationFrame(() => {
-        router.replace('/connect-bank' as any);
+      await exchangePlaidPublicToken({
+        public_token: publicToken,
+        environment,
+        institution: publicTokenPayload?.institution || undefined,
       });
+
+      await loadItems();
+      showSuccess('Bank connected successfully! Accounts have been added.');
     } catch (error: any) {
-      console.error('Error handling OAuth callback:', error);
+      console.error('Error connecting Plaid bank:', error);
       showError(error.message || 'Failed to connect bank');
       setConnecting(false);
       setOAuthFlowActive(false);
-      // Clear the OAuth params to avoid retry loops (e.g., "code already used").
-      requestAnimationFrame(() => {
-        router.replace('/connect-bank' as any);
-      });
     }
   };
 
-  const handleDisconnect = async (connectionId: string) => {
+  const pollForPublicToken = async (linkToken: string) => {
+    const started = Date.now();
+    const timeoutMs = 60_000;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    while (Date.now() - started < timeoutMs) {
+      const data = await plaidLinkTokenGet(linkToken);
+      const sessions: any[] = data?.link_sessions || [];
+
+      // Find a finished session first, otherwise pick the latest.
+      const session = sessions.find((s) => s?.finished_at) || sessions[sessions.length - 1];
+      const results = session?.results;
+      const itemAdds: any[] = results?.item_add_results || [];
+      const first = itemAdds[0];
+      const publicToken: string | undefined = first?.public_token || session?.on_success?.public_token;
+
+      if (publicToken) {
+        return {
+          public_token: publicToken,
+          institution: first?.institution || session?.on_success?.metadata?.institution || null,
+        };
+      }
+
+      // If the session has finished but no token, treat as exit/error.
+      if (session?.finished_at && session?.exit) {
+        throw new Error('Link session exited before completion.');
+      }
+
+      await sleep(2000);
+    }
+
+    throw new Error('Timed out waiting for Plaid link session to finish.');
+  };
+
+  const handleDisconnect = async (itemId: string) => {
     try {
-      await clearTokens(connectionId);
-      await loadConnections();
+      await removePlaidItem(itemId);
+      await loadItems();
       showSuccess('Bank disconnected');
     } catch (error: any) {
       console.error('Error disconnecting:', error);
@@ -160,7 +153,7 @@ export default function ConnectBankScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadConnections();
+    await loadItems();
     setRefreshing(false);
   };
 
@@ -169,15 +162,6 @@ export default function ConnectBankScreen() {
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
-      {!!code && connecting && (
-        <View style={styles.finalizingBanner}>
-          <ActivityIndicator color={colors.primary} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.finalizingTitle}>Finalizing connection…</Text>
-            <Text style={styles.finalizingSubtitle}>This can take a few seconds. Please keep the app open.</Text>
-          </View>
-        </View>
-      )}
       <View style={styles.header}>
         <Text style={styles.title}>Connected Banks</Text>
         <TouchableOpacity
@@ -196,35 +180,30 @@ export default function ConnectBankScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading && connections.length === 0 ? (
+      {loading && items.length === 0 ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : connections.length === 0 ? (
+      ) : items.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyText}>No banks connected</Text>
           <Text style={styles.emptySubtext}>Tap "Connect Bank" to get started</Text>
         </View>
       ) : (
         <View style={styles.connectionsList}>
-            {connections.map((connection) => (
-              <View key={connection.id} style={styles.connectionCard}>
-                  <View style={styles.connectionInfo}>
-                <Text style={styles.connectionName}>
-                  {connection.providerName || 'Unknown Provider'}
-                </Text>
+          {items.map((item) => (
+            <View key={item.item_id} style={styles.connectionCard}>
+              <View style={styles.connectionInfo}>
+                <Text style={styles.connectionName}>{item.institution_name || 'Connected Bank'}</Text>
                 <Text style={styles.connectionId}>
-                  {connection.id ? `Connection • ${connection.id.substring(3, 11)}` : ''}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.disconnectButton}
-                    onPress={() => handleDisconnect(connection.id)}
-                  >
-                <Ionicons name="trash-outline" size={20} color={colors.error} />
-                  </TouchableOpacity>
+                  {item.item_id ? `Item • ${item.item_id.substring(0, 8)}` : ''}
+                </Text>
               </View>
-            ))}
+              <TouchableOpacity style={styles.disconnectButton} onPress={() => handleDisconnect(item.item_id)}>
+                <Ionicons name="trash-outline" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
+          ))}
           </View>
         )}
     </ScrollView>

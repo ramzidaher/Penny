@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView, TextInput, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
 import { colors } from '../theme/colors';
@@ -28,6 +28,7 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
   const [showPINInput, setShowPINInput] = useState(false);
   const [biometricAttempted, setBiometricAttempted] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const pinInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -265,44 +266,38 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
             </>
           )}
 
-          {/* PIN Input - PIN is mandatory, so always show if lock screen is displayed */}
+          {/* PIN Input - tap to focus and show system numeric keypad */}
           {pinSet && (
             <>
               <View style={styles.pinContainer}>
-                <TextInput
-                  style={styles.pinInput}
-                  value={pin}
-                  onChangeText={handlePINChange}
-                  keyboardType="number-pad"
-                  secureTextEntry={Platform.OS === 'ios'}
-                  maxLength={6}
-                  autoFocus={!biometricAvailable || !hasSavedCredentials}
-                  editable={!loading}
-                  placeholder="Enter 6-digit PIN"
-                  placeholderTextColor={colors.textLight}
-                  returnKeyType="done"
-                  onSubmitEditing={() => {
-                    if (pin.length === 6) {
-                      handlePINUnlock(pin);
-                    }
-                  }}
-                />
+                <Pressable
+                  style={styles.pinDisplay}
+                  onPress={() => pinInputRef.current?.focus()}
+                  disabled={loading}
+                >
+                  <Text
+                    style={[
+                      styles.pinDisplayText,
+                      pin.length === 0 && styles.pinPlaceholderText,
+                    ]}
+                    pointerEvents="none"
+                  >
+                    {pin.length === 0 ? 'Enter 6-digit PIN' : '•'.repeat(pin.length)}
+                  </Text>
+                  <TextInput
+                    ref={pinInputRef}
+                    style={styles.pinInputOverlay}
+                    value={pin}
+                    onChangeText={handlePINChange}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    editable={!loading}
+                    placeholder=""
+                    accessibilityLabel="PIN entry"
+                    showSoftInputOnFocus={true}
+                  />
+                </Pressable>
               </View>
-              
-              {/* Show PIN dots for visual feedback on Android */}
-              {Platform.OS === 'android' && (
-                <View style={styles.pinDotsContainer}>
-                  {[0, 1, 2, 3, 4, 5].map((index) => (
-                    <View
-                      key={index}
-                      style={[
-                        styles.pinDot,
-                        index < pin.length && styles.pinDotFilled,
-                      ]}
-                    />
-                  ))}
-                </View>
-              )}
               
               {loading && !errorMessage && (
                 <Text style={styles.loadingText}>Verifying...</Text>
@@ -369,40 +364,37 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 20,
   },
-  pinInput: {
+  pinDisplay: {
     backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.primary,
     padding: 20,
+    width: '100%',
+    minHeight: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  pinInputOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0,
+    fontSize: 16,
+    color: colors.text,
+  },
+  pinDisplayText: {
     fontSize: 24,
     color: colors.text,
     textAlign: 'center',
     letterSpacing: Platform.OS === 'ios' ? 8 : 4,
     fontWeight: '600',
-    width: '100%',
-    minHeight: 60,
-    opacity: 1,
     fontFamily: typography.fontFamily.default,
   },
-  pinDotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 20,
-  },
-  pinDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: 'transparent',
-  },
-  pinDotFilled: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  pinPlaceholderText: {
+    color: colors.textLight,
+    letterSpacing: 0,
+    fontWeight: '500',
+    fontSize: 18,
   },
   noPinText: {
     fontSize: 14,

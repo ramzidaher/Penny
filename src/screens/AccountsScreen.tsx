@@ -5,8 +5,6 @@ import { useDialog } from '../contexts/DialogContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, deleteAccount } from '../database/db';
-import { syncTrueLayerAccounts } from '../database/db';
-import { refreshTransactions } from '../services/transactionService';
 import { Account } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
@@ -16,14 +14,13 @@ import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 import CompanyLogo from '../components/CompanyLogo';
 import { formatDistanceToNow } from 'date-fns';
-import { getAllConnections } from '../services/truelayerService';
 import { convertCurrency } from '../services/currencyConversionService';
 
-// Helper function to format TrueLayer account types for display
+// Helper function to format account types for display
 const formatAccountType = (accountType?: string): string => {
   if (!accountType) return '';
   
-  // Convert common TrueLayer account types to readable format
+  // Convert common account types to readable format
   const typeMap: Record<string, string> = {
     'SAVINGS': 'Savings',
     'CURRENT_ACCOUNT': 'Current',
@@ -57,8 +54,6 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
-  const [syncingAccountId, setSyncingAccountId] = useState<string | null>(null);
-  const [activeConnectionIds, setActiveConnectionIds] = useState<Set<string>>(new Set());
   const [showConvertedAmounts, setShowConvertedAmounts] = useState<boolean>(false);
   const [convertedBalances, setConvertedBalances] = useState<Map<string, number>>(new Map());
 
@@ -73,87 +68,14 @@ export default function AccountsScreen() {
     try {
       setLoading(true);
       await waitForFirebase();
-      const [accs, settings, connections] = await Promise.all([
+      const [accs, settings] = await Promise.all([
         getAccounts(),
         getSettings(),
-        getAllConnections(),
       ]);
       
       console.log(`📋 Loaded ${accs.length} total account(s) from database`);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:82',message:'Accounts loaded from database',data:{totalAccounts:accs.length,accounts:accs.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId,tlAccountId:a.truelayerAccountId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      
-      // Log all accounts with their connection IDs for debugging
-      accs.forEach(acc => {
-        if (acc.truelayerConnectionId) {
-          console.log(`[AccountsScreen] Account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId || 'none'})`);
-        } else {
-          console.log(`[AccountsScreen] Account: ${acc.name} (ID: ${acc.id}, Type: ${acc.type}, Not TrueLayer)`);
-        }
-      });
-      
-      // Group accounts by connection for debugging
-      const accountsByConnection = new Map<string, Account[]>();
-      accs.forEach(acc => {
-        if (acc.truelayerConnectionId) {
-          if (!accountsByConnection.has(acc.truelayerConnectionId)) {
-            accountsByConnection.set(acc.truelayerConnectionId, []);
-          }
-          accountsByConnection.get(acc.truelayerConnectionId)!.push(acc);
-        }
-      });
-      
-      console.log(`[AccountsScreen] Accounts by connection:`);
-      accountsByConnection.forEach((accounts, connectionId) => {
-        console.log(`[AccountsScreen] Connection ${connectionId}: ${accounts.length} account(s) - ${accounts.map(a => a.name).join(', ')}`);
-      });
-      
-      // Track which connections are active on this device
-      const activeIds = new Set(connections.map(conn => conn.id));
-      setActiveConnectionIds(activeIds);
-      console.log(`[AccountsScreen] Active connections: ${Array.from(activeIds).join(', ')}`);
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:112',message:'Active connections check',data:{activeConnectionIds:Array.from(activeIds),totalConnections:connections.length,accountsByConnection:Array.from(accountsByConnection.entries()).map(([connId,accs])=>({connectionId:connId,accountCount:accs.length,accountNames:accs.map(a=>a.name)}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
-      
-      // Check for duplicate TrueLayer account IDs across different connections
-      const tlAccountIdMap = new Map<string, Account[]>();
-      accs.forEach(acc => {
-        if (acc.truelayerAccountId) {
-          if (!tlAccountIdMap.has(acc.truelayerAccountId)) {
-            tlAccountIdMap.set(acc.truelayerAccountId, []);
-          }
-          tlAccountIdMap.get(acc.truelayerAccountId)!.push(acc);
-        }
-      });
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:125',message:'Duplicate TL account ID check',data:{duplicateTlAccountIds:Array.from(tlAccountIdMap.entries()).filter(([_,accs])=>accs.length>1).map(([tlId,accs])=>({tlAccountId:tlId,count:accs.length,accounts:accs.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId}))}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      
-      const duplicateTlAccountIds = Array.from(tlAccountIdMap.entries()).filter(([_, accs]) => accs.length > 1);
-      if (duplicateTlAccountIds.length > 0) {
-        console.warn(`[AccountsScreen] ⚠️ Found ${duplicateTlAccountIds.length} TrueLayer account ID(s) with duplicates:`);
-        duplicateTlAccountIds.forEach(([tlId, accs]) => {
-          console.warn(`[AccountsScreen]   TL Account ID ${tlId} appears ${accs.length} times:`);
-          accs.forEach(acc => {
-            console.warn(`[AccountsScreen]     - ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId})`);
-          });
-        });
-      }
-      
-      // Filter accounts to only show those from active connections OR deduplicate by TL account ID
-      // For now, show all accounts but log which ones are duplicates
-      const accountsToDisplay = accs;
-      
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AccountsScreen.tsx:140',message:'Accounts to display',data:{accountsToDisplayCount:accountsToDisplay.length,accountsToDisplay:accountsToDisplay.map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId,tlAccountId:a.truelayerAccountId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
-      
-      setAccounts(accountsToDisplay);
+
+      setAccounts(accs);
       const defaultCurrency = settings.defaultCurrency || 'USD';
       setCurrencyCode(defaultCurrency);
       
@@ -181,10 +103,10 @@ export default function AccountsScreen() {
         accs.map(async (account) => {
           const accountCurrency = account.currency || currencyCode || 'USD';
           if (accountCurrency !== targetCurrency) {
-            const converted = await convertCurrency(account.balance, accountCurrency, targetCurrency);
+            const converted = await convertCurrency(account.balance ?? 0, accountCurrency, targetCurrency);
             conversions.set(account.id, converted);
           } else {
-            conversions.set(account.id, account.balance);
+            conversions.set(account.id, account.balance ?? 0);
           }
         })
       );
@@ -200,11 +122,9 @@ export default function AccountsScreen() {
       loadAccounts();
     }, 100);
     // Use focus listener to reload accounts when screen comes into focus
-    // This ensures accounts are refreshed after connecting a new bank account
     const focusListener = navigation.addListener('focus', () => {
       console.log('[AccountsScreen] Focus detected, reloading accounts...');
       // Always reload accounts on focus to ensure new connections are shown
-      // This is important when navigating from ConnectBankScreen after connecting a new bank
       loadAccounts();
     });
     return () => {
@@ -218,27 +138,6 @@ export default function AccountsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    try {
-      // Sync TrueLayer accounts and transactions if any connections exist
-      const connections = await getAllConnections();
-      for (const connection of connections) {
-        try {
-          await syncTrueLayerAccounts(connection.id);
-          await refreshTransactions();
-        } catch (error) {
-          console.error(`Error syncing connection:`, error);
-          // Continue with other connections even if one fails
-        }
-      }
-      
-      // Refresh account balances (fetches from API for TrueLayer accounts)
-      const { refreshAccountBalances } = await import('../services/accountBalanceService');
-      const currentAccounts = await getAccounts();
-      const refreshedAccounts = await refreshAccountBalances(currentAccounts);
-      setAccounts(refreshedAccounts);
-    } catch (error) {
-      console.error('Error syncing TrueLayer data:', error);
-    }
     await loadAccounts();
     setRefreshing(false);
   };
@@ -248,75 +147,14 @@ export default function AccountsScreen() {
     await loadAccounts();
   };
 
-  const handleSyncAccount = async (account: Account) => {
-    if (!account.truelayerConnectionId) {
-      console.error('Account does not have a connection ID');
-      return;
-    }
-
-    try {
-      setSyncingAccountId(account.id);
-      
-      // Verify connection exists before attempting sync
-      const { getAllConnections } = await import('../services/truelayerService');
-      const connections = await getAllConnections();
-      const connectionExists = connections.some(conn => conn.id === account.truelayerConnectionId);
-      
-      if (!connectionExists) {
-        // Connection was deleted or doesn't exist
-        // Show user-friendly message and suggest reconnecting
-        dialog.alert(
-          'Connection Not Found',
-          `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
-      // Sync accounts and transactions for this connection
-      await syncTrueLayerAccounts(account.truelayerConnectionId);
-      await refreshTransactions();
-      
-      // Refresh account balances
-      const { refreshAccountBalances } = await import('../services/accountBalanceService');
-      const currentAccounts = await getAccounts();
-      const refreshedAccounts = await refreshAccountBalances(currentAccounts, true);
-      setAccounts(refreshedAccounts);
-      
-      // Reload accounts to get latest data
-      await loadAccounts();
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error syncing account:', errorMessage);
-      
-      // Handle "Connection not found" errors gracefully
-      if (errorMessage.includes('Connection not found')) {
-        dialog.alert(
-          'Connection Not Found',
-          `The connection for "${account.name}" is no longer available. Please reconnect this account from the Connect Bank screen.`,
-          [{ text: 'OK' }]
-        );
-      } else {
-        // For other errors, show generic error message
-        dialog.alert(
-          'Sync Failed',
-          `Failed to sync "${account.name}". Please try again.`,
-          [{ text: 'OK' }]
-        );
-      }
-    } finally {
-      setSyncingAccountId(null);
-    }
-  };
-
   const calculateTotalBalance = () => {
     return accounts.reduce((total, account) => {
       // For card accounts with linked accounts, use the linked account balance
       if (account.type === 'card' && account.linkedAccountId) {
         const linkedAccount = accounts.find(acc => acc.id === account.linkedAccountId);
-        return total + (linkedAccount ? linkedAccount.balance : account.balance);
+        return total + (linkedAccount?.balance ?? account.balance ?? 0);
       }
-      return total + account.balance;
+      return total + (account.balance ?? 0);
     }, 0);
   };
 
@@ -358,27 +196,14 @@ export default function AccountsScreen() {
               <View style={styles.actionsContainer}>
                 <TouchableOpacity
                   style={styles.actionButton}
-                  onPress={() => navigation.navigate('ConnectBank' as never)}
-                >
-                  <View style={styles.actionIconContainer}>
-                    <Ionicons name="link" size={22} color={colors.primary} />
-                  </View>
-                  <View style={styles.actionTextContainer}>
-                    <Text style={styles.actionTitle}>Connect Bank</Text>
-                    <Text style={styles.actionSubtitle}>Auto-sync with TrueLayer</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
                   onPress={() => navigation.navigate('AddAccount' as never)}
                 >
                   <View style={styles.actionIconContainer}>
                     <Ionicons name="wallet-outline" size={22} color={colors.primary} />
                   </View>
                   <View style={styles.actionTextContainer}>
-                    <Text style={styles.actionTitle}>Add Manual</Text>
-                    <Text style={styles.actionSubtitle}>Create account manually</Text>
+                    <Text style={styles.actionTitle}>Add Account</Text>
+                    <Text style={styles.actionSubtitle}>Create an account manually</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -494,81 +319,13 @@ export default function AccountsScreen() {
                 <View style={styles.accountInfo}>
                   <View style={styles.accountNameRow}>
                     <View style={styles.accountNameContainer}>
-                      <Text style={styles.accountName}>
-                        {item.truelayerProviderName
-                          ? item.truelayerAccountType && 
-                            item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
-                            item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT'
-                            ? `${item.truelayerProviderName} ${formatAccountType(item.truelayerAccountType)}`
-                            : item.truelayerProviderName
-                          : item.name}
-                      </Text>
-                      {item.truelayerAccountType && 
-                       item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
-                       item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && 
-                       !item.truelayerProviderName && (
-                        <View style={styles.accountTypeBadge}>
-                          <Text style={styles.accountTypeBadgeText}>
-                            {formatAccountType(item.truelayerAccountType)}
-                          </Text>
-                        </View>
-                      )}
-                      {item.isSynced && (
-                        <>
-                          {item.truelayerConnectionId && activeConnectionIds.has(item.truelayerConnectionId) ? (
-                            <View style={styles.syncBadge}>
-                              <Ionicons name="sync" size={12} color={colors.primary} />
-                              <Text style={styles.syncBadgeText}>Synced</Text>
-                            </View>
-                          ) : item.truelayerConnectionId ? (
-                            <TouchableOpacity
-                              style={styles.reconnectBadge}
-                              onPress={() => navigation.navigate('ConnectBank' as never)}
-                            >
-                              <Ionicons name="refresh" size={12} color={colors.error} />
-                              <Text style={styles.reconnectBadgeText}>Reconnect</Text>
-                            </TouchableOpacity>
-                          ) : (
-                            <View style={styles.syncBadge}>
-                              <Ionicons name="sync" size={12} color={colors.primary} />
-                              <Text style={styles.syncBadgeText}>Synced</Text>
-                            </View>
-                          )}
-                        </>
-                      )}
+                      <Text style={styles.accountName}>{item.name}</Text>
                     </View>
                   </View>
                   <View style={styles.accountMetaRow}>
-                    {item.truelayerProviderName && (
-                      <>
-                        <Text style={styles.accountType}>{item.truelayerProviderName}</Text>
-                        {item.currency && (
-                          <>
-                            <Text style={styles.accountTypeSeparator}>•</Text>
-                            <Text style={styles.accountType}>{item.currency}</Text>
-                          </>
-                        )}
-                        {item.truelayerAccountType && 
-                         item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
-                         item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && (
-                          <>
-                            <Text style={styles.accountTypeSeparator}>•</Text>
-                            <Text style={styles.accountType}>{formatAccountType(item.truelayerAccountType)}</Text>
-                          </>
-                        )}
-                      </>
-                    )}
-                    {!item.truelayerProviderName && item.currency && (
+                    {item.currency ? (
                       <Text style={styles.accountType}>{item.currency}</Text>
-                    )}
-                    {!item.truelayerProviderName && !item.currency && item.truelayerAccountType && 
-                     item.truelayerAccountType.toUpperCase() !== 'TRANSACTION' && 
-                     item.truelayerAccountType.toUpperCase() !== 'TRANSACTION_ACCOUNT' && (
-                      <Text style={styles.accountType}>{formatAccountType(item.truelayerAccountType)}</Text>
-                    )}
-                    {!item.truelayerProviderName && !item.currency && (!item.truelayerAccountType || 
-                      item.truelayerAccountType.toUpperCase() === 'TRANSACTION' || 
-                      item.truelayerAccountType.toUpperCase() === 'TRANSACTION_ACCOUNT') && (
+                    ) : (
                       <Text style={styles.accountType}>{item.type}</Text>
                     )}
                     {item.lastSyncedAt && (

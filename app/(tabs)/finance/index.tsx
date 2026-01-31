@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Pressable, Dimensions } from 'react-native';
 import { useRouter, useFocusEffect, usePathname } from 'expo-router';
 import AccountsScreen from '../../../src/screens/AccountsScreen';
 import TransactionsScreen from '../../../src/screens/TransactionsScreen';
@@ -9,7 +9,6 @@ import AddAccountScreen from '../../../src/screens/AddAccountScreen';
 import AddTransactionScreen from '../../../src/screens/AddTransactionScreen';
 import AddBudgetScreen from '../../../src/screens/AddBudgetScreen';
 import AddDebtScreen from '../../../src/screens/AddDebtScreen';
-import ConnectBankScreen from '../../../src/screens/ConnectBankScreen';
 import { colors } from '../../../src/theme/colors';
 import { typography } from '../../../src/theme/typography';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,7 +35,51 @@ export default function FinanceHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [viewStyle, setViewStyle] = useState<ViewStyle>('cards');
+  const [showMoreActions, setShowMoreActions] = useState(false);
+  const [moreAnchor, setMoreAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const moreButtonRef = useRef<View | null>(null);
   const hasLoadedRef = useRef(false);
+
+  const openMoreActions = () => {
+    // Anchor the popover to the "More" button location
+    const node = moreButtonRef.current as any;
+    if (node?.measureInWindow) {
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        setMoreAnchor({ x, y, width, height });
+        setShowMoreActions(true);
+      });
+    } else {
+      // Fallback: open centered if measurement isn't available
+      setMoreAnchor(null);
+      setShowMoreActions(true);
+    }
+  };
+
+  const morePopoverLayout = useMemo(() => {
+    if (!moreAnchor) return null;
+    const { width: screenW, height: screenH } = Dimensions.get('window');
+    const POPOVER_W = 220;
+    const ESTIMATED_H = 120;
+    const PADDING = 12;
+    const GAP = 4;
+
+    const centerX = moreAnchor.x + moreAnchor.width / 2;
+    const left = Math.min(Math.max(centerX - POPOVER_W / 2, PADDING), screenW - POPOVER_W - PADDING);
+
+    const spaceAbove = moreAnchor.y;
+    const spaceBelow = screenH - (moreAnchor.y + moreAnchor.height);
+    // Prefer placing above the anchor (like a native popover)
+    const placeAbove = spaceAbove >= ESTIMATED_H + GAP;
+
+    const top = placeAbove
+      ? Math.max(PADDING, moreAnchor.y - ESTIMATED_H - GAP)
+      : Math.min(screenH - ESTIMATED_H - PADDING, moreAnchor.y + moreAnchor.height + GAP);
+
+    const arrowLeftRaw = centerX - left - 7; // arrow is ~14px wide
+    const arrowLeft = Math.min(Math.max(arrowLeftRaw, 16), POPOVER_W - 30);
+
+    return { left, top, width: POPOVER_W, placeAbove, arrowLeft };
+  }, [moreAnchor]);
 
   const loadData = async (showLoading = false) => {
     try {
@@ -423,51 +466,153 @@ export default function FinanceHomeScreen() {
       {/* Quick Actions */}
       <View style={styles.quickActions}>
         <TouchableOpacity 
-          style={styles.quickActionButton}
+          style={[styles.quickActionButton, styles.quickActionButtonPressable]}
           onPress={() => router.push('/(tabs)/finance/accounts')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="wallet-outline" size={28} color={colors.primary} />
           </View>
-          <Text style={styles.quickActionLabel}>Accounts</Text>
+          <Text
+            style={styles.quickActionLabel}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.9}
+          >
+            Accounts
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={styles.quickActionButton}
+          style={[styles.quickActionButton, styles.quickActionButtonPressable]}
           onPress={() => router.push('/(tabs)/finance/transactions')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="receipt-outline" size={28} color={colors.primary} />
           </View>
-          <Text style={styles.quickActionLabel}>Transactions</Text>
+          <Text
+            style={styles.quickActionLabel}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.9}
+          >
+            Transactions
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity 
-          style={styles.quickActionButton}
+          style={[styles.quickActionButton, styles.quickActionButtonPressable]}
           onPress={() => router.push('/(tabs)/finance/budgets')}
         >
           <View style={styles.quickActionIcon}>
             <Ionicons name="pie-chart-outline" size={28} color={colors.primary} />
           </View>
-          <Text style={styles.quickActionLabel}>Budgets</Text>
+          <Text
+            style={styles.quickActionLabel}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            adjustsFontSizeToFit
+            minimumFontScale={0.9}
+          >
+            Budgets
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/finance/debts')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="card-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Debts</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.quickActionButton}
-          onPress={() => router.push('/(tabs)/finance/subscriptions')}
-        >
-          <View style={styles.quickActionIcon}>
-            <Ionicons name="repeat-outline" size={28} color={colors.primary} />
-          </View>
-          <Text style={styles.quickActionLabel}>Subscriptions</Text>
-        </TouchableOpacity>
+        <View ref={moreButtonRef} collapsable={false} style={styles.quickActionButton}>
+          <TouchableOpacity 
+            style={styles.quickActionButtonPressable}
+            onPress={openMoreActions}
+          >
+            <View style={styles.quickActionIcon}>
+              <Ionicons name="ellipsis-horizontal" size={28} color={colors.primary} />
+            </View>
+            <Text
+              style={styles.quickActionLabel}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              More
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <Modal
+        visible={showMoreActions}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMoreActions(false)}
+      >
+        <Pressable style={styles.moreOverlay} onPress={() => setShowMoreActions(false)}>
+          {morePopoverLayout ? (
+            <Pressable
+              style={[
+                styles.morePopover,
+                { left: morePopoverLayout.left, top: morePopoverLayout.top, width: morePopoverLayout.width },
+              ]}
+              onPress={() => {}}
+            >
+              <View
+                style={[
+                  morePopoverLayout.placeAbove ? styles.moreArrowDown : styles.moreArrowUp,
+                  { left: morePopoverLayout.arrowLeft },
+                ]}
+              />
+
+              <View style={styles.moreContent}>
+                <TouchableOpacity
+                  style={styles.moreItem}
+                  onPress={() => {
+                    setShowMoreActions(false);
+                    router.push('/(tabs)/finance/debts');
+                  }}
+                >
+                  <Ionicons name="people-outline" size={20} color={colors.primary} />
+                  <Text style={styles.moreItemText}>Debts</Text>
+                </TouchableOpacity>
+
+                <View style={styles.moreDivider} />
+
+                <TouchableOpacity
+                  style={styles.moreItem}
+                  onPress={() => {
+                    setShowMoreActions(false);
+                    router.push('/(tabs)/finance/subscriptions');
+                  }}
+                >
+                  <Ionicons name="repeat-outline" size={20} color={colors.primary} />
+                  <Text style={styles.moreItemText}>Subscriptions</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          ) : (
+            // Fallback if we couldn't measure the button
+            <Pressable style={[styles.morePopover, styles.morePopoverCentered]} onPress={() => {}}>
+              <View style={styles.moreContent}>
+                <TouchableOpacity
+                  style={styles.moreItem}
+                  onPress={() => {
+                    setShowMoreActions(false);
+                    router.push('/(tabs)/finance/debts');
+                  }}
+                >
+                  <Ionicons name="people-outline" size={20} color={colors.primary} />
+                  <Text style={styles.moreItemText}>Debts</Text>
+                </TouchableOpacity>
+                <View style={styles.moreDivider} />
+                <TouchableOpacity
+                  style={styles.moreItem}
+                  onPress={() => {
+                    setShowMoreActions(false);
+                    router.push('/(tabs)/finance/subscriptions');
+                  }}
+                >
+                  <Ionicons name="repeat-outline" size={20} color={colors.primary} />
+                  <Text style={styles.moreItemText}>Subscriptions</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          )}
+        </Pressable>
+      </Modal>
 
       <View style={styles.bottomPadding} />
     </ScreenWrapper>
@@ -685,16 +830,21 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
     marginBottom: 32,
-    gap: 12,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   quickActionButton: {
     flex: 1,
+    maxWidth: '25%',
+    marginHorizontal: 2,
+  },
+  quickActionButtonPressable: {
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    width: '100%',
   },
   quickActionIcon: {
     width: 56,
@@ -708,10 +858,82 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   quickActionLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.text,
     fontWeight: '500',
     textAlign: 'center',
+    width: '100%',
+    flexShrink: 1,
+  },
+  moreOverlay: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    // Popover is positioned absolutely; overlay just catches outside taps
+  },
+  morePopover: {
+    position: 'absolute',
+    backgroundColor: colors.background,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    // subtle depth
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  morePopoverCentered: {
+    left: 20,
+    right: 20,
+    top: '45%',
+    alignSelf: 'center',
+    maxWidth: 320,
+  },
+  moreArrowUp: {
+    position: 'absolute',
+    top: -8,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: colors.background,
+  },
+  moreArrowDown: {
+    position: 'absolute',
+    bottom: -8,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 8,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: colors.background,
+  },
+  moreContent: {
+    paddingVertical: 8,
+  },
+  moreItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  moreItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  moreDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginLeft: 14,
   },
   bottomPadding: {
     height: 40,

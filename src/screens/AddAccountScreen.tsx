@@ -8,6 +8,7 @@ import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { getSettings } from '../services/settingsService';
 
 export default function AddAccountScreen() {
   const navigation = useNavigation();
@@ -19,9 +20,17 @@ export default function AddAccountScreen() {
   const [linkedAccountId, setLinkedAccountId] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardPin, setCardPin] = useState('');
+  const [currency, setCurrency] = useState<string>('GBP');
 
   useEffect(() => {
     const loadBankAccounts = async () => {
+      // Load default currency (GBP by default).
+      try {
+        const settings = await getSettings();
+        setCurrency(settings.defaultCurrency || 'GBP');
+      } catch {
+        setCurrency('GBP');
+      }
       if (type === 'card') {
         const accounts = await getAccounts();
         // Only show bank accounts for linking
@@ -71,7 +80,7 @@ export default function AddAccountScreen() {
         name: name.trim(),
         type,
         balance: balanceNum,
-        currency: 'USD',
+        currency: currency || 'GBP',
       };
 
       // Add card-specific fields
@@ -248,6 +257,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
+  },
+  pickerContainer: {
+    marginTop: 8,
   },
   typeButton: {
     paddingHorizontal: 16,

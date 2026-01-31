@@ -16,6 +16,13 @@ export interface Account {
   isSynced?: boolean; // Whether account is synced from TrueLayer
   lastSyncedAt?: string; // Last sync timestamp
   truelayerAccountType?: string; // Account type from TrueLayer (savings, current, etc.)
+  // Plaid-specific fields (synced accounts)
+  plaidItemId?: string; // Plaid item_id
+  plaidAccountId?: string; // Plaid account_id
+  plaidInstitutionId?: string; // metadata.institution.id
+  plaidInstitutionName?: string; // metadata.institution.name
+  plaidAccountType?: string; // Plaid account.type (depository, credit, etc.)
+  plaidAccountSubtype?: string; // Plaid account.subtype (checking, savings, etc.)
   createdAt: string;
   updatedAt: string;
 }

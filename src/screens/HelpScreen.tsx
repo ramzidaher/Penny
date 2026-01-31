@@ -25,7 +25,7 @@ export default function HelpScreen() {
     },
     {
       question: 'How do I connect my bank account?',
-      answer: 'Navigate to Finance > Accounts and tap "Connect Bank" to securely link your bank account using TrueLayer.',
+      answer: 'Navigate to Finance > Accounts and tap "Add Account" to create accounts manually.',
     },
     {
       question: 'How do I set up budgets?',

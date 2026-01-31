@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Pressable, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Pressable, ScrollView, useColorScheme, useWindowDimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { BlurView } from 'expo-blur';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ActionMenuItem {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   route: string;
   description?: string;
+  tone?: 'default' | 'primary';
 }
 
 interface ActionMenuProps {
@@ -18,58 +20,80 @@ interface ActionMenuProps {
   renderAsOverlay?: boolean; // If true, render as overlay instead of Modal
 }
 
-const menuItems: ActionMenuItem[] = [
+const menuSections: Array<{ title: string; items: ActionMenuItem[] }> = [
   {
-    label: 'Add Transaction',
-    icon: 'receipt-outline',
-    route: '/(tabs)/finance/add-transaction',
-    description: 'Manual input',
+    title: 'Add',
+    items: [
+      {
+        label: 'Add Transaction',
+        icon: 'receipt-outline',
+        route: '/(tabs)/finance/add-transaction',
+        description: 'Manual input',
+        tone: 'primary',
+      },
+      {
+        label: 'Add Subscription',
+        icon: 'repeat-outline',
+        route: '/(tabs)/finance/subscriptions/add',
+        description: 'Manual recurring',
+        tone: 'primary',
+      },
+      {
+        label: 'Add Goal / Budget',
+        icon: 'pie-chart-outline',
+        route: '/(tabs)/finance/add-budget',
+        tone: 'primary',
+      },
+    ],
   },
   {
-    label: 'Add Subscription',
-    icon: 'repeat-outline',
-    route: '/(tabs)/finance/subscriptions/add',
-    description: 'Manual recurring',
-  },
-  {
-    label: 'Add Goal / Budget',
-    icon: 'pie-chart-outline',
-    route: '/(tabs)/finance/add-budget',
-  },
-  {
-    label: 'Connect Bank',
-    icon: 'card-outline',
-    route: '/connect-bank',
-    description: 'Link your bank account',
-  },
-  {
-    label: 'Ask AI',
-    icon: 'chatbubble-outline',
-    route: '/(tabs)/ai',
-    description: '"Should I buy?"',
-  },
-  {
-    label: 'Feature Request',
-    icon: 'bulb-outline',
-    route: '/(tabs)/ai',
-    description: 'Suggest a feature',
-  },
-  {
-    label: 'Bug Report',
-    icon: 'bug-outline',
-    route: '/(tabs)/ai',
-    description: 'Report an issue',
+    title: 'Support',
+    items: [
+      {
+        label: 'Ask AI',
+        icon: 'chatbubble-outline',
+        route: '/(tabs)/ai/chat',
+        description: '"Should I buy?"',
+      },
+      {
+        label: 'Feature Request',
+        icon: 'bulb-outline',
+        route: '/(tabs)/ai/chat',
+        description: 'Suggest a feature',
+      },
+      {
+        label: 'Bug Report',
+        icon: 'bug-outline',
+        route: '/(tabs)/ai/chat',
+        description: 'Report an issue',
+      },
+    ],
   },
 ];
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const normalized = hex.replace('#', '').trim();
+  const full = normalized.length === 3 ? normalized.split('').map(c => `${c}${c}`).join('') : normalized;
+  if (full.length !== 6) return `rgba(0,0,0,${alpha})`;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
 
 export default function ActionMenu({ visible, onClose, renderAsOverlay = false }: ActionMenuProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const { colors: theme } = useTheme();
+  const c = isDark ? theme.dark : theme;
   const { height: SCREEN_HEIGHT } = useWindowDimensions();
   // Start completely off-screen (below the screen)
   const [slideAnim] = useState(() => new Animated.Value(SCREEN_HEIGHT || 800));
   const [fadeAnim] = useState(new Animated.Value(0));
-  const [itemAnims] = useState(menuItems.map(() => new Animated.Value(0)));
+  const allItems = useMemo(() => menuSections.flatMap(s => s.items), []);
+  const [itemAnims] = useState(allItems.map(() => new Animated.Value(0)));
 
   React.useEffect(() => {
     if (visible) {
@@ -95,11 +119,10 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
       // Stagger menu items - start immediately with shorter delay
       const staggerDelay = 15;
       itemAnims.forEach((anim, index) => {
-        // Start with slight visibility so items are never completely invisible
-        anim.setValue(0.3);
+        anim.setValue(0);
         Animated.timing(anim, {
           toValue: 1,
-          duration: 200,
+          duration: 220,
           delay: index * staggerDelay,
           useNativeDriver: true,
         }).start();
@@ -129,8 +152,32 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
     router.push(route as any);
   };
 
-  // Calculate tab bar height (approximately 60 + safe area bottom)
-  const tabBarHeight = Math.max(insets.bottom, 8) + 60;
+  // Tab bar height: Android uses floating pill (bar + gap); iOS uses native tab bar
+  const tabBarContentHeight = Platform.OS === 'android' ? 72 + 12 + 10 + 10 : 60; // bar minHeight + floatingGap + paddings
+  const tabBarHeight = Math.max(insets.bottom, 8) + tabBarContentHeight;
+  const sheetMarginBottom = renderAsOverlay ? tabBarHeight : 0;
+  const overlayDismissBottom = renderAsOverlay ? tabBarHeight : 0;
+  const sheetMaxHeight = Math.min((SCREEN_HEIGHT || 800) * 0.82, (SCREEN_HEIGHT || 800) - (insets.top + 24));
+
+  const sectionCardBg = isDark ? hexToRgba(c.surface, 0.92) : hexToRgba(c.surface, 0.98);
+  const accentSoftBg = useMemo(() => hexToRgba(c.accent, isDark ? 0.18 : 0.12), [c.accent, isDark]);
+
+  // Give the sheet a real height so the ScrollView can layout (maxHeight alone can collapse).
+  const estimatedSheetHeight = useMemo(() => {
+    const header = 92;
+    const sectionHeader = 28;
+    const sectionSpacing = 14;
+    const row = 56;
+    const chromePadding = 22;
+
+    const totalRows = menuSections.reduce((acc, s) => acc + s.items.length, 0);
+    const totalSections = menuSections.length;
+    const estimated = header + (totalSections * sectionHeader) + (totalRows * row) + (totalSections * sectionSpacing) + chromePadding;
+
+    // Keep it compact, but never too small.
+    return Math.max(280, Math.min(estimated, 520));
+  }, []);
+  const sheetHeight = Math.min(sheetMaxHeight, estimatedSheetHeight);
 
   const menuContent = (
     <Animated.View 
@@ -142,9 +189,22 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
       ]} 
       pointerEvents={visible ? "box-none" : "none"}
     >
-      {/* Full screen overlay background */}
-      <Pressable 
-        style={styles.fullScreenOverlay}
+      {/* Backdrop (blur + dim). Keep tab bar tappable in overlay mode. */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
+        <BlurView
+          intensity={isDark ? 18 : 22}
+          tint={isDark ? 'dark' : 'light'}
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: 'rgba(0,0,0,0)' },
+          ]}
+        />
+      </View>
+      <Pressable
+        style={[styles.dismissArea, { bottom: overlayDismissBottom }]}
         onPress={onClose}
       />
       {/* Tab bar pass-through area - completely transparent to touches */}
@@ -167,23 +227,34 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
               styles.menuContainer,
               {
                 transform: [{ translateY: slideAnim }],
-                height: (SCREEN_HEIGHT || 800) - tabBarHeight,
-                maxHeight: (SCREEN_HEIGHT || 800) - tabBarHeight,
-                minHeight: (SCREEN_HEIGHT || 800) - tabBarHeight,
+                height: sheetHeight,
+                maxHeight: sheetMaxHeight,
+                marginBottom: sheetMarginBottom,
+                backgroundColor: isDark ? hexToRgba(c.background, 0.88) : hexToRgba(c.background, 0.96),
+                borderColor: isDark ? hexToRgba(c.border, 0.7) : c.border,
               },
             ]}
             pointerEvents="auto"
           >
-            {/* Header with close button */}
-            <View style={[styles.header, { paddingTop: insets.top + 4 }]}>
-              <View style={styles.headerSpacer} />
-              <TouchableOpacity
-                onPress={onClose}
-                style={styles.closeButton}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={20} color={colors.text} />
-              </TouchableOpacity>
+            {/* Grab handle + header */}
+            <View style={[styles.header, { paddingTop: 10 }]}>
+              <View style={[styles.handle, { backgroundColor: isDark ? hexToRgba('#ffffff', 0.18) : hexToRgba('#000000', 0.12) }]} />
+              <View style={styles.headerRow}>
+                <View style={styles.headerTextWrap}>
+                  <Text style={[styles.headerTitle, { color: c.text }]}>Menu</Text>
+                  <Text style={[styles.headerSubtitle, { color: c.textSecondary }]}>Quick actions</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={onClose}
+                  style={[
+                    styles.closeButton,
+                    { backgroundColor: isDark ? hexToRgba(c.surface, 0.55) : c.surface, borderColor: c.border },
+                  ]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={20} color={c.text} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Scrollable menu items */}
@@ -191,51 +262,79 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
               style={styles.scrollView}
               contentContainerStyle={[
                 styles.scrollContent,
-                { paddingBottom: tabBarHeight + Math.max(insets.bottom, 12) }
+                { paddingBottom: Math.max(insets.bottom, 12) + 16 }
               ]}
               showsVerticalScrollIndicator={false}
               bounces={true}
               nestedScrollEnabled={true}
             >
-              {menuItems.map((item, index) => {
-                const itemOpacity = itemAnims[index];
-                const itemScale = itemAnims[index].interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.95, 1],
-                });
-                
-                return (
-                  <Animated.View
-                    key={`${item.label}-${index}`}
-                    style={{
-                      opacity: itemOpacity,
-                      transform: [{ scale: itemScale }],
-                    }}
+              {menuSections.map((section, sectionIndex) => (
+                <View key={`${section.title}-${sectionIndex}`} style={styles.sectionWrap}>
+                  <Text style={[styles.sectionTitle, { color: c.textSecondary }]}>{section.title}</Text>
+                  <View
+                    style={[
+                      styles.sectionCard,
+                      {
+                        backgroundColor: sectionCardBg,
+                        borderColor: isDark ? hexToRgba(c.border, 0.6) : c.border,
+                      },
+                    ]}
                   >
-                    <TouchableOpacity
-                      style={[
-                        styles.menuItem,
-                        index === menuItems.length - 1 && styles.menuItemLast,
-                      ]}
-                      onPress={() => handleItemPress(item.route)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={styles.menuItemLeft}>
-                        <View style={styles.menuItemIconContainer}>
-                          <Ionicons name={item.icon} size={20} color={colors.primary} />
-                        </View>
-                        <View style={styles.menuItemText}>
-                          <Text style={styles.menuItemLabel}>{item.label}</Text>
-                          {item.description && (
-                            <Text style={styles.menuItemDescription}>{item.description}</Text>
-                          )}
-                        </View>
-                      </View>
-                      <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  </Animated.View>
-                );
-              })}
+                    {section.items.map((item, itemIndex) => {
+                      const flatIndex = menuSections
+                        .slice(0, sectionIndex)
+                        .reduce((acc, s) => acc + s.items.length, 0) + itemIndex;
+                      const itemOpacity = itemAnims[flatIndex];
+                      const itemTranslateY = itemAnims[flatIndex].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [8, 0],
+                      });
+
+                      const iconTint = item.tone === 'primary' ? c.accent : c.text;
+                      const iconBg =
+                        item.tone === 'primary' ? accentSoftBg : (isDark ? hexToRgba(c.surface, 0.45) : c.surface);
+
+                      return (
+                        <Animated.View
+                          key={`${item.label}-${flatIndex}`}
+                          style={{
+                            opacity: itemOpacity,
+                            transform: [{ translateY: itemTranslateY }],
+                          }}
+                        >
+                          <TouchableOpacity
+                            style={[
+                              styles.menuItem,
+                              { borderBottomColor: isDark ? hexToRgba(c.border, 0.55) : c.border },
+                              itemIndex === section.items.length - 1 && styles.menuItemLast,
+                            ]}
+                            onPress={() => handleItemPress(item.route)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.menuItemLeft}>
+                              <View
+                                style={[
+                                  styles.menuItemIconContainer,
+                                  { backgroundColor: iconBg, borderColor: isDark ? hexToRgba(c.border, 0.4) : c.border },
+                                ]}
+                              >
+                                <Ionicons name={item.icon} size={20} color={iconTint} />
+                              </View>
+                              <View style={styles.menuItemText}>
+                                <Text style={[styles.menuItemLabel, { color: c.text }]}>{item.label}</Text>
+                                {item.description && (
+                                  <Text style={[styles.menuItemDescription, { color: c.textSecondary }]}>{item.description}</Text>
+                                )}
+                              </View>
+                            </View>
+                            <Ionicons name="chevron-forward" size={16} color={c.textSecondary} />
+                          </TouchableOpacity>
+                        </Animated.View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </ScrollView>
           </Animated.View>
         </Pressable>
@@ -276,13 +375,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     zIndex: 1000,
   },
-  fullScreenOverlay: {
+  dismissArea: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   overlayContent: {
     flex: 1,
@@ -290,33 +388,64 @@ const styles = StyleSheet.create({
     pointerEvents: 'box-none',
   },
   menuContainer: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
     borderWidth: 1,
-    borderBottomWidth: 0,
-    borderColor: colors.border,
-    width: '100%',
+    alignSelf: 'stretch',
     flexDirection: 'column',
+    overflow: 'hidden',
+    marginHorizontal: 10,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
+      },
+      android: {
+        elevation: 14,
+      },
+    }),
   },
   header: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 4,
-    paddingBottom: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    gap: 12,
   },
-  headerSpacer: {
+  headerTextWrap: {
     flex: 1,
+    minWidth: 0,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  headerSubtitle: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '500',
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -326,8 +455,24 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 4,
+    paddingTop: 2,
     flexGrow: 1,
+  },
+  sectionWrap: {
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  sectionCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
   },
   menuItem: {
     flexDirection: 'row',
@@ -335,8 +480,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     minHeight: 56,
+    paddingHorizontal: 14,
   },
   menuItemLast: {
     borderBottomWidth: 0,
@@ -350,12 +495,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
     borderWidth: 1,
-    borderColor: colors.border,
   },
   menuItemText: {
     flex: 1,
@@ -363,12 +506,10 @@ const styles = StyleSheet.create({
   menuItemLabel: {
     fontSize: 15,
     fontWeight: '600',
-    color: colors.text,
     marginBottom: 1,
   },
   menuItemDescription: {
     fontSize: 12,
-    color: colors.textSecondary,
   },
 });
 

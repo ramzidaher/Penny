@@ -122,6 +122,14 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     if (account.isSynced !== undefined) accountData.isSynced = account.isSynced;
     if (account.lastSyncedAt) accountData.lastSyncedAt = account.lastSyncedAt;
     if (account.truelayerAccountType) accountData.truelayerAccountType = account.truelayerAccountType;
+
+    // Include Plaid-specific fields if present
+    if (account.plaidItemId) accountData.plaidItemId = account.plaidItemId;
+    if (account.plaidAccountId) accountData.plaidAccountId = account.plaidAccountId;
+    if (account.plaidInstitutionId) accountData.plaidInstitutionId = account.plaidInstitutionId;
+    if (account.plaidInstitutionName) accountData.plaidInstitutionName = account.plaidInstitutionName;
+    if (account.plaidAccountType) accountData.plaidAccountType = account.plaidAccountType;
+    if (account.plaidAccountSubtype) accountData.plaidAccountSubtype = account.plaidAccountSubtype;
     
     await setDoc(accountRef, accountData);
     

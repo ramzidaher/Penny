@@ -33,12 +33,6 @@
         <data android:scheme="penny"/>
         <data android:scheme="exp+penny"/>
       </intent-filter>
-      <intent-filter android:autoVerify="true" data-generated="true">
-        <action android:name="android.intent.action.VIEW"/>
-        <data android:scheme="penny" android:host="truelayer-callback"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-      </intent-filter>
     </activity>
   </application>
 </manifest>

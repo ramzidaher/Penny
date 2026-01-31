@@ -26,24 +26,6 @@ export const enrichAccountsWithBalances = async (
     accounts.map(async (account) => {
       // For TrueLayer synced accounts, fetch balance on-demand
       if (account.isSynced && account.truelayerConnectionId && account.truelayerAccountId) {
-        // Verify connection exists before attempting to fetch balance
-        const { getAllConnections } = await import('./truelayerService');
-        const connections = await getAllConnections();
-        const connectionExists = connections.some(conn => conn.id === account.truelayerConnectionId);
-        
-        if (!connectionExists) {
-          console.warn(
-            `[accountBalanceService] Connection not found for account, using existing balance`
-          );
-          // Clear any invalid cache entries
-          try {
-            await clearBalanceCache(account.truelayerConnectionId, account.truelayerAccountId);
-          } catch (clearError) {
-            // Ignore cache clear errors
-          }
-          return account;
-        }
-        
         try {
           const balanceData = await getCachedBalance(
             account.truelayerConnectionId,

@@ -19,10 +19,11 @@ export const getAccounts = async (): Promise<Account[]> => {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
   const accounts = await cloudDb.cloudGetAccounts();
-  
-  // Enrich TrueLayer accounts with on-demand balances (secure, no cloud persistence)
-  const { enrichAccountsWithBalances } = await import('../services/accountBalanceService');
-  return await enrichAccountsWithBalances(accounts);
+
+  // IMPORTANT (performance): do NOT block core app screens on TrueLayer API balance fetches.
+  // The `cloudGetAccounts()` balances are good enough for initial render; live balances can be
+  // refreshed explicitly from the Accounts screen (pull-to-refresh / manual refresh).
+  return accounts;
 };
 
 export const addAccount = async (account: Omit<Account, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
@@ -49,8 +50,8 @@ export const deleteAccount = async (id: string): Promise<void> => {
 // Transaction operations
 // Now uses secure encrypted cache with API fallback (no Firestore persistence)
 export const getTransactions = async (accountId?: string): Promise<Transaction[]> => {
-  const { getTransactions: getSecureTransactions } = await import('../services/transactionService');
-  const transactions = await getSecureTransactions();
+  // Manual-only mode: transactions come from Firestore only (no TrueLayer API / token reads).
+  const transactions = await cloudDb.cloudGetTransactions();
   if (accountId) {
     return transactions.filter(t => t.accountId === accountId);
   }
@@ -186,20 +187,7 @@ export const deleteDebt = async (id: string): Promise<void> => {
   return await cloudDb.cloudDeleteDebt(id);
 };
 
-// TrueLayer sync operations
-export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ duplicates: Array<{ accountName: string; accountId: string; existingConnectionId: string }> }> => {
-  if (!isFirebaseAvailable()) {
-    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
-  }
-  return await cloudDb.syncTrueLayerAccounts(connectionId);
-};
-
-export const syncTrueLayerTransactions = async (connectionId: string): Promise<void> => {
-  if (!isFirebaseAvailable()) {
-    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
-  }
-  return await cloudDb.syncTrueLayerTransactions(connectionId);
-};
+// TrueLayer sync operations removed (manual-only mode).
 
 // Chat Thread operations
 export const getChatThreads = async (): Promise<ChatThread[]> => {

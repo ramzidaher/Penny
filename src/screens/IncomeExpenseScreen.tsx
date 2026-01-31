@@ -50,6 +50,9 @@ export default function IncomeExpenseScreen() {
   const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
   const [debtDialogVisible, setDebtDialogVisible] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
+    'right-income-left-expense'
+  );
 
   const loadTransactions = async () => {
     try {
@@ -61,6 +64,7 @@ export default function IncomeExpenseScreen() {
       ]);
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
+      setSwipeDirection(settings.swipeDirection);
     } catch (error) {
       console.error('[IncomeExpenseScreen] Error loading transactions:', error);
       setTransactions([]);
@@ -114,8 +118,7 @@ export default function IncomeExpenseScreen() {
 
   const handleSwipeRight = async (transaction: Transaction) => {
     // Get swipe direction preference
-    const settings = await getSettings();
-    const rightSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+    const rightSwipeType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
     
     // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
     if (rightSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
@@ -135,8 +138,7 @@ export default function IncomeExpenseScreen() {
 
   const handleSwipeLeft = async (transaction: Transaction) => {
     // Get swipe direction preference
-    const settings = await getSettings();
-    const leftSwipeType = settings.swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+    const leftSwipeType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
     
     // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
     if (leftSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
@@ -533,6 +535,7 @@ export default function IncomeExpenseScreen() {
               onSwipeLeft={() => handleSwipeLeft(item)}
               onDelete={() => handleDelete(item.id)}
               showTagBadges={true}
+              swipeDirection={swipeDirection}
             />
           )}
           contentContainerStyle={styles.listContent}

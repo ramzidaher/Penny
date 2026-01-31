@@ -24,12 +24,17 @@ export interface AppSettings {
   swipeDirection: 'right-income-left-expense' | 'right-expense-left-income';
   // Other settings
   theme: 'light' | 'dark' | 'auto';
+  // Appearance (accent color)
+  accentMode: 'preset' | 'custom';
+  accentPresetId: string; // e.g. "midnight", "ocean"
+  accentCustomHex: string; // #RRGGBB
   createdAt: string;
   updatedAt: string;
 }
 
 export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 'updatedAt'> = {
-  defaultCurrency: 'USD',
+  // Default to GBP for UK-first product/demo.
+  defaultCurrency: 'GBP',
   lowBalanceThreshold: 100,
   enableLowBalanceAlerts: true,
   enableDailyReminders: true,
@@ -45,6 +50,9 @@ export const defaultSettings: Omit<AppSettings, 'id' | 'userId' | 'createdAt' | 
   aiTone: 'professional',
   swipeDirection: 'right-income-left-expense',
   theme: 'light',
+  accentMode: 'preset',
+  accentPresetId: 'midnight',
+  accentCustomHex: '#121212',
 };
 
 

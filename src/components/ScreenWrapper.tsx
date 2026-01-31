@@ -1,7 +1,7 @@
-import React, { ReactNode, forwardRef, useImperativeHandle } from 'react';
+import React, { ReactNode, forwardRef, useImperativeHandle, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, RefreshControl, ScrollViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ScreenWrapperProps {
   children: ReactNode;
@@ -35,6 +35,8 @@ const ScreenWrapper = forwardRef<ScreenWrapperRef, ScreenWrapperProps>(({
 }, ref) => {
   const insets = useSafeAreaInsets();
   const scrollViewRef = React.useRef<ScrollView>(null);
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   useImperativeHandle(ref, () => ({
     scrollToEnd: (options?: { animated?: boolean }) => {
@@ -85,7 +87,7 @@ ScreenWrapper.displayName = 'ScreenWrapper';
 
 export default ScreenWrapper;
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

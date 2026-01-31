@@ -38,6 +38,10 @@
           "data": [
             {
               "scheme": "penny",
+              "host": "plaid-callback"
+            },
+            {
+              "scheme": "penny",
               "host": "truelayer-callback"
             }
           ],

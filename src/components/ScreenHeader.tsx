@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ViewStyle, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ScreenHeaderProps {
   title: string;
@@ -18,6 +18,8 @@ interface ScreenHeaderProps {
 
 export default function ScreenHeader({ title, subtitle, rightAction, style, titleFontFamily, titleLetterSpacing }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   
   // Minimal padding: safe area top only
   const paddingTop = insets.top;
@@ -57,7 +59,7 @@ export default function ScreenHeader({ title, subtitle, rightAction, style, titl
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingBottom: 24,

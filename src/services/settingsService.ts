@@ -45,6 +45,9 @@ export const getSettings = async (): Promise<AppSettings> => {
   
   try {
     const userId = getUserId();
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
     const settingsRef = doc(db, `users/${userId}/settings`, 'app');
     const settingsSnap = await getDoc(settingsRef);
     
@@ -53,6 +56,8 @@ export const getSettings = async (): Promise<AppSettings> => {
       cachedSettings = {
         id: settingsSnap.id,
         userId,
+        // Merge defaults for backward compatibility (older users may not have newer fields)
+        ...defaultSettings,
         ...data,
         createdAt: timestampToISO(data.createdAt),
         updatedAt: timestampToISO(data.updatedAt),
@@ -122,6 +127,9 @@ export const updateSettings = async (updates: Partial<AppSettings>): Promise<voi
       'aiTone',
       'swipeDirection',
       'theme',
+      'accentMode',
+      'accentPresetId',
+      'accentCustomHex',
     ];
     
     validFields.forEach(field => {

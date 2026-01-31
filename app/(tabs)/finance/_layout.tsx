@@ -63,7 +63,7 @@ export default function FinanceLayout() {
         // CRITICAL:
         // - Never set canRender=false here (unmount/remount is what triggers the stack crash).
         // - BUT if the Finance stack has never mounted yet (fresh mount) we MUST allow the stack
-        //   to render so `connect-bank` can mount and clear the OAuth flag. Otherwise we deadlock.
+        //   to render so screens can mount and clear the OAuth flag.
         if (!hasMountedStackRef.current && !canRender) {
           setCanRender(true);
         }
@@ -250,12 +250,11 @@ export default function FinanceLayout() {
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'finance/_layout.tsx:195',message:'Blocking render (startup) - !canRender',data:{pathname,shouldBlock},timestamp:Date.now(),sessionId:'debug-session',runId:'run5',hypothesisId:'J'})}).catch(()=>{});
     // #endregion
-    return <Loading message="Finalizing bank connection…" />;
+    return <Loading message="Loading…" />;
   }
 
   // NOTE: We intentionally keep the Stack mounted during OAuth/transition.
-  // Blocking/unmounting here creates a deadlock (ConnectBankScreen can't mount to clear the OAuth flag),
-  // and remounting can crash StackRouter on some devices.
+  // Unmounting/remounting here can crash StackRouter on some devices.
 
   // Check if segments is available, router is ready
   if ((!Array.isArray(segments) || !router || !pathname) && !hasMountedStackRef.current) {
@@ -293,7 +292,6 @@ export default function FinanceLayout() {
       />
       <Stack.Screen name="accounts" options={{ title: 'Accounts' }} />
       <Stack.Screen name="add-account" options={{ title: 'Add Account' }} />
-      <Stack.Screen name="connect-bank" options={{ title: 'Connect Bank' }} />
       <Stack.Screen name="transactions" options={{ title: 'Transactions' }} />
       <Stack.Screen name="transaction-detail" options={{ headerShown: false }} />
       <Stack.Screen name="income-expense" options={{ title: 'Income & Expenses' }} />

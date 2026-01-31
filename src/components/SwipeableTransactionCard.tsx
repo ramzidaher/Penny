@@ -15,11 +15,12 @@ interface SwipeableTransactionCardProps {
   transaction: Transaction;
   currencyCode: string;
   onPress: () => void;
-  onSwipeRight?: () => void; // Swipe right = income
-  onSwipeLeft?: () => void; // Swipe left = expense
+  onSwipeRight?: () => void;
+  onSwipeLeft?: () => void;
   onDelete?: () => void;
   onUncategorize?: () => void;
   showTagBadges?: boolean;
+  swipeDirection?: 'right-income-left-expense' | 'right-expense-left-income';
 }
 
 export default function SwipeableTransactionCard({
@@ -31,21 +32,26 @@ export default function SwipeableTransactionCard({
   onDelete,
   onUncategorize,
   showTagBadges = false,
+  swipeDirection: swipeDirectionProp,
 }: SwipeableTransactionCardProps) {
   const swipeableRef = useRef<Swipeable>(null);
-  const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>('right-income-left-expense');
+  const [internalSwipeDirection, setInternalSwipeDirection] = useState<
+    'right-income-left-expense' | 'right-expense-left-income'
+  >('right-income-left-expense');
   
   useEffect(() => {
     const loadSwipeDirection = async () => {
       try {
         const settings = await getSettings();
-        setSwipeDirection(settings.swipeDirection);
+        setInternalSwipeDirection(settings.swipeDirection);
       } catch (error) {
         console.error('Error loading swipe direction:', error);
       }
     };
-    loadSwipeDirection();
-  }, []);
+    if (!swipeDirectionProp) {
+      loadSwipeDirection();
+    }
+  }, [swipeDirectionProp]);
   
   const iconInfo = getTransactionIcon(transaction.category, transaction.description);
   
@@ -59,8 +65,9 @@ export default function SwipeableTransactionCard({
   }
   
   // Determine what right and left actions should show based on preference
-  const rightActionType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
-  const leftActionType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+  const effectiveSwipeDirection = swipeDirectionProp ?? internalSwipeDirection;
+  const rightActionType = effectiveSwipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+  const leftActionType = effectiveSwipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
   
   // Render right action
   const renderRightAction = (progress: Animated.AnimatedInterpolation<number>) => {

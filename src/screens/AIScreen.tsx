@@ -1,44 +1,99 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Modal, ScrollView, Alert } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Ionicons } from '@expo/vector-icons';
 import { askAI } from '../services/aiService';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
 import { getChatThreads, getChatThread, addChatThread, updateChatThread, deleteChatThread } from '../database/db';
 import { ChatThread, ChatMessage } from '../database/schema';
-
-interface Message {
-  role: 'user' | 'assistant';
-  content: string;
-}
+import AdvisorMessageList, { AdvisorChatMessage } from '../components/AdvisorMessageList';
+import AdvisorLanding from '../components/AdvisorLanding';
+import AdvisorChatComposer from '../components/AdvisorChatComposer';
+import AdvisorThreadsModal from '../components/AdvisorThreadsModal';
+import AdvisorProgressStrip from '../components/AdvisorProgressStrip';
+import { AdvisorMission } from '../utils/advisorMissions';
+import {
+  getAdvisorProgress,
+  refreshDailyMissionsIfNeeded,
+  awardAdvisorXp,
+  checkInToday,
+  completeMission,
+  AdvisorProgress,
+} from '../services/advisorProgressService';
+import { onTabReselect } from '../utils/tabReselect';
 
 export default function AIScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
+  const router = useRouter();
+  const params = useLocalSearchParams<{ prompt?: string }>();
   const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<AdvisorChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hasStartedChat, setHasStartedChat] = useState(false);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const [threads, setThreads] = useState<ChatThread[]>([]);
   const [showThreadsModal, setShowThreadsModal] = useState(false);
-  const [showQuickQuestions, setShowQuickQuestions] = useState(true);
+  const [lastFailedQuestion, setLastFailedQuestion] = useState<string | null>(null);
+  const [advisorProgress, setAdvisorProgress] = useState<AdvisorProgress | null>(null);
+  const [composerFocusRequestId, setComposerFocusRequestId] = useState(0);
   const screenWrapperRef = useRef<ScreenWrapperRef>(null);
+  const requestGenerationRef = useRef(0);
+  const lastAutoPromptRef = useRef<string | null>(null);
+
+  const resetToLanding = useCallback(() => {
+    requestGenerationRef.current += 1;
+    setShowThreadsModal(false);
+    setCurrentThreadId(null);
+    setMessages([]);
+    setQuestion('');
+    setLastFailedQuestion(null);
+    setLoading(false);
+    setHasStartedChat(false);
+    // Ensure we actually return to the Advisor main page when requested.
+    router.replace('/(tabs)/ai' as any);
+  }, []);
+
+  // If navigated to /(tabs)/ai/chat with a prompt param, auto-send once.
+  useEffect(() => {
+    const p = typeof params.prompt === 'string' ? params.prompt : '';
+    if (!p) return;
+    if (lastAutoPromptRef.current === p) return;
+    lastAutoPromptRef.current = p;
+    // Fire and forget; sendQuestion manages UI state.
+    sendQuestion(p, { clearComposer: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.prompt]);
 
   // Load threads on mount - no delay for faster loading
   useEffect(() => {
     loadThreads();
   }, []);
 
+  // Load progress on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const p = await getAdvisorProgress();
+        const refreshed = await refreshDailyMissionsIfNeeded();
+        setAdvisorProgress(refreshed || p);
+      } catch {
+        // If Firebase isn't ready yet, we'll just skip progress for now.
+      }
+    })();
+  }, []);
+
   // Load messages when thread changes
   useEffect(() => {
     if (currentThreadId) {
+      setHasStartedChat(true);
       loadThread(currentThreadId);
     } else {
       setMessages([]);
-      setShowQuickQuestions(true);
     }
   }, [currentThreadId]);
 
@@ -59,14 +114,13 @@ export default function AIScreen() {
           role: msg.role,
           content: msg.content,
         })));
-        setShowQuickQuestions(false);
       }
     } catch (error) {
       console.error('Error loading thread:', error);
     }
   };
 
-  const saveThread = async (threadMessages: Message[], title?: string) => {
+  const saveThread = async (threadMessages: AdvisorChatMessage[], title?: string) => {
     try {
       const threadTitle = title || threadMessages[0]?.content?.slice(0, 50) || 'New Chat';
       const now = new Date().toISOString();
@@ -97,73 +151,95 @@ export default function AIScreen() {
     }
   };
 
-  const handleAsk = async () => {
-    if (!question.trim()) return;
+  const isErrorAnswer = (text: string) =>
+    text.startsWith('Error:') || text.includes('API key not configured');
 
-    const userQuestion = question.trim();
-    setQuestion('');
+  const sendQuestion = async (text: string, opts?: { clearComposer?: boolean; isRetry?: boolean }) => {
+    const generationAtStart = requestGenerationRef.current;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    if (opts?.clearComposer) setQuestion('');
+    // Immediately switch to chat view to avoid a confusing “greyed out landing” intermediate step.
+    setHasStartedChat(true);
     setLoading(true);
-    setShowQuickQuestions(false);
-    
-    // Add user message to conversation
-    const userMessage: Message = { role: 'user', content: userQuestion };
-    const updatedMessages = [...messages, userMessage];
+
+    // IMPORTANT: `askAI()` already appends the current question to the prompt.
+    // So conversationHistory must NOT include this question, otherwise the model sees it twice.
+    const baseHistory = (() => {
+      if (opts?.isRetry && messages.length > 0) {
+        const last = messages[messages.length - 1];
+        if (last.role === 'assistant' && isErrorAnswer(last.content)) {
+          return messages.slice(0, -1);
+        }
+      }
+      return messages;
+    })();
+
+    const userMessage: AdvisorChatMessage = { role: 'user', content: trimmed };
+    const updatedMessages = [...baseHistory, userMessage];
     setMessages(updatedMessages);
-    
+    // If we're starting from the landing screen, force the chat to start at the top.
+    if (baseHistory.length === 0) {
+      requestAnimationFrame(() => {
+        screenWrapperRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }
+
     try {
-      const answer = await askAI(userQuestion, updatedMessages);
-      const assistantMessage: Message = { role: 'assistant', content: answer };
+      const answer = await askAI(trimmed, baseHistory);
+      if (generationAtStart !== requestGenerationRef.current) return;
+      const assistantMessage: AdvisorChatMessage = { role: 'assistant', content: answer };
       const finalMessages = [...updatedMessages, assistantMessage];
       setMessages(finalMessages);
-      
-      // Save thread after getting response
       await saveThread(finalMessages);
+      if (generationAtStart !== requestGenerationRef.current) return;
+
+      if (isErrorAnswer(answer)) {
+        setLastFailedQuestion(trimmed);
+      } else {
+        setLastFailedQuestion(null);
+        // Small engagement reward for successful questions (avoid rewarding retries).
+        if (!opts?.isRetry) {
+          try {
+            const p = await awardAdvisorXp(5);
+            setAdvisorProgress(p);
+          } catch {
+            // ignore
+          }
+        }
+      }
     } catch (error) {
-      const errorMessage: Message = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
+      if (generationAtStart !== requestGenerationRef.current) return;
+      const errorMessage: AdvisorChatMessage = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+      };
       const finalMessages = [...updatedMessages, errorMessage];
       setMessages(finalMessages);
       await saveThread(finalMessages);
+      setLastFailedQuestion(trimmed);
     } finally {
-      setLoading(false);
+      if (generationAtStart === requestGenerationRef.current) {
+        setLoading(false);
+      }
     }
+  };
+
+  const handleAsk = async () => {
+    await sendQuestion(question, { clearComposer: true });
   };
 
   const handleQuickQuestion = async (quickQuestion: string) => {
-    setQuestion('');
-    setLoading(true);
-    setShowQuickQuestions(false);
-    
-    // Add user message to conversation
-    const userMessage: Message = { role: 'user', content: quickQuestion };
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
-    
-    try {
-      const answer = await askAI(quickQuestion, updatedMessages);
-      const assistantMessage: Message = { role: 'assistant', content: answer };
-      const finalMessages = [...updatedMessages, assistantMessage];
-      setMessages(finalMessages);
-      
-      // Save thread after getting response
-      await saveThread(finalMessages);
-    } catch (error) {
-      const errorMessage: Message = { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' };
-      const finalMessages = [...updatedMessages, errorMessage];
-      setMessages(finalMessages);
-      await saveThread(finalMessages);
-    } finally {
-      setLoading(false);
-    }
+    await sendQuestion(quickQuestion, { clearComposer: true });
   };
 
   const handleNewThread = () => {
-    setCurrentThreadId(null);
-    setMessages([]);
-    setShowQuickQuestions(true);
-    setShowThreadsModal(false);
+    resetToLanding();
   };
 
   const handleSelectThread = (threadId: string) => {
+    setHasStartedChat(true);
     setCurrentThreadId(threadId);
     setShowThreadsModal(false);
   };
@@ -181,9 +257,7 @@ export default function AIScreen() {
             try {
               await deleteChatThread(threadId);
               if (currentThreadId === threadId) {
-                setCurrentThreadId(null);
-                setMessages([]);
-                setShowQuickQuestions(true);
+                resetToLanding();
               }
               await loadThreads();
             } catch (error) {
@@ -203,73 +277,151 @@ export default function AIScreen() {
     'How much can I spend this month?',
   ];
 
-  // Function to render text with markdown bold (**text**)
-  const renderTextWithBold = (text: string) => {
-    const parts: Array<{ text: string; bold: boolean }> = [];
-    let currentIndex = 0;
-    const regex = /\*\*(.*?)\*\*/g;
-    let match;
+  const quickActions = [
+    {
+      id: 'daily_checkin',
+      title: 'Daily check-in',
+      subtitle: 'Quick snapshot + next steps',
+      icon: 'sparkles' as const,
+      prompt:
+        'Give me a quick daily check-in on my finances based on my recent activity. Include 3 actionable next steps.',
+    },
+    {
+      id: 'spending_audit',
+      title: 'Spending audit',
+      subtitle: 'Find the biggest leaks',
+      icon: 'trending-down' as const,
+      prompt:
+        'Audit my spending. What are my biggest expense categories and what’s one specific change I can make this week to reduce spending?',
+    },
+    {
+      id: 'budget_health',
+      title: 'Budget health',
+      subtitle: 'What’s at risk right now?',
+      icon: 'speedometer' as const,
+      prompt:
+        'Review my budget health. Flag any categories that are over 80% and give me a clear plan to stay on track.',
+    },
+    {
+      id: 'subscriptions',
+      title: 'Subscriptions',
+      subtitle: 'Trim recurring costs',
+      icon: 'repeat' as const,
+      prompt:
+        'Review my subscriptions. Tell me which ones look high relative to my income and suggest what to cancel or downgrade.',
+    },
+  ];
 
-    while ((match = regex.exec(text)) !== null) {
-      // Add text before the bold
-      if (match.index > currentIndex) {
-        parts.push({
-          text: text.substring(currentIndex, match.index),
-          bold: false,
-        });
+  const promptForMission = (mission: AdvisorMission): string => {
+    switch (mission.kind) {
+      case 'daily_checkin':
+        return 'Give me a quick daily check-in on my finances. Summarize where I stand and give me 3 next steps.';
+      case 'budget_guardrail':
+        return 'Help me with my budget guardrails. Which categories are at risk and what’s the best plan for the rest of this period?';
+      case 'subscription_trim':
+        return 'Help me trim subscriptions. Which ones should I cancel/downgrade and why?';
+      case 'top_spend_review':
+        return 'Review my top spending category and suggest 3 concrete ways to reduce it this week.';
+      case 'log_transactions':
+      default:
+        return 'What missing info would make my finances more accurate, and what should I log next?';
+    }
+  };
+
+  const handleStartCheckIn = async () => {
+    try {
+      const p1 = await checkInToday();
+      let pNext = p1;
+      const today = new Date().toISOString().slice(0, 10);
+      const checkinMission = p1.missions.find(m => m.kind === 'daily_checkin' && m.expiresOn === today && !m.completedAt);
+      if (checkinMission) {
+        pNext = await completeMission(checkinMission.id);
       }
-      // Add bold text
-      parts.push({
-        text: match[1],
-        bold: true,
-      });
-      currentIndex = match.index + match[0].length;
+      setAdvisorProgress(pNext);
+    } catch {
+      // ignore
     }
 
-    // Add remaining text
-    if (currentIndex < text.length) {
-      parts.push({
-        text: text.substring(currentIndex),
-        bold: false,
-      });
-    }
-
-    // If no bold markers found, return original text
-    if (parts.length === 0) {
-      return <Text style={styles.messageText}>{text}</Text>;
-    }
-
-    return (
-      <Text style={styles.messageText}>
-        {parts.map((part, index) => (
-          <Text
-            key={index}
-            style={part.bold ? styles.messageTextBold : undefined}
-          >
-            {part.text}
-          </Text>
-        ))}
-      </Text>
+    await sendQuestion(
+      'Give me a quick daily check-in on my finances. Summarize where I stand, and give me 3 next steps.',
+      { clearComposer: true }
     );
   };
 
-  useEffect(() => {
-    if (messages.length > 0) {
-      screenWrapperRef.current?.scrollToEnd({ animated: true });
+  const handleCompleteMission = async (mission: AdvisorMission) => {
+    try {
+      const p = await completeMission(mission.id);
+      setAdvisorProgress(p);
+    } catch {
+      // ignore
     }
-  }, [messages]);
+  };
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const isFirstExchange = messages.length <= 2 && messages[0]?.role === 'user';
+
+    // For the first interaction (landing → chat), start from the top so the response
+    // doesn't look “cut off” and users see the beginning of the answer.
+    if (isFirstExchange) {
+      requestAnimationFrame(() => {
+        screenWrapperRef.current?.scrollTo({ y: 0, animated: false });
+      });
+      return;
+    }
+
+    // After the first exchange, behave like a normal chat: keep the newest content visible.
+    if (loading || messages[messages.length - 1]?.role === 'assistant') {
+      requestAnimationFrame(() => {
+        screenWrapperRef.current?.scrollToEnd({ animated: true });
+      });
+    }
+  }, [messages, loading]);
 
   const currentThread = threads.find(t => t.id === currentThreadId);
+  const showChatUI = hasStartedChat || !!currentThreadId || messages.length > 0;
+
+  // On iOS, `NativeTabs` can overlay content (tab bar is “floating/glass”).
+  // Safe-area bottom inset does NOT account for the tab bar height, so we add an offset.
+  const tabBarOverlayOffset = Platform.OS === 'ios' ? 58 : Platform.OS === 'web' ? 70 : 0;
+
+  // Reset to landing on tab reselect:
+  // - iOS NativeTabs: React Navigation emits `tabPress`. We only reset when already focused (reselect).
+  // - Android/Web custom tab bar: `emitTabReselect('ai')` triggers this.
+  useEffect(() => {
+    const unsubs: Array<() => void> = [];
+
+    if (navigation?.addListener && navigation?.isFocused) {
+      const unsubTabPress = navigation.addListener('tabPress', () => {
+        if (navigation.isFocused()) {
+          resetToLanding();
+        }
+      });
+      if (typeof unsubTabPress === 'function') {
+        unsubs.push(unsubTabPress);
+      }
+    }
+
+    unsubs.push(onTabReselect('ai', resetToLanding));
+
+    return () => {
+      unsubs.forEach((u) => {
+        try {
+          u();
+        } catch {
+          // ignore
+        }
+      });
+    };
+  }, [navigation, resetToLanding]);
 
   return (
-    <View style={styles.container}>
-      <ScreenWrapper
-        ref={screenWrapperRef}
-        enableKeyboardAvoiding={true}
-        keyboardVerticalOffset={90}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
+      <View style={styles.container}>
         <ScreenHeader
           title="Penny Advisor"
           subtitle={currentThread?.title || "Ask me anything about your finances"}
@@ -281,145 +433,85 @@ export default function AIScreen() {
           }}
         />
 
-        {messages.length > 0 ? (
-          <View style={styles.messagesContainer}>
-            {messages.map((message, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.messageContainer,
-                  message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-                ]}
-              >
-                <View style={styles.messageHeader}>
-                  <Ionicons
-                    name={message.role === 'user' ? 'person' : 'chatbubble'}
-                    size={16}
-                    color={message.role === 'user' ? colors.primary : colors.text}
-                  />
-                  <Text style={styles.messageLabel}>
-                    {message.role === 'user' ? 'You' : 'Penny'}
-                  </Text>
-                </View>
-                {message.role === 'assistant' ? renderTextWithBold(message.content) : <Text style={styles.messageText}>{message.content}</Text>}
-              </View>
-            ))}
-            {loading && (
-              <View style={[styles.messageContainer, styles.assistantMessage]}>
-                <ActivityIndicator size="small" color={colors.primary} />
-              </View>
-            )}
-          </View>
+        <View style={styles.scrollArea}>
+          <ScreenWrapper
+            ref={screenWrapperRef}
+            enableKeyboardAvoiding={false}
+            contentContainerStyle={{
+              ...styles.scrollContent,
+              // Reserve space for the fixed composer + tab bar overlay.
+              paddingBottom: insets.bottom + tabBarOverlayOffset + 260,
+            }}
+            showsVerticalScrollIndicator={false}
+          >
+        {!!advisorProgress && showChatUI && (
+          <AdvisorProgressStrip
+            xp={advisorProgress.xp}
+            level={advisorProgress.level}
+            streakCount={advisorProgress.streakCount}
+            compact
+          />
+        )}
+
+        {showChatUI ? (
+          <AdvisorMessageList
+            messages={messages}
+            loading={loading}
+            onRetryLastError={
+              lastFailedQuestion
+                ? () => sendQuestion(lastFailedQuestion, { isRetry: true })
+                : undefined
+            }
+          />
         ) : (
-          <View style={styles.emptyState}>
-            <Ionicons name="chatbubbles-outline" size={64} color={colors.textLight} />
-            <Text style={styles.emptyText}>Ask me anything about your finances</Text>
-          </View>
+          <AdvisorLanding
+            disabled={loading}
+            onAsk={(prompt) => sendQuestion(prompt, { clearComposer: true })}
+            onStartCheckIn={handleStartCheckIn}
+            onFocusSearch={() => setComposerFocusRequestId((v) => v + 1)}
+            quickActions={quickActions}
+            promptChips={quickQuestions}
+            progress={
+              advisorProgress
+                ? { xp: advisorProgress.xp, level: advisorProgress.level, streakCount: advisorProgress.streakCount }
+                : null
+            }
+            missions={advisorProgress?.missions?.slice(0, 3) || []}
+            onAskForMission={(m) => sendQuestion(promptForMission(m), { clearComposer: true })}
+            onCompleteMission={handleCompleteMission}
+          />
         )}
 
-        {showQuickQuestions && messages.length === 0 && (
-          <View style={styles.quickQuestionsContainer}>
-            <Text style={styles.quickQuestionsTitle}>Quick Questions</Text>
-            {quickQuestions.map((q, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.quickQuestionButton}
-                onPress={() => handleQuickQuestion(q)}
-                disabled={loading}
-              >
-                <Text style={styles.quickQuestionText}>{q}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-      </ScreenWrapper>
-
-      <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 80 }]}>
-        <TextInput
-          style={styles.input}
-          value={question}
-          onChangeText={setQuestion}
-          placeholder="Ask a question..."
-          placeholderTextColor={colors.textLight}
-          multiline
-          editable={!loading}
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!question.trim() || loading) && styles.sendButtonDisabled]}
-          onPress={handleAsk}
-          disabled={!question.trim() || loading}
-        >
-          {loading ? (
-            <ActivityIndicator color={colors.background} size="small" />
-          ) : (
-            <Ionicons name="send" size={20} color={colors.background} />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Threads Modal */}
-      <Modal
-        visible={showThreadsModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowThreadsModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { paddingBottom: insets.bottom }]}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Conversations</Text>
-              <TouchableOpacity
-                onPress={() => setShowThreadsModal(false)}
-                style={styles.modalCloseButton}
-              >
-                <Ionicons name="close" size={24} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.threadsList}>
-              <TouchableOpacity
-                style={[styles.threadItem, !currentThreadId && styles.threadItemActive]}
-                onPress={handleNewThread}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add-circle" size={22} color={colors.primary} />
-                <Text style={styles.threadItemText}>New Conversation</Text>
-              </TouchableOpacity>
-              
-              {threads.map((thread) => (
-                <View key={thread.id} style={styles.threadItemContainer}>
-                  <TouchableOpacity
-                    style={[styles.threadItem, currentThreadId === thread.id && styles.threadItemActive]}
-                    onPress={() => handleSelectThread(thread.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons 
-                      name="chatbubble" 
-                      size={22} 
-                      color={currentThreadId === thread.id ? colors.primary : colors.text} 
-                    />
-                    <Text style={styles.threadItemText} numberOfLines={1}>
-                      {thread.title}
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.deleteThreadButton}
-                    onPress={() => handleDeleteThread(thread.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="trash-outline" size={18} color={colors.textLight} />
-                  </TouchableOpacity>
-                </View>
-              ))}
-              
-              {threads.length === 0 && (
-                <Text style={styles.emptyThreadsText}>No conversations yet</Text>
-              )}
-            </ScrollView>
-          </View>
+        {/* Keep the legacy quick-questions state for now; landing content is shown when messages are empty */}
+          </ScreenWrapper>
         </View>
-      </Modal>
-    </View>
+
+        <View pointerEvents="box-none" style={styles.composerOverlay}>
+          <AdvisorChatComposer
+            value={question}
+            onChangeText={setQuestion}
+            onSend={handleAsk}
+            onClear={() => setQuestion('')}
+            onNewThread={handleNewThread}
+            loading={loading}
+            bottomInset={insets.bottom}
+            tabBarOffset={tabBarOverlayOffset}
+            focusRequestId={composerFocusRequestId}
+          />
+        </View>
+
+        <AdvisorThreadsModal
+          visible={showThreadsModal}
+          threads={threads}
+          currentThreadId={currentThreadId}
+          bottomInset={insets.bottom}
+          onClose={() => setShowThreadsModal(false)}
+          onNewThread={handleNewThread}
+          onSelectThread={handleSelectThread}
+          onDeleteThread={handleDeleteThread}
+        />
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -428,207 +520,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  scrollArea: {
+    flex: 1,
+  },
+  composerOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+  },
   scrollContent: {
     paddingBottom: 100,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 20,
-  },
-  emptyText: {
-    ...typography.body,
-    color: colors.textLight,
-    marginTop: 16,
-    textAlign: 'center',
-  },
-  messagesContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
-  },
-  messageContainer: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  userMessage: {
-    backgroundColor: colors.primary + '20',
-    borderColor: colors.primary + '40',
-    alignSelf: 'flex-end',
-    maxWidth: '85%',
-  },
-  assistantMessage: {
-    backgroundColor: colors.surface,
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-  },
-  messageHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  messageLabel: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  messageText: {
-    ...typography.body,
-    color: colors.text,
-    lineHeight: 24,
-  },
-  messageTextBold: {
-    fontWeight: '700',
-  },
-  quickQuestionsContainer: {
-    marginTop: 8,
-    paddingHorizontal: 20,
-  },
-  quickQuestionsTitle: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  quickQuestionButton: {
-    backgroundColor: colors.surface,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 8,
-  },
-  quickQuestionText: {
-    ...typography.bodySmall,
-    color: colors.text,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    paddingBottom: 16,
-    backgroundColor: colors.background,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    gap: 8,
-  },
-  input: {
-    flex: 1,
-    ...typography.body,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    color: colors.text,
-    maxHeight: 100,
-  },
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  modalCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  threadsList: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 20,
-  },
-  threadItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 8,
-  },
-  threadItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-    minHeight: 52,
-  },
-  threadItemActive: {
-    backgroundColor: colors.primary + '15',
-    borderColor: colors.primary + '50',
-    borderWidth: 1.5,
-  },
-  threadItemText: {
-    ...typography.body,
-    color: colors.text,
-    flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  deleteThreadButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyThreadsText: {
-    ...typography.body,
-    color: colors.textLight,
-    textAlign: 'center',
-    paddingVertical: 40,
   },
 });

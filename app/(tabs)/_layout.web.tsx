@@ -4,7 +4,8 @@ import { useRouter, usePathname, useSegments, Slot } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../../src/theme/colors';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { useActionMenu } from '../../src/contexts/ActionMenuContext';
 
 interface TabItem {
   name: string;
@@ -52,6 +53,8 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const isDark = colorScheme === 'dark';
+  const { hideMenu } = useActionMenu();
+  const { colors } = useTheme();
   
   // Determine active tab based on pathname or segments
   const getActiveTab = () => {
@@ -89,6 +92,27 @@ export default function TabLayout() {
   const borderColor = isDark ? colors.dark.border : colors.border;
   
   const handleTabPress = (tab: TabItem) => {
+    const isActive = activeTab === tab.name;
+
+    if (isActive) {
+      if (tab.name === 'index') {
+        router.replace('/(tabs)' as any);
+        return;
+      }
+      if (tab.name === 'finance') {
+        router.replace('/(tabs)/finance' as any);
+        return;
+      }
+      if (tab.name === 'ai') {
+        router.replace('/(tabs)/ai' as any);
+        return;
+      }
+      if (tab.name === 'add') {
+        hideMenu();
+        return;
+      }
+    }
+
     router.push(tab.route as any);
   };
   
