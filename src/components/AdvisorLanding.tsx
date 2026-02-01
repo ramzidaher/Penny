@@ -92,7 +92,7 @@ export default function AdvisorLanding({
               style={styles.searchInput}
               value={searchValue}
               onChangeText={onSearchChange}
-              placeholder="Search your finances or ask Penny…"
+              placeholder="Search or ask Penny…"
               placeholderTextColor={colors.textLight}
               editable={!disabled}
               returnKeyType="send"
@@ -123,7 +123,7 @@ export default function AdvisorLanding({
           disabled={disabled}
         >
           <Ionicons name="search" size={18} color={colors.textSecondary} />
-          <Text style={styles.searchCtaText}>Search your finances or ask Penny…</Text>
+          <Text style={styles.searchCtaText}>Search or ask Penny…</Text>
         </TouchableOpacity>
         )
       )}

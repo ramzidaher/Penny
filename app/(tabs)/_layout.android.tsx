@@ -81,7 +81,7 @@ export default function TabLayout() {
 
   const contentBackground = isDark ? colors.dark.background : colors.background;
   const barBackground = 'transparent';
-  const barBorderColor = isDark ? colors.dark.border : colors.border;
+  const barBorderColor = 'transparent';
   const inactiveColor = isDark ? colors.dark.textSecondary : colors.textSecondary;
   const pillBackground = isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.07)';
   const circleBackground = isDark ? colors.dark.primary : colors.primary;
@@ -89,11 +89,17 @@ export default function TabLayout() {
   const floatingGap = 6;
   const horizontalMargin = 14;
   const showDebug = false;
-  const barGradientColors = isDark
-    ? ['rgba(18,18,18,0.45)', 'rgba(18,18,18,0.25)', 'rgba(18,18,18,0.12)']
-    : ['rgba(250,249,246,0.85)', 'rgba(250,249,246,0.55)', 'rgba(250,249,246,0.3)'];
+  const barGradientColors =
+    Platform.OS === 'android'
+      ? isDark
+        ? ['rgba(18,18,18,0.9)', 'rgba(18,18,18,0.9)', 'rgba(18,18,18,0.9)']
+        : ['rgba(250,249,246,0.96)', 'rgba(250,249,246,0.96)', 'rgba(250,249,246,0.96)']
+      : isDark
+        ? ['rgba(18,18,18,0.82)', 'rgba(18,18,18,0.82)', 'rgba(18,18,18,0.82)']
+        : ['rgba(250,249,246,0.92)', 'rgba(250,249,246,0.92)', 'rgba(250,249,246,0.92)'];
   const blurTint = isDark ? 'dark' : 'light';
-  const blurIntensity = Platform.OS === 'android' ? 25 : isDark ? 70 : 80;
+  const blurIntensity = isDark ? 70 : 80;
+  const showBlur = Platform.OS === 'ios';
   const debugColors = {
     content: 'rgba(255,0,0,0.5)',
     wrapper: 'rgba(0,128,255,0.5)',
@@ -163,18 +169,20 @@ export default function TabLayout() {
           ]}
         >
           <View
-            style={styles.tabBarSurface}
+            style={[styles.tabBarSurface, { backgroundColor: barGradientColors[0] }]}
             pointerEvents="none"
             renderToHardwareTextureAndroid
             needsOffscreenAlphaCompositing
           >
-            <BlurView
-              tint={blurTint}
-              intensity={blurIntensity}
-              blurReductionFactor={0.7}
-              experimentalBlurMethod="dimezisBlurView"
-              style={styles.tabBarBlur}
-            />
+            {showBlur ? (
+              <BlurView
+                tint={blurTint}
+                intensity={blurIntensity}
+                blurReductionFactor={0.7}
+                experimentalBlurMethod="dimezisBlurView"
+                style={styles.tabBarBlur}
+              />
+            ) : null}
             <View style={styles.tabBarGradient}>
               {barGradientColors.map((color, index) => (
                 <View key={`${color}-${index}`} style={[styles.gradientStop, { backgroundColor: color }]} />
@@ -184,7 +192,7 @@ export default function TabLayout() {
           {tabs.map((tab) => {
             const isActive = activeTab === tab.name;
             const iconName = isActive ? tab.iconFilled : tab.icon;
-            const iconColor = isActive ? '#000000' : inactiveColor;
+            const iconColor = isActive ? (isDark ? '#ffffff' : '#000000') : inactiveColor;
             const labelColor = isActive ? selectedLabelColor : inactiveColor;
 
             const tabContent = (
@@ -254,6 +262,8 @@ const styles = StyleSheet.create({
   tabBarGradient: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'column',
+    top: -1,
+    bottom: -1,
   },
   gradientStop: {
     flex: 1,

@@ -27,16 +27,19 @@ export default function AdvisorChatComposer({
   tabBarOffset = 0,
   focusRequestId = 0,
 }: AdvisorChatComposerProps) {
+  const isIOS = Platform.OS === 'ios';
   const canSend = !!value.trim() && !loading;
   const [contentHeight, setContentHeight] = useState(0);
   const inputRef = useRef<TextInput>(null);
+  const inputLineHeight = isIOS ? 20 : 18;
 
   const inputHeight = useMemo(() => {
-    const min = 44;
-    const max = 120;
+    const min = 36;
+    const max = 96;
     if (!contentHeight) return min;
     return Math.max(min, Math.min(max, contentHeight));
   }, [contentHeight]);
+  const inputVerticalPadding = Math.max(0, (inputHeight - inputLineHeight) / 2);
 
   useEffect(() => {
     if (!focusRequestId) return;
@@ -62,15 +65,21 @@ export default function AdvisorChatComposer({
         <Ionicons name="search" size={18} color={colors.textSecondary} />
         <TextInput
           ref={inputRef}
-          style={[styles.input, { height: inputHeight }]}
+          style={[
+            styles.input,
+            {
+              height: inputHeight,
+              lineHeight: inputLineHeight,
+              paddingTop: isIOS ? inputVerticalPadding : 0,
+              paddingBottom: isIOS ? inputVerticalPadding : 0,
+            },
+          ]}
           value={value}
           onChangeText={onChangeText}
-          placeholder="Search your finances or ask Penny…"
-          placeholderTextColor={colors.textLight}
           multiline
           editable={!loading}
           onContentSizeChange={(e) => setContentHeight(e.nativeEvent.contentSize.height)}
-          textAlignVertical={Platform.OS === 'android' ? 'top' : 'center'}
+          textAlignVertical={isIOS ? 'top' : 'center'}
         />
 
         {!!value && !!onClear && !loading && (
@@ -99,25 +108,25 @@ export default function AdvisorChatComposer({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
     backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: 8,
   },
   sideButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    marginBottom: 4,
+    marginBottom: 0,
   },
   pill: {
     flex: 1,
@@ -129,7 +138,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 999,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   pillDisabled: {
     opacity: 0.7,
@@ -138,16 +147,17 @@ const styles = StyleSheet.create({
     flex: 1,
     ...typography.body,
     paddingVertical: 0,
+    includeFontPadding: false,
     color: colors.text,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 0,
   },
   sendButtonDisabled: {
     opacity: 0.5,
