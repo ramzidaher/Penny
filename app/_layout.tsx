@@ -14,8 +14,8 @@ import { DialogProvider } from '../src/contexts/DialogContext';
 import { ThemeProvider } from '../src/contexts/ThemeContext';
 import { isPINSetupRequired } from '../src/services/pinEnforcement';
 import AppLockScreen from '../src/components/AppLockScreen';
-import PINSetupScreen from '../src/components/PINSetupScreen';
 import { getOAuthFlowActive } from '../src/services/oAuthFlowService';
+import { initPurchases } from '../src/services/subscriptionService';
 import type { User } from 'firebase/auth';
 
 function RootLayoutInner() {
@@ -34,10 +34,9 @@ function RootLayoutInner() {
   const appState = useRef(AppState.currentState);
   const [appStateVisible, setAppStateVisible] = useState(appState.current);
   const [isAppLocked, setIsAppLocked] = useState(true); // Start locked optimistically - will unlock if no user or PIN setup required
-  const [pinSetupRequired, setPinSetupRequired] = useState(false);
+  const [isPinSet, setIsPinSet] = useState(false);
   const [lockStateDetermined, setLockStateDetermined] = useState(false); // Track if we've determined lock state
   const appWentToBackgroundRef = useRef(false);
-  const hasCheckedPINSetup = useRef(false);
   const hasCheckedInitialLock = useRef(false); // Track if we've checked lock on initial load
   const authStateChangedFired = useRef(false); // Track if onAuthStateChanged has fired at least once
 
@@ -68,23 +67,26 @@ function RootLayoutInner() {
           setIsAuthReady(true);
           
           if (user) {
+            initPurchases(user.uid).catch((error) => {
+              console.warn('[RootLayout] RevenueCat init failed:', error);
+            });
             // CRITICAL: Check PIN FIRST (before heavy initialization) for faster lock screen response
             // This prevents login screen flash and ensures lock screen shows immediately
             const requiresPIN = await isPINSetupRequired();
-            setPinSetupRequired(requiresPIN);
-            hasCheckedPINSetup.current = true;
+            const pinIsSet = !requiresPIN;
+            setIsPinSet(pinIsSet);
             
             // CRITICAL FIX: Lock the app on initial load if PIN is set (unless in OAuth flow)
             // Only skip locking if we've already checked initial lock (prevents re-locking after unlock in same session)
             // OR if we're in an OAuth flow (to allow callback handling)
             const isOAuthFlow = getOAuthFlowActive();
             if (!hasCheckedInitialLock.current && !isOAuthFlow) {
-              if (!requiresPIN) {
+              if (pinIsSet) {
                 // PIN is set - lock the app on app start
                 setIsAppLocked(true);
                 hasCheckedInitialLock.current = true;
               } else {
-                // PIN setup is required - don't lock, let user set up PIN
+                // No PIN set - don't lock
                 setIsAppLocked(false);
                 hasCheckedInitialLock.current = true;
               }
@@ -107,10 +109,12 @@ function RootLayoutInner() {
             // Mark initialization as complete - safe to render now
             setIsInitializing(false);
           } else {
+            initPurchases(undefined).catch((error) => {
+              console.warn('[RootLayout] RevenueCat sign-out failed:', error);
+            });
             setIsAppLocked(false); // Unlock when no user so login screen can show
             appWentToBackgroundRef.current = false;
-            setPinSetupRequired(false);
-            hasCheckedPINSetup.current = false;
+            setIsPinSet(false);
             hasCheckedInitialLock.current = false; // Reset on logout
             setLockStateDetermined(true); // Mark lock state as determined
             
@@ -258,7 +262,7 @@ function RootLayoutInner() {
         const isOAuthFlow = getOAuthFlowActive();
         // App has come to the foreground - show lock screen if app went to background
         // Only lock if PIN is already set (don't lock during PIN setup or OAuth flow)
-        if (appWentToBackgroundRef.current && !pinSetupRequired && !isOAuthFlow) {
+        if (appWentToBackgroundRef.current && isPinSet && !isOAuthFlow) {
           setIsAppLocked(true);
         }
       }
@@ -270,7 +274,7 @@ function RootLayoutInner() {
     return () => {
       subscription.remove();
     };
-  }, [user, isAuthReady, pinSetupRequired]);
+  }, [user, isAuthReady, isPinSet]);
 
   // Handle navigation based on auth state
   useEffect(() => {
@@ -291,11 +295,10 @@ function RootLayoutInner() {
 
     // Navigation rules:
     // 1. If not logged in and not on auth screen → go to login
-    // 2. If logged in and on auth screen → go to main app (unless PIN setup required OR app is locked)
-    // 3. PIN setup and lock screens are handled by conditional rendering above
-    // 4. CRITICAL: Don't navigate if app is locked or PIN setup required - let lock/PIN screens handle it
-    // If app is locked or PIN setup required, don't navigate - lock/PIN screens will be shown
-    if (user && (isAppLocked || pinSetupRequired)) {
+    // 2. If logged in and on auth screen → go to main app (unless app is locked)
+    // 3. Lock screen is handled by conditional rendering above
+    // 4. CRITICAL: Don't navigate if app is locked - lock screen will be shown
+    if (user && isAppLocked) {
       return;
     }
     // Note: OAuth flow check already done above, no need to check again here
@@ -303,12 +306,12 @@ function RootLayoutInner() {
     if (!user && !inAuthGroup) {
       console.log('[RootLayout] 🔵 Navigating to login - user not logged in');
       router.replace('/(auth)/login' as any);
-    } else if (user && inAuthGroup && !pinSetupRequired && !isAppLocked) {
-      // Only navigate away from auth if PIN is set AND app is not locked
+    } else if (user && inAuthGroup && !isAppLocked) {
+      // Only navigate away from auth if app is not locked
       console.log('[RootLayout] 🟢 Navigating to tabs - user logged in and on auth screen');
       router.replace('/(tabs)' as any);
     }
-  }, [user, segments, isAuthReady, fontsLoaded, router, pinSetupRequired, isAppLocked, lockStateDetermined]);
+  }, [user, segments, isAuthReady, fontsLoaded, router, isAppLocked, lockStateDetermined]);
 
   // Don't render anything until fonts are loaded, auth is ready, initialization is complete,
   // AND lock state is determined. This prevents login screen flash and ensures correct screen shows immediately
@@ -333,14 +336,6 @@ function RootLayoutInner() {
     }
   };
 
-  const handlePINSetupComplete = async () => {
-    setPinSetupRequired(false);
-    hasCheckedPINSetup.current = true;
-    // Don't lock after PIN setup - user should go directly to main app
-    setIsAppLocked(false);
-    appWentToBackgroundRef.current = false;
-  };
-
   return (
     <SafeAreaProvider>
       <ThemeProvider>
@@ -348,13 +343,11 @@ function RootLayoutInner() {
           <ToastProvider>
             <ActionMenuProvider>
             <StatusBar style="dark" />
-            {/* PIN Setup Screen - Show if user is logged in but PIN not set */}
-            {user && pinSetupRequired && <PINSetupScreen onComplete={handlePINSetupComplete} />}
             {/* Lock Screen - Show if user is logged in, PIN is set, and app is locked */}
-            {user && !pinSetupRequired && isAppLocked && <AppLockScreen onUnlock={handleUnlock} />}
-            {/* Main App - Show if user is logged in, PIN is set, and app is not locked */}
+            {user && isPinSet && isAppLocked && <AppLockScreen onUnlock={handleUnlock} />}
+            {/* Main App - Show if user is logged in and app is not locked */}
             {/* CRITICAL: Only render Stack when app is NOT locked to prevent login screen flash */}
-            {user && !pinSetupRequired && !isAppLocked && (() => {
+            {user && !isAppLocked && (() => {
               return (
                 <>
                   <Stack screenOptions={{ headerShown: false }}>
@@ -381,6 +374,12 @@ function RootLayoutInner() {
                     />
                     <Stack.Screen 
                       name="about" 
+                      options={{ 
+                        headerShown: false
+                      }} 
+                    />
+                    <Stack.Screen 
+                      name="feature-request" 
                       options={{ 
                         headerShown: false
                       }} 
@@ -417,6 +416,12 @@ function RootLayoutInner() {
                   />
                   <Stack.Screen 
                     name="about" 
+                    options={{ 
+                      headerShown: false
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="feature-request" 
                     options={{ 
                       headerShown: false
                     }} 

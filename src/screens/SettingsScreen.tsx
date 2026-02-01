@@ -14,6 +14,7 @@ import { waitForFirebase, getUserEmail, verifyPassword, getCurrentUser } from '.
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 import { ensureDemoSeeded } from '../services/demoSeed';
 import { isDemoUser } from '../services/demoUser';
+import { deleteAllMemories } from '../database/db';
 import {
   isBiometricAvailable,
   getBiometricType,
@@ -168,6 +169,24 @@ export default function SettingsScreen() {
     await handleUpdate({ lowBalanceThreshold: threshold });
   };
 
+  const handleClearAiMemory = async () => {
+    const choice = await dialog.showDialog(
+      'Clear AI Memory',
+      'This will permanently delete all AI memory for your account. You can’t undo this action.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive' },
+      ]
+    );
+    if (choice !== 'Delete') return;
+    try {
+      await deleteAllMemories();
+      dialog.alert('Cleared', 'All AI memory has been removed.');
+    } catch (error: any) {
+      dialog.alert('Error', error?.message || 'Failed to clear AI memory.');
+    }
+  };
+
   const handlePasswordVerification = async () => {
     if (!passwordInput.trim()) {
       dialog.alert('Error', 'Please enter your password');
@@ -279,6 +298,7 @@ export default function SettingsScreen() {
       setSeedingDemo(false);
     }
   };
+
 
   if (loading || !settings) {
     return (
@@ -734,6 +754,48 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* AI Memory Settings */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>AI Memory</Text>
+        <View style={styles.sectionCard}>
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Enable AI memory</Text>
+              <Text style={styles.settingDescription}>
+                Let Penny remember context to personalize advice.
+              </Text>
+            </View>
+            <Switch
+              value={settings.enableAiMemory}
+              onValueChange={(value) => handleUpdate({ enableAiMemory: value })}
+              trackColor={{ false: '#E0E0E0', true: '#000000' }}
+              thumbColor={settings.enableAiMemory ? '#FFFFFF' : '#000000'}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Auto-create memory</Text>
+              <Text style={styles.settingDescription}>
+                Allow Penny to create background memories from patterns.
+              </Text>
+            </View>
+            <Switch
+              value={settings.enableAutoMemories}
+              onValueChange={(value) => handleUpdate({ enableAutoMemories: value })}
+              trackColor={{ false: '#E0E0E0', true: '#000000' }}
+              thumbColor={settings.enableAutoMemories ? '#FFFFFF' : '#000000'}
+              disabled={!settings.enableAiMemory}
+            />
+          </View>
+
+          <TouchableOpacity style={styles.testButton} onPress={handleClearAiMemory}>
+            <Ionicons name="trash-outline" size={20} color={colors.background} />
+            <Text style={styles.testButtonText}>Clear AI memory</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Security Settings */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Security</Text>
@@ -782,23 +844,11 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+
       {/* Account Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.sectionCard}>
-          <TouchableOpacity
-            style={styles.settingRow}
-            onPress={() => router.push('/connect-bank' as any)}
-          >
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Bank connections</Text>
-              <Text style={styles.settingDescription}>Connect or disconnect your bank</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-          
-          <View style={styles.divider} />
-
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <Text style={styles.settingLabel}>Email</Text>

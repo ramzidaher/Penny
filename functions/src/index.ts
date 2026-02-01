@@ -7,7 +7,9 @@ import {
   exchangePlaidPublicToken,
   listPlaidItems,
   removePlaidItem,
+  syncPlaidTransactions,
 } from './plaid';
+import { cannyCreatePost, cannyListPosts } from './canny';
 
 export {
   checkUsername,
@@ -18,5 +20,8 @@ export {
   exchangePlaidPublicToken,
   listPlaidItems,
   removePlaidItem,
+  syncPlaidTransactions,
+  cannyCreatePost,
+  cannyListPosts,
 };
 

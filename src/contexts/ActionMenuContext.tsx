@@ -37,15 +37,7 @@ export function ActionMenuProvider({ children }: { children: ReactNode }) {
 
   const hideMenu = () => {
     setMenuVisible(false);
-    // If we're on the add route, navigate to the previous route when modal closes
-    if (pathname?.includes('/add')) {
-      const previousRoute = previousRouteRef.current || '/(tabs)';
-      // Small delay to ensure modal closes smoothly
-      setTimeout(() => {
-        // Use replace to go to the exact previous route, not just back
-        router.replace(previousRoute as any);
-      }, 50);
-    }
+    // Navigation back from the add route is handled by the add screen itself.
   };
 
   const setPreviousRoute = (route: string) => {

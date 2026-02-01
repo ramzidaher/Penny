@@ -14,7 +14,7 @@ import {
   deleteField
 } from 'firebase/firestore';
 import { getFirestoreDb, getUserId, isFirebaseAvailable } from './firebase';
-import { Account, Transaction, Budget, Subscription, Debt, ChatThread, ChatMessage } from '../database/schema';
+import { Account, Transaction, Budget, Subscription, Debt, ChatThread, ChatMessage, UserMemory } from '../database/schema';
 import { addMonths, addWeeks, addYears, isBefore, isToday, startOfDay } from 'date-fns';
 import {
   getAccounts as getTrueLayerAccounts,
@@ -122,14 +122,6 @@ export const cloudAddAccount = async (account: Omit<Account, 'id' | 'createdAt' 
     if (account.isSynced !== undefined) accountData.isSynced = account.isSynced;
     if (account.lastSyncedAt) accountData.lastSyncedAt = account.lastSyncedAt;
     if (account.truelayerAccountType) accountData.truelayerAccountType = account.truelayerAccountType;
-
-    // Include Plaid-specific fields if present
-    if (account.plaidItemId) accountData.plaidItemId = account.plaidItemId;
-    if (account.plaidAccountId) accountData.plaidAccountId = account.plaidAccountId;
-    if (account.plaidInstitutionId) accountData.plaidInstitutionId = account.plaidInstitutionId;
-    if (account.plaidInstitutionName) accountData.plaidInstitutionName = account.plaidInstitutionName;
-    if (account.plaidAccountType) accountData.plaidAccountType = account.plaidAccountType;
-    if (account.plaidAccountSubtype) accountData.plaidAccountSubtype = account.plaidAccountSubtype;
     
     await setDoc(accountRef, accountData);
     
@@ -412,6 +404,9 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
         budgetId: data.budgetId !== undefined ? data.budgetId : undefined,
         // Preserve optional fields
         ...(data.truelayerTransactionId && { truelayerTransactionId: data.truelayerTransactionId }),
+        ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
+        ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
+        ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
         ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
       };
       
@@ -2593,6 +2588,171 @@ export const cloudDeleteChatThread = async (id: string): Promise<void> => {
     await deleteDoc(threadRef);
   } catch (error) {
     console.error('Error deleting chat thread from cloud:', error);
+    throw error;
+  }
+};
+
+// Memory operations
+export const cloudGetMemories = async (): Promise<UserMemory[]> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) {
+    throw new Error('Firestore database not initialized');
+  }
+  
+  try {
+    const userId = getUserId();
+    const memoriesRef = collection(db, `users/${userId}/memories`);
+    const snapshot = await getDocs(query(memoriesRef, orderBy('updatedAt', 'desc')));
+    
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        tier: data.tier === 'short_term' ? 'dynamic' : data.tier,
+        category: data.category,
+        title: data.title,
+        detail: data.detail,
+        source: data.source,
+        confidence: data.confidence,
+        status: data.status,
+        isConfirmed: data.isConfirmed ?? true,
+        requiresReview: data.requiresReview ?? false,
+        tags: data.tags || [],
+        expiresAt: data.expiresAt ? timestampToISO(data.expiresAt) : undefined,
+        lastUsedAt: data.lastUsedAt ? timestampToISO(data.lastUsedAt) : undefined,
+        createdAt: timestampToISO(data.createdAt),
+        updatedAt: timestampToISO(data.updatedAt),
+      };
+    }) as UserMemory[];
+  } catch (error) {
+    console.error('Error fetching memories from cloud:', error);
+    throw error;
+  }
+};
+
+export const cloudAddMemory = async (
+  memory: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>
+): Promise<string> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const now = new Date().toISOString();
+    const memoryRef = doc(db, `users/${userId}/memories`, id);
+    
+    await setDoc(memoryRef, {
+      tier: memory.tier,
+      category: memory.category,
+      title: memory.title,
+      detail: memory.detail,
+      source: memory.source,
+      confidence: memory.confidence,
+      status: memory.status,
+      isConfirmed: memory.isConfirmed,
+      requiresReview: memory.requiresReview,
+      tags: memory.tags || [],
+      expiresAt: memory.expiresAt ? isoToTimestamp(memory.expiresAt) : null,
+      lastUsedAt: memory.lastUsedAt ? isoToTimestamp(memory.lastUsedAt) : null,
+      createdAt: isoToTimestamp(now),
+      updatedAt: isoToTimestamp(now),
+    });
+    
+    return id;
+  } catch (error) {
+    console.error('Error adding memory to cloud:', error);
+    throw error;
+  }
+};
+
+export const cloudUpdateMemory = async (id: string, updates: Partial<UserMemory>): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    const memoryRef = doc(db, `users/${userId}/memories`, id);
+    const updateData: any = {
+      updatedAt: isoToTimestamp(new Date().toISOString()),
+    };
+    
+    if (updates.tier !== undefined) updateData.tier = updates.tier;
+    if (updates.category !== undefined) updateData.category = updates.category;
+    if (updates.title !== undefined) updateData.title = updates.title;
+    if (updates.detail !== undefined) updateData.detail = updates.detail;
+    if (updates.source !== undefined) updateData.source = updates.source;
+    if (updates.confidence !== undefined) updateData.confidence = updates.confidence;
+    if (updates.status !== undefined) updateData.status = updates.status;
+    if (updates.isConfirmed !== undefined) updateData.isConfirmed = updates.isConfirmed;
+    if (updates.requiresReview !== undefined) updateData.requiresReview = updates.requiresReview;
+    if (updates.tags !== undefined) updateData.tags = updates.tags;
+    if (updates.expiresAt !== undefined) {
+      updateData.expiresAt = updates.expiresAt ? isoToTimestamp(updates.expiresAt) : null;
+    }
+    if (updates.lastUsedAt !== undefined) {
+      updateData.lastUsedAt = updates.lastUsedAt ? isoToTimestamp(updates.lastUsedAt) : null;
+    }
+    if (updates.createdAt) {
+      updateData.createdAt = isoToTimestamp(updates.createdAt);
+    }
+    
+    await setDoc(memoryRef, updateData, { merge: true });
+  } catch (error) {
+    console.error('Error updating memory in cloud:', error);
+    throw error;
+  }
+};
+
+export const cloudDeleteMemory = async (id: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    const memoryRef = doc(db, `users/${userId}/memories`, id);
+    await deleteDoc(memoryRef);
+  } catch (error) {
+    console.error('Error deleting memory from cloud:', error);
+    throw error;
+  }
+};
+
+export const cloudDeleteAllMemories = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  
+  try {
+    const userId = getUserId();
+    const memoriesRef = collection(db, `users/${userId}/memories`);
+    const snapshot = await getDocs(memoriesRef);
+    const batch = writeBatch(db);
+    snapshot.docs.forEach(docSnap => {
+      batch.delete(docSnap.ref);
+    });
+    await batch.commit();
+  } catch (error) {
+    console.error('Error deleting all memories from cloud:', error);
     throw error;
   }
 };

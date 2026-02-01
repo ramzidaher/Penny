@@ -17,6 +17,7 @@ interface ActionMenuItem {
 interface ActionMenuProps {
   visible: boolean;
   onClose: () => void;
+  onSelect?: (route: string) => void;
   renderAsOverlay?: boolean; // If true, render as overlay instead of Modal
 }
 
@@ -58,7 +59,7 @@ const menuSections: Array<{ title: string; items: ActionMenuItem[] }> = [
       {
         label: 'Feature Request',
         icon: 'bulb-outline',
-        route: '/(tabs)/ai/chat',
+        route: '/feature-request',
         description: 'Suggest a feature',
       },
       {
@@ -81,7 +82,7 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${r},${g},${b},${alpha})`;
 };
 
-export default function ActionMenu({ visible, onClose, renderAsOverlay = false }: ActionMenuProps) {
+export default function ActionMenu({ visible, onClose, onSelect, renderAsOverlay = false }: ActionMenuProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
@@ -148,6 +149,10 @@ export default function ActionMenu({ visible, onClose, renderAsOverlay = false }
   }, [visible, slideAnim, fadeAnim, itemAnims, SCREEN_HEIGHT]);
 
   const handleItemPress = (route: string) => {
+    if (onSelect) {
+      onSelect(route);
+      return;
+    }
     onClose();
     router.push(route as any);
   };

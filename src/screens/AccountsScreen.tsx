@@ -196,6 +196,19 @@ export default function AccountsScreen() {
               <View style={styles.actionsContainer}>
                 <TouchableOpacity
                   style={styles.actionButton}
+                  onPress={() => navigation.navigate('/connect-bank' as never)}
+                >
+                  <View style={styles.actionIconContainer}>
+                    <Ionicons name="link-outline" size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.actionTextContainer}>
+                    <Text style={styles.actionTitle}>Connect Bank</Text>
+                    <Text style={styles.actionSubtitle}>Link or reconnect your bank</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.actionButton}
                   onPress={() => navigation.navigate('AddAccount' as never)}
                 >
                   <View style={styles.actionIconContainer}>

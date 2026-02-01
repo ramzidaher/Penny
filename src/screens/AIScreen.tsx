@@ -8,8 +8,19 @@ import { askAI } from '../services/aiService';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { colors } from '../theme/colors';
-import { getChatThreads, getChatThread, addChatThread, updateChatThread, deleteChatThread } from '../database/db';
-import { ChatThread, ChatMessage } from '../database/schema';
+import {
+  getChatThreads,
+  getChatThread,
+  addChatThread,
+  updateChatThread,
+  deleteChatThread,
+  getMemories,
+  addMemory,
+  updateMemory,
+  deleteMemory,
+  getTransactions,
+} from '../database/db';
+import { ChatThread, ChatMessage, UserMemory } from '../database/schema';
 import AdvisorMessageList, { AdvisorChatMessage } from '../components/AdvisorMessageList';
 import AdvisorLanding from '../components/AdvisorLanding';
 import AdvisorChatComposer from '../components/AdvisorChatComposer';
@@ -25,6 +36,14 @@ import {
   AdvisorProgress,
 } from '../services/advisorProgressService';
 import { onTabReselect } from '../utils/tabReselect';
+import {
+  buildMemoryInput,
+  getExpiredMemories,
+  getMemoryUpserts,
+  inferMemoriesFromMessage,
+  inferMemoriesFromTransactions,
+} from '../services/memoryService';
+import { getSettings } from '../services/settingsService';
 
 export default function AIScreen() {
   const insets = useSafeAreaInsets();
@@ -41,6 +60,10 @@ export default function AIScreen() {
   const [lastFailedQuestion, setLastFailedQuestion] = useState<string | null>(null);
   const [advisorProgress, setAdvisorProgress] = useState<AdvisorProgress | null>(null);
   const [composerFocusRequestId, setComposerFocusRequestId] = useState(0);
+  const [memories, setMemories] = useState<UserMemory[]>([]);
+  const [memorySyncing, setMemorySyncing] = useState(false);
+  const [memoryEnabled, setMemoryEnabled] = useState(true);
+  const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
   const screenWrapperRef = useRef<ScreenWrapperRef>(null);
   const requestGenerationRef = useRef(0);
   const lastAutoPromptRef = useRef<string | null>(null);
@@ -72,6 +95,11 @@ export default function AIScreen() {
   // Load threads on mount - no delay for faster loading
   useEffect(() => {
     loadThreads();
+  }, []);
+
+  // Load AI memory settings on mount
+  useEffect(() => {
+    loadMemorySettings();
   }, []);
 
   // Load progress on mount
@@ -119,6 +147,116 @@ export default function AIScreen() {
       console.error('Error loading thread:', error);
     }
   };
+
+  const loadMemorySettings = async () => {
+    try {
+      const settings = await getSettings();
+      const enabled = settings.enableAiMemory ?? true;
+      const autoEnabled = settings.enableAutoMemories ?? true;
+      setMemoryEnabled(enabled);
+      setAutoMemoryEnabled(autoEnabled);
+      if (enabled) {
+        await loadMemories(enabled);
+      } else {
+        setMemories([]);
+      }
+    } catch (error) {
+      console.error('Error loading memory settings:', error);
+    }
+  };
+
+  const loadMemories = async (enabled: boolean = memoryEnabled) => {
+    if (!enabled) return;
+    try {
+      const stored = await getMemories();
+      setMemories(stored);
+      await cleanupExpiredMemories(stored);
+      if (autoMemoryEnabled) {
+        await syncPatternMemories(stored);
+      }
+    } catch (error) {
+      console.error('Error loading memories:', error);
+    }
+  };
+
+  const cleanupExpiredMemories = async (stored: UserMemory[]) => {
+    const expired = getExpiredMemories(stored);
+    if (expired.length === 0) return;
+    try {
+      await Promise.all(expired.map((memory) => deleteMemory(memory.id)));
+      setMemories((prev) => prev.filter((m) => !expired.find((e) => e.id === m.id)));
+    } catch (error) {
+      console.warn('Failed to remove expired memories:', error);
+    }
+  };
+
+  const syncPatternMemories = async (stored: UserMemory[]) => {
+    if (!autoMemoryEnabled) return;
+    if (memorySyncing) return;
+    setMemorySyncing(true);
+    try {
+      const transactions = await getTransactions();
+      const candidates = inferMemoriesFromTransactions(transactions);
+      await applyMemoryCandidates(candidates, stored);
+    } catch (error) {
+      console.warn('Error inferring memory patterns:', error);
+    } finally {
+      setMemorySyncing(false);
+    }
+  };
+
+  const applyMemoryCandidates = async (
+    candidates: ReturnType<typeof inferMemoriesFromMessage>,
+    baseMemories: UserMemory[] = memories
+  ) => {
+    if (!memoryEnabled || !autoMemoryEnabled) return { created: [] as UserMemory[] };
+    if (candidates.length === 0) return { created: [] as UserMemory[] };
+    const { toCreate, toUpdate } = getMemoryUpserts(baseMemories, candidates);
+    if (toCreate.length === 0 && toUpdate.length === 0) return { created: [] as UserMemory[] };
+
+    const now = new Date().toISOString();
+    const created: UserMemory[] = [];
+
+    for (const candidate of toCreate) {
+      try {
+        const input = buildMemoryInput(candidate);
+        const id = await addMemory(input);
+        created.push({
+          id,
+          ...input,
+          createdAt: now,
+          updatedAt: now,
+        });
+      } catch (error) {
+        console.warn('Failed to add memory:', error);
+      }
+    }
+
+    if (toUpdate.length > 0) {
+      await Promise.all(
+        toUpdate.map(({ id, updates }) =>
+          updateMemory(id, {
+            ...updates,
+            updatedAt: now,
+          })
+        )
+      );
+    }
+
+    if (created.length > 0 || toUpdate.length > 0) {
+      setMemories((prev) => {
+        const next = prev.map((memory) => {
+          const update = toUpdate.find((u) => u.id === memory.id);
+          if (!update) return memory;
+          return { ...memory, ...update.updates, updatedAt: now };
+        });
+        return [...created, ...next];
+      });
+    }
+
+    return { created };
+  };
+
 
   const saveThread = async (threadMessages: AdvisorChatMessage[], title?: string) => {
     try {
@@ -187,7 +325,15 @@ export default function AIScreen() {
     }
 
     try {
-      const answer = await askAI(trimmed, baseHistory);
+      let memoryContext: UserMemory[] = memoryEnabled ? memories : [];
+      if (memoryEnabled && autoMemoryEnabled) {
+        const memoryCandidates = inferMemoriesFromMessage(trimmed);
+        const { created } = await applyMemoryCandidates(memoryCandidates);
+        if (created.length > 0) {
+          memoryContext = [...memories, ...created];
+        }
+      }
+      const answer = await askAI(trimmed, baseHistory, 'month', memoryContext);
       if (generationAtStart !== requestGenerationRef.current) return;
       const assistantMessage: AdvisorChatMessage = { role: 'assistant', content: answer };
       const finalMessages = [...updatedMessages, assistantMessage];
@@ -237,6 +383,7 @@ export default function AIScreen() {
   const handleNewThread = () => {
     resetToLanding();
   };
+
 
   const handleSelectThread = (threadId: string) => {
     setHasStartedChat(true);

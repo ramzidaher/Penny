@@ -37,6 +37,9 @@ export interface Transaction {
   date: string;
   createdAt: string;
   truelayerTransactionId?: string;
+  plaidTransactionId?: string;
+  plaidAccountId?: string;
+  plaidItemId?: string;
   subscriptionId?: string; // Link to subscription if this transaction is a subscription payment
   debtId?: string; // Link to debt if this transaction is a debt payment
   budgetId?: string; // Link to budget if this transaction is explicitly linked to a budget
@@ -92,6 +95,47 @@ export interface ChatThread {
   id: string;
   title: string; // First message or user-provided title
   messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MemoryTier = 'core' | 'dynamic' | 'session';
+export type MemoryStatus = 'active' | 'paused';
+export type MemorySource = 'user' | 'assistant' | 'pattern' | 'system';
+export type MemoryConfidence = 'low' | 'medium' | 'high';
+export type MemoryCategory =
+  | 'income'
+  | 'household'
+  | 'housing'
+  | 'goals'
+  | 'risk'
+  | 'preferences'
+  | 'constraints'
+  | 'situation'
+  | 'spending'
+  | 'employment'
+  | 'debt'
+  | 'savings'
+  | 'budgeting'
+  | 'health'
+  | 'legal'
+  | 'family'
+  | 'other';
+
+export interface UserMemory {
+  id: string;
+  tier: MemoryTier;
+  category: MemoryCategory;
+  title: string;
+  detail: string;
+  source: MemorySource;
+  confidence: MemoryConfidence;
+  status: MemoryStatus;
+  isConfirmed: boolean;
+  requiresReview: boolean;
+  tags?: string[];
+  expiresAt?: string;
+  lastUsedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

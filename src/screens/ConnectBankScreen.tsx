@@ -9,6 +9,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { useNavigation } from '../utils/navigation';
@@ -33,6 +34,7 @@ export default function ConnectBankScreen() {
   const navigation = useNavigation();
   const dialog = useDialog();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<PlaidItemSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -151,6 +153,34 @@ export default function ConnectBankScreen() {
     }
   };
 
+  const handleReconnect = async (item: PlaidItemSummary) => {
+    const name = item.institution_name || 'this bank';
+    const choice = await dialog.showDialog(
+      'Reconnect bank?',
+      `This will remove existing data for ${name} and reconnect the bank. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reconnect', style: 'destructive' },
+      ]
+    );
+
+    if (choice !== 'Reconnect') {
+      return;
+    }
+
+    try {
+      setConnecting(true);
+      await removePlaidItem(item.item_id);
+      await loadItems();
+      await handleConnect();
+    } catch (error: any) {
+      console.error('Error reconnecting:', error);
+      showError(error.message || 'Failed to reconnect bank');
+      setConnecting(false);
+      setOAuthFlowActive(false);
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadItems();
@@ -158,27 +188,34 @@ export default function ConnectBankScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-    >
-      <View style={styles.header}>
-        <Text style={styles.title}>Connected Banks</Text>
-        <TouchableOpacity
-          style={[styles.connectButton, connecting && styles.connectButtonDisabled]}
-          onPress={handleConnect}
-          disabled={connecting}
-        >
-          {connecting ? (
-            <ActivityIndicator color={colors.background} />
-          ) : (
-            <>
-              <Ionicons name="add-circle-outline" size={20} color={colors.background} />
-              <Text style={styles.connectButtonText}>Connect Bank</Text>
-            </>
-          )}
+    <View style={styles.container}>
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color={colors.text} />
         </TouchableOpacity>
+        <Text style={styles.headerTitle}>Connected Banks</Text>
+        <View style={styles.headerSpacer} />
       </View>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: 8, paddingBottom: 24 }]}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.connectSection}>
+          <TouchableOpacity
+            style={[styles.connectButton, connecting && styles.connectButtonDisabled]}
+            onPress={handleConnect}
+            disabled={connecting}
+          >
+            {connecting ? (
+              <ActivityIndicator color={colors.background} />
+            ) : (
+              <>
+                <Ionicons name="add-circle-outline" size={20} color={colors.background} />
+                <Text style={styles.connectButtonText}>Connect Bank</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
 
       {loading && items.length === 0 ? (
         <View style={styles.center}>
@@ -199,14 +236,28 @@ export default function ConnectBankScreen() {
                   {item.item_id ? `Item • ${item.item_id.substring(0, 8)}` : ''}
                 </Text>
               </View>
-              <TouchableOpacity style={styles.disconnectButton} onPress={() => handleDisconnect(item.item_id)}>
-                <Ionicons name="trash-outline" size={20} color={colors.error} />
-              </TouchableOpacity>
+              <View style={styles.connectionActions}>
+                <TouchableOpacity
+                  style={styles.reconnectButton}
+                  onPress={() => handleReconnect(item)}
+                  disabled={connecting}
+                >
+                  <Ionicons name="refresh" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.disconnectButton}
+                  onPress={() => handleDisconnect(item.item_id)}
+                  disabled={connecting}
+                >
+                  <Ionicons name="trash-outline" size={20} color={colors.error} />
+                </TouchableOpacity>
+              </View>
             </View>
           ))}
           </View>
         )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -214,6 +265,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    backgroundColor: colors.background,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  headerTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontWeight: '600',
+  },
+  headerSpacer: {
+    width: 32,
+  },
+  content: {
+    paddingHorizontal: 20,
   },
   finalizingBanner: {
     flexDirection: 'row',
@@ -235,13 +309,7 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textSecondary,
   },
-  header: {
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  title: {
-    ...typography.h1,
+  connectSection: {
     marginBottom: 16,
   },
   connectButton: {
@@ -249,8 +317,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    padding: 12,
-    borderRadius: 8,
+    padding: 16,
+    borderRadius: 16,
     gap: 8,
   },
   connectButtonDisabled: {
@@ -278,7 +346,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   connectionsList: {
-    padding: 20,
+    paddingTop: 8,
   },
   connectionCard: {
     flexDirection: 'row',
@@ -286,7 +354,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.surface,
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 20,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -295,7 +363,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   connectionName: {
-    ...typography.h3,
+    ...typography.body,
+    fontWeight: '600',
     marginBottom: 4,
   },
   connectionId: {
@@ -304,5 +373,13 @@ const styles = StyleSheet.create({
   },
   disconnectButton: {
     padding: 8,
+  },
+  reconnectButton: {
+    padding: 8,
+  },
+  connectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
 });

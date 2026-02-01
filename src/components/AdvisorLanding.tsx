@@ -81,6 +81,7 @@ export default function AdvisorLanding({
           <Text style={styles.primaryButtonText}>Start today’s check-in</Text>
           <Ionicons name="arrow-forward" size={18} color={colors.background} />
         </TouchableOpacity>
+
       </View>
 
       {showInlineSearchInput ? (

@@ -53,7 +53,7 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
   const isDark = colorScheme === 'dark';
-  const { hideMenu } = useActionMenu();
+  const { getPreviousRoute } = useActionMenu();
   const { colors } = useTheme();
   
   // Determine active tab based on pathname or segments
@@ -108,7 +108,8 @@ export default function TabLayout() {
         return;
       }
       if (tab.name === 'add') {
-        hideMenu();
+        const previousRoute = getPreviousRoute() || '/(tabs)';
+        router.replace(previousRoute as any);
         return;
       }
     }

@@ -1,4 +1,4 @@
-import { Account, Transaction, Budget, Subscription, Debt, ChatThread } from './schema';
+import { Account, Transaction, Budget, Subscription, Debt, ChatThread, UserMemory } from './schema';
 import { isFirebaseAvailable } from '../services/firebase';
 import * as cloudDb from '../services/cloudDb';
 
@@ -223,6 +223,42 @@ export const deleteChatThread = async (id: string): Promise<void> => {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
   return await cloudDb.cloudDeleteChatThread(id);
+};
+
+// Memory operations
+export const getMemories = async (): Promise<UserMemory[]> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudGetMemories();
+};
+
+export const addMemory = async (memory: Omit<UserMemory, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudAddMemory(memory);
+};
+
+export const updateMemory = async (id: string, updates: Partial<UserMemory>): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudUpdateMemory(id, updates);
+};
+
+export const deleteMemory = async (id: string): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudDeleteMemory(id);
+};
+
+export const deleteAllMemories = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudDeleteAllMemories();
 };
 
 // Data export operations

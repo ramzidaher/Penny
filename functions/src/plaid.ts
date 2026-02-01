@@ -7,9 +7,26 @@ if (!admin.apps.length) {
 }
 
 type PlaidEnvironment = 'sandbox' | 'production';
+type PlaidTransaction = {
+  transaction_id: string;
+  account_id: string;
+  amount: number;
+  name?: string;
+  merchant_name?: string;
+  date?: string;
+  authorized_date?: string;
+};
+type PlaidTransactionsSyncResponse = {
+  added: PlaidTransaction[];
+  modified: PlaidTransaction[];
+  removed: { transaction_id: string }[];
+  next_cursor: string;
+  has_more: boolean;
+};
 
 const PLAID_CLIENT_ID = defineSecret('PLAID_CLIENT_ID');
-const PLAID_SECRET = defineSecret('PLAID_SECRET');
+const PLAID_SECRET_SANDBOX = defineSecret('PLAID_SECRET_SANDBOX');
+const PLAID_SECRET_PRODUCTION = defineSecret('PLAID_SECRET_PRODUCTION');
 
 const getPlaidBaseUrl = (env: PlaidEnvironment): string => {
   switch (env) {
@@ -21,14 +38,16 @@ const getPlaidBaseUrl = (env: PlaidEnvironment): string => {
   }
 };
 
-const getPlaidCredentials = (): { clientId: string; secret: string } => {
+const getPlaidCredentials = (env: PlaidEnvironment): { clientId: string; secret: string } => {
   // Use Firebase Functions secrets (also available as env vars at runtime)
   const clientId = (PLAID_CLIENT_ID.value() || '').trim();
-  const secret = (PLAID_SECRET.value() || '').trim();
+  const sandboxSecret = (PLAID_SECRET_SANDBOX.value() || '').trim();
+  const productionSecret = (PLAID_SECRET_PRODUCTION.value() || '').trim();
+  const secret = env === 'production' ? productionSecret : sandboxSecret;
   if (!clientId || !secret) {
     throw new HttpsError(
       'failed-precondition',
-      'Missing Plaid credentials. Set PLAID_CLIENT_ID and PLAID_SECRET in the Functions environment.'
+      'Missing Plaid credentials. Set PLAID_CLIENT_ID and the correct PLAID_SECRET_* for the requested environment.'
     );
   }
   return { clientId, secret };
@@ -39,7 +58,7 @@ const plaidPost = async <TResponse>(
   path: string,
   body: Record<string, unknown>
 ): Promise<TResponse> => {
-  const { clientId, secret } = getPlaidCredentials();
+  const { clientId, secret } = getPlaidCredentials(env);
   const url = `${getPlaidBaseUrl(env)}${path}`;
 
   const res = await fetch(url, {
@@ -63,7 +82,118 @@ const plaidPost = async <TResponse>(
   return json as TResponse;
 };
 
-export const createPlaidHostedLinkToken = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRET] }, async (request) => {
+const mapPlaidTransaction = (tx: PlaidTransaction) => {
+  const amount = Math.abs(tx.amount || 0);
+  const type: 'income' | 'expense' = tx.amount < 0 ? 'income' : 'expense';
+  const description = tx.merchant_name || tx.name || 'Transaction';
+  const rawDate = tx.date || tx.authorized_date || new Date().toISOString().slice(0, 10);
+  const date = admin.firestore.Timestamp.fromDate(new Date(rawDate));
+  return { amount, type, description, date };
+};
+
+const syncPlaidTransactionsForItem = async (args: {
+  uid: string;
+  itemId: string;
+  env: PlaidEnvironment;
+  accessToken: string;
+}): Promise<{ upserted: number; removed: number }> => {
+  const { uid, itemId, env, accessToken } = args;
+  const db = admin.firestore();
+
+  const accountsSnap = await db.collection(`users/${uid}/accounts`).where('plaidItemId', '==', itemId).get();
+  const accountIdByPlaidAccountId = new Map<string, string>();
+  accountsSnap.docs.forEach((doc) => {
+    const data = doc.data() as { plaidAccountId?: string };
+    if (data.plaidAccountId) {
+      accountIdByPlaidAccountId.set(data.plaidAccountId, doc.id);
+    }
+  });
+
+  const existingSnap = await db.collection(`users/${uid}/transactions`).where('plaidItemId', '==', itemId).get();
+  const existingCreatedAt = new Map<string, FirebaseFirestore.Timestamp>();
+  existingSnap.docs.forEach((doc) => {
+    const data = doc.data() as { createdAt?: FirebaseFirestore.Timestamp };
+    if (data.createdAt) {
+      existingCreatedAt.set(doc.id, data.createdAt);
+    }
+  });
+
+  const privateRef = db.doc(`plaid_private/${uid}/items/${itemId}`);
+  const privateSnap = await privateRef.get();
+  let cursor = (privateSnap.data()?.transactions_cursor as string | undefined) || null;
+
+  let hasMore = true;
+  let upserted = 0;
+  let removed = 0;
+  let page = 0;
+
+  while (hasMore && page < 10) {
+    const resp = await plaidPost<PlaidTransactionsSyncResponse>(env, '/transactions/sync', {
+      access_token: accessToken,
+      cursor,
+      count: 500,
+    });
+
+    const batch = db.batch();
+    const transactions = [...(resp.added || []), ...(resp.modified || [])];
+
+    for (const tx of transactions) {
+      const accountId = accountIdByPlaidAccountId.get(tx.account_id);
+      if (!accountId) continue;
+
+      const docId = `plaid_${itemId}_${tx.transaction_id}`;
+      const { amount, type, description, date } = mapPlaidTransaction(tx);
+      const createdAt = existingCreatedAt.get(docId) || admin.firestore.FieldValue.serverTimestamp();
+
+      batch.set(
+        db.doc(`users/${uid}/transactions/${docId}`),
+        {
+          accountId,
+          amount,
+          type,
+          category: 'Other',
+          description,
+          date,
+          createdAt,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          plaidTransactionId: tx.transaction_id,
+          plaidAccountId: tx.account_id,
+          plaidItemId: itemId,
+        },
+        { merge: true }
+      );
+      upserted++;
+    }
+
+    for (const tx of resp.removed || []) {
+      const docId = `plaid_${itemId}_${tx.transaction_id}`;
+      batch.delete(db.doc(`users/${uid}/transactions/${docId}`));
+      removed++;
+    }
+
+    if (transactions.length > 0 || (resp.removed || []).length > 0) {
+      await batch.commit();
+    }
+
+    cursor = resp.next_cursor;
+    hasMore = resp.has_more;
+    page++;
+  }
+
+  await privateRef.set(
+    {
+      transactions_cursor: cursor,
+      transactions_synced_at: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return { upserted, removed };
+};
+
+export const createPlaidHostedLinkToken = onCall(
+  { secrets: [PLAID_CLIENT_ID, PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION] },
+  async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError('unauthenticated', 'You must be authenticated.');
@@ -81,10 +211,15 @@ export const createPlaidHostedLinkToken = onCall({ secrets: [PLAID_CLIENT_ID, PL
   const redirectUri = (process.env.PLAID_REDIRECT_URI || '').trim();
   const clientName = (process.env.PLAID_CLIENT_NAME || '').trim() || 'Penny';
 
+  const countryCodes = (process.env.PLAID_COUNTRY_CODES || 'US')
+    .split(',')
+    .map((code) => code.trim().toUpperCase())
+    .filter(Boolean);
+
   const requestBody: Record<string, unknown> = {
     client_name: clientName,
-    // UK-first default for Penny.
-    country_codes: ['GB'],
+    // Use allowed country codes for your Plaid access level.
+    country_codes: countryCodes.length ? countryCodes : ['US'],
     language: 'en',
     user: { client_user_id: uid },
     products: ['transactions'],
@@ -123,7 +258,9 @@ export const createPlaidHostedLinkToken = onCall({ secrets: [PLAID_CLIENT_ID, PL
   return resp;
 });
 
-export const plaidLinkTokenGet = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRET] }, async (request) => {
+export const plaidLinkTokenGet = onCall(
+  { secrets: [PLAID_CLIENT_ID, PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION] },
+  async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError('unauthenticated', 'You must be authenticated.');
@@ -145,7 +282,9 @@ export const plaidLinkTokenGet = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRE
   return resp;
 });
 
-export const exchangePlaidPublicToken = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRET] }, async (request) => {
+export const exchangePlaidPublicToken = onCall(
+  { secrets: [PLAID_CLIENT_ID, PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION] },
+  async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError('unauthenticated', 'You must be authenticated.');
@@ -270,7 +409,19 @@ export const exchangePlaidPublicToken = onCall({ secrets: [PLAID_CLIENT_ID, PLAI
     await batch.commit();
   }
 
-  return { item_id: resp.item_id, request_id: resp.request_id, accounts_upserted: upserted };
+  const txSync = await syncPlaidTransactionsForItem({
+    uid,
+    itemId: resp.item_id,
+    env,
+    accessToken: resp.access_token,
+  });
+
+  return {
+    item_id: resp.item_id,
+    request_id: resp.request_id,
+    accounts_upserted: upserted,
+    transactions_upserted: txSync.upserted,
+  };
 });
 
 export const listPlaidItems = onCall(async (request) => {
@@ -295,7 +446,9 @@ export const listPlaidItems = onCall(async (request) => {
   return { items };
 });
 
-export const removePlaidItem = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRET] }, async (request) => {
+export const removePlaidItem = onCall(
+  { secrets: [PLAID_CLIENT_ID, PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION] },
+  async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError('unauthenticated', 'You must be authenticated.');
@@ -327,10 +480,56 @@ export const removePlaidItem = onCall({ secrets: [PLAID_CLIENT_ID, PLAID_SECRET]
     await batch.commit();
   }
 
+  // Delete Plaid transactions for this item.
+  const txSnap = await db.collection(`users/${uid}/transactions`).where('plaidItemId', '==', itemId).get();
+  if (!txSnap.empty) {
+    const batch = db.batch();
+    txSnap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  }
+
   // Delete public + private item docs.
   await db.doc(`users/${uid}/plaid_items/${itemId}`).delete().catch(() => {});
   await privateRef.delete().catch(() => {});
 
   return { ok: true };
 });
+
+export const syncPlaidTransactions = onCall(
+  { secrets: [PLAID_CLIENT_ID, PLAID_SECRET_SANDBOX, PLAID_SECRET_PRODUCTION] },
+  async (request) => {
+    const uid = request.auth?.uid;
+    if (!uid) {
+      throw new HttpsError('unauthenticated', 'You must be authenticated.');
+    }
+
+    const itemId = (request.data?.item_id as string | undefined)?.trim();
+    const db = admin.firestore();
+
+    const itemsSnap = itemId
+      ? await db.doc(`plaid_private/${uid}/items/${itemId}`).get().then((doc) => [doc])
+      : await db.collection(`plaid_private/${uid}/items`).get().then((snap) => snap.docs);
+
+    const results: Array<{ item_id: string; upserted: number; removed: number }> = [];
+
+    for (const docSnap of itemsSnap) {
+      if (!docSnap.exists) continue;
+      const data = docSnap.data() as { access_token?: string; environment?: PlaidEnvironment; item_id?: string };
+      const accessToken = data.access_token;
+      const env = (data.environment || 'sandbox') as PlaidEnvironment;
+      const resolvedItemId = data.item_id || docSnap.id;
+      if (!accessToken) continue;
+
+      const result = await syncPlaidTransactionsForItem({
+        uid,
+        itemId: resolvedItemId,
+        env,
+        accessToken,
+      });
+      results.push({ item_id: resolvedItemId, upserted: result.upserted, removed: result.removed });
+    }
+
+    return { items: results };
+  }
+);
 

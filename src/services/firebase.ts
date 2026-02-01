@@ -1,10 +1,9 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import { getFirestore, Firestore, enableNetwork, disableNetwork, doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
-import { getFunctions, Functions, httpsCallable } from 'firebase/functions';
-import { 
+import { getFunctions, Functions, httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
+import {
   getAuth as getFirebaseAuth,
   initializeAuth,
-  getReactNativePersistence,
   Auth, 
   signInAnonymously, 
   onAuthStateChanged as onFirebaseAuthStateChanged, 
@@ -41,6 +40,30 @@ let auth: Auth | null = null;
 let currentUser: User | null = null;
 let isInitializing = false;
 let initializationPromise: Promise<boolean> | null = null;
+let functionsEmulatorConfigured = false;
+
+const getReactNativePersistenceCompat = () => {
+  const moduleId = 'firebase/auth/react-native';
+  try {
+    const reactNativeModule = require(moduleId);
+    if (reactNativeModule?.getReactNativePersistence) {
+      return reactNativeModule.getReactNativePersistence as (storage: unknown) => any;
+    }
+  } catch (_error) {
+    // Module not available in this build; fall back to auth module if exposed.
+  }
+
+  try {
+    const authModule = require('firebase/auth');
+    if (authModule?.getReactNativePersistence) {
+      return authModule.getReactNativePersistence as (storage: unknown) => any;
+    }
+  } catch (_error) {
+    // Ignore and return null.
+  }
+
+  return null;
+};
 
 // Initialize Firebase (without auto-login)
 export const initFirebase = async (): Promise<boolean> => {
@@ -74,10 +97,16 @@ export const initFirebase = async (): Promise<boolean> => {
       if (Platform.OS !== 'web') {
         // For React Native, use initializeAuth with AsyncStorage persistence
         try {
-          auth = initializeAuth(app, {
-            persistence: getReactNativePersistence(AsyncStorage)
-          });
-          console.log('Initialized Firebase Auth with AsyncStorage persistence');
+          const getPersistence = getReactNativePersistenceCompat();
+          if (getPersistence) {
+            auth = initializeAuth(app, {
+              persistence: getPersistence(AsyncStorage)
+            });
+            console.log('Initialized Firebase Auth with AsyncStorage persistence');
+          } else {
+            auth = initializeAuth(app);
+            console.warn('React Native persistence not available; using default auth initialization.');
+          }
         } catch (error: any) {
           // If auth is already initialized, get the existing instance
           if (error.code === 'auth/already-initialized') {
@@ -100,7 +129,31 @@ export const initFirebase = async (): Promise<boolean> => {
       }
 
       db = getFirestore(app);
-      functions = getFunctions(app);
+
+      const functionsRegion = (process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_REGION || '').trim();
+      functions = functionsRegion ? getFunctions(app, functionsRegion) : getFunctions(app);
+
+      if (functions && !functionsEmulatorConfigured) {
+        const emulatorOrigin = (process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_ORIGIN || '').trim();
+        const emulatorHost = (process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_EMULATOR_HOST || '').trim();
+        const emulatorPortRaw = (process.env.EXPO_PUBLIC_FIREBASE_FUNCTIONS_EMULATOR_PORT || '').trim();
+        const emulatorPort = emulatorPortRaw ? Number(emulatorPortRaw) : NaN;
+
+        if (emulatorOrigin) {
+          const normalized = emulatorOrigin.replace(/^https?:\/\//, '');
+          const [host, portRaw] = normalized.split(':');
+          const port = portRaw ? Number(portRaw) : 5001;
+          if (host && Number.isFinite(port)) {
+            connectFunctionsEmulator(functions, host, port);
+            functionsEmulatorConfigured = true;
+            console.log(`[firebase] Functions emulator connected at ${host}:${port}`);
+          }
+        } else if (emulatorHost && Number.isFinite(emulatorPort)) {
+          connectFunctionsEmulator(functions, emulatorHost, emulatorPort);
+          functionsEmulatorConfigured = true;
+          console.log(`[firebase] Functions emulator connected at ${emulatorHost}:${emulatorPort}`);
+        }
+      }
 
       // Update currentUser from auth state (but don't set up listener here - App.tsx handles it)
       if (auth.currentUser) {

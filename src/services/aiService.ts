@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { Account, Transaction, Budget, Subscription } from '../database/schema';
+import { Account, Transaction, Budget, Subscription, UserMemory } from '../database/schema';
+import { filterMemoriesForPrompt } from './memoryService';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
@@ -22,7 +23,7 @@ const getFinancialData = async (period: 'week' | 'month' | 'year' | 'all' = 'mon
   const budgets = await getBudgets();
   const subscriptions = await getSubscriptions();
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   
   // Filter transactions by period (default to monthly for AI context)
   const filteredData = filterTransactionsByPeriod(allTransactions, period);
@@ -43,6 +44,27 @@ interface Message {
   content: string;
 }
 
+const formatMemoryBlock = (memories: UserMemory[]): string => {
+  const core = memories.filter(m => m.tier === 'core');
+  const dynamic = memories.filter(m => m.tier === 'dynamic');
+  const session = memories.filter(m => m.tier === 'session');
+  const render = (items: UserMemory[]) =>
+    items
+      .map(m => `- ${m.title}: ${m.detail} (${m.category}, ${m.confidence})`)
+      .join('\n');
+  const sections: string[] = [];
+  if (core.length > 0) {
+    sections.push(`Core Memory:\n${render(core)}`);
+  }
+  if (dynamic.length > 0) {
+    sections.push(`Dynamic Memory:\n${render(dynamic)}`);
+  }
+  if (session.length > 0) {
+    sections.push(`Session Memory:\n${render(session)}`);
+  }
+  return sections.join('\n\n').trim();
+};
+
 const getToneInstructions = (tone: 'friendly' | 'professional' | 'direct' | 'harsh'): string => {
   switch (tone) {
     case 'friendly':
@@ -58,7 +80,12 @@ const getToneInstructions = (tone: 'friendly' | 'professional' | 'direct' | 'har
   }
 };
 
-export const askAI = async (question: string, conversationHistory: Message[] = [], period: 'week' | 'month' | 'year' | 'all' = 'month'): Promise<string> => {
+export const askAI = async (
+  question: string,
+  conversationHistory: Message[] = [],
+  period: 'week' | 'month' | 'year' | 'all' = 'month',
+  memories: UserMemory[] = []
+): Promise<string> => {
   if (!GEMINI_API_KEY) {
     return 'Gemini API key not configured. Please add EXPO_PUBLIC_GEMINI_API_KEY to your .env file.';
   }
@@ -78,10 +105,15 @@ export const askAI = async (question: string, conversationHistory: Message[] = [
       toneInstructions = getToneInstructions('professional');
     }
     
+    const safeMemories = filterMemoriesForPrompt(memories);
+    const memoryBlock = formatMemoryBlock(safeMemories);
+    
     const systemPrompt = `You are a financial advisor AI assistant for Penny app. Analyze the following financial data and answer the user's question.
 
 TONE AND COMMUNICATION STYLE:
 ${toneInstructions}
+
+${memoryBlock ? `USER MEMORY (use only when relevant, do not mention it explicitly):\n${memoryBlock}\n` : ''}
 
 Financial Summary:
 - Total Balance: $${financialData.totalBalance.toFixed(2)}
