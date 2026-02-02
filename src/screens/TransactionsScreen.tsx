@@ -25,6 +25,7 @@ import { formatCurrencySync } from '../utils/currency';
 import { suggestCategory, learnFromCategorization } from '../services/categoryService';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
 import { getBudgets } from '../database/db';
+import { useToast } from '../contexts/ToastContext';
 
 export default function TransactionsScreen() {
   const navigation = useNavigation();
@@ -54,6 +55,7 @@ export default function TransactionsScreen() {
   const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
     'right-income-left-expense'
   );
+  const { showSuccess, showError } = useToast();
 
   const loadTransactions = async () => {
     try {
@@ -202,6 +204,7 @@ export default function TransactionsScreen() {
     setPendingCategory(category);
     
     try {
+      let matchingBudgetId: string | undefined;
       // If category is Subscription, show subscription creation dialog
       if (category === 'Subscription') {
         setSubscriptionDialogVisible(true);
@@ -211,7 +214,9 @@ export default function TransactionsScreen() {
       // If it's an expense category, check if budget exists
       if (selectedType === 'expense' && category !== 'Income') {
         const budgets = await getBudgets();
-        const budgetExists = budgets.some(b => b.category === category);
+        const matchingBudget = budgets.find(b => b.category === category);
+        const budgetExists = !!matchingBudget;
+        matchingBudgetId = matchingBudget?.id;
         
         console.log('[TransactionsScreen] Checking budget for category:', category, 'Budget exists:', budgetExists);
         
@@ -221,6 +226,7 @@ export default function TransactionsScreen() {
           setBudgetDialogVisible(true);
           return;
         }
+
       }
       
       // Check if this might be a debt-related category
@@ -231,7 +237,7 @@ export default function TransactionsScreen() {
       }
       
       // Otherwise, proceed with normal update
-      await proceedWithCategoryUpdate(category);
+      await proceedWithCategoryUpdate(category, matchingBudgetId ? { budgetId: matchingBudgetId } : undefined);
     } catch (error) {
       console.error('[TransactionsScreen] Error in category selection:', error);
       setPendingCategory(null);
@@ -239,7 +245,10 @@ export default function TransactionsScreen() {
     }
   };
 
-  const proceedWithCategoryUpdate = async (category: string) => {
+  const proceedWithCategoryUpdate = async (
+    category: string,
+    tagOverrides?: Partial<Pick<Transaction, 'subscriptionId' | 'debtId' | 'budgetId'>>
+  ) => {
     if (!selectedTransaction) return;
     
     try {
@@ -253,13 +262,24 @@ export default function TransactionsScreen() {
       };
       
       // Only link debt if it's an expense (income shouldn't have debt tags)
-      if (selectedType === 'expense' && suggestion.debtId) {
-        updateData.debtId = suggestion.debtId;
+      if (selectedType === 'expense') {
+        const resolvedDebtId = tagOverrides?.debtId ?? suggestion.debtId;
+        if (resolvedDebtId) {
+          updateData.debtId = resolvedDebtId;
+        }
       } else if (selectedType === 'income') {
-        // For income, make sure to remove any debt/subscription tags
-        if (selectedTransaction.debtId || selectedTransaction.subscriptionId) {
+        // For income, make sure to remove any existing tags
+        if (selectedTransaction.debtId || selectedTransaction.subscriptionId || selectedTransaction.budgetId) {
           await untagTransaction(selectedTransaction.id, 'all');
         }
+      }
+
+      if (tagOverrides?.subscriptionId) {
+        updateData.subscriptionId = tagOverrides.subscriptionId;
+      }
+
+      if (tagOverrides?.budgetId) {
+        updateData.budgetId = tagOverrides.budgetId;
       }
       
       await updateTransaction(selectedTransaction.id, updateData);
@@ -271,10 +291,31 @@ export default function TransactionsScreen() {
         selectedType
       );
       
-      // Reload transactions
-      await loadTransactions();
+      const clearTagsForIncome =
+        selectedType === 'income'
+          ? { subscriptionId: undefined, debtId: undefined, budgetId: undefined }
+          : {};
+
+      setTransactions((prev) =>
+        prev.map((transaction) =>
+          transaction.id === selectedTransaction.id
+            ? { ...transaction, ...updateData, ...clearTagsForIncome }
+            : transaction
+        )
+      );
+
+      if (tagOverrides?.subscriptionId) {
+        showSuccess('Subscription linked');
+      } else if (tagOverrides?.budgetId) {
+        showSuccess(`Budget linked · ${category}`);
+      } else if (updateData.debtId) {
+        showSuccess('Debt linked');
+      } else {
+        showSuccess(`Tagged as ${category}`);
+      }
     } catch (error) {
       console.error('[TransactionsScreen] Error updating transaction');
+      showError('Tagging failed. Please try again.');
     } finally {
       setSelectedTransaction(null);
       setPendingCategory(null);
@@ -285,14 +326,20 @@ export default function TransactionsScreen() {
   const handleSubscriptionDialogComplete = async (subscriptionId?: string) => {
     setSubscriptionDialogVisible(false);
     if (pendingCategory) {
-      await proceedWithCategoryUpdate(pendingCategory);
+      await proceedWithCategoryUpdate(
+        pendingCategory,
+        subscriptionId ? { subscriptionId } : undefined
+      );
     }
   };
 
   const handleBudgetDialogComplete = async (budgetId?: string) => {
     setBudgetDialogVisible(false);
     if (pendingCategory) {
-      await proceedWithCategoryUpdate(pendingCategory);
+      await proceedWithCategoryUpdate(
+        pendingCategory,
+        budgetId ? { budgetId } : undefined
+      );
     }
   };
 
@@ -303,6 +350,9 @@ export default function TransactionsScreen() {
     await loadTransactions();
     setSelectedTransaction(null);
     setPendingCategory(null);
+    if (debtId) {
+      showSuccess('Debt linked');
+    }
   };
 
   const filteredTransactions = useMemo(() => {
@@ -319,7 +369,7 @@ export default function TransactionsScreen() {
     } else if (tagFilter === 'debts') {
       filtered = filtered.filter(t => t.debtId);
     } else if (tagFilter === 'untagged') {
-      filtered = filtered.filter(t => !t.subscriptionId && !t.debtId);
+      filtered = filtered.filter(t => !t.subscriptionId && !t.debtId && !t.budgetId);
     }
     
     if (searchQuery.trim()) {
