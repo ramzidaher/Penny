@@ -14,6 +14,7 @@ web-build/
 build/
 .env
 .env.local
+.bkenvback
 eas.json
 
 
