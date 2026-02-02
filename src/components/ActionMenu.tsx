@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Pressable, ScrollView, useColorScheme, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Animated, Pressable, ScrollView, useWindowDimensions, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -85,10 +85,9 @@ const hexToRgba = (hex: string, alpha: number) => {
 export default function ActionMenu({ visible, onClose, onSelect, renderAsOverlay = false }: ActionMenuProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
   const { colors: theme } = useTheme();
-  const c = isDark ? theme.dark : theme;
+  const isDark = false;
+  const c = theme;
   const { height: SCREEN_HEIGHT } = useWindowDimensions();
   // Start completely off-screen (below the screen)
   const [slideAnim] = useState(() => new Animated.Value(SCREEN_HEIGHT || 800));
@@ -196,15 +195,11 @@ export default function ActionMenu({ visible, onClose, onSelect, renderAsOverlay
     >
       {/* Backdrop (blur + dim). Keep tab bar tappable in overlay mode. */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <BlurView
-          intensity={isDark ? 18 : 22}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
+        <BlurView intensity={0} tint="light" style={StyleSheet.absoluteFill} />
         <View
           style={[
             StyleSheet.absoluteFill,
-            { backgroundColor: 'rgba(0,0,0,0)' },
+            { backgroundColor: c.background },
           ]}
         />
       </View>

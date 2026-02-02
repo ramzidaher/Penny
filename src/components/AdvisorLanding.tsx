@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { typography } from '../theme/typography';
 import AdvisorQuickActionsGrid, { AdvisorQuickAction } from './AdvisorQuickActionsGrid';
@@ -48,8 +48,7 @@ export default function AdvisorLanding({
 }: AdvisorLandingProps) {
   const searchInputRef = useRef<TextInput>(null);
   const { colors } = useTheme();
-  const isDark = useColorScheme() === 'dark';
-  const c = isDark ? colors.dark : colors;
+  const c = colors;
   const styles = React.useMemo(() => createStyles(c), [c]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 
@@ -14,8 +14,7 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import CompanyLogo from '../components/CompanyLogo';
-import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
-import ScreenHeader from '../components/ScreenHeader';
+import { SkeletonList, SkeletonStatCard } from '../components/SkeletonLoader';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
@@ -32,31 +31,15 @@ export default function SubscriptionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const maintenanceInFlight = useRef<Promise<boolean> | null>(null);
 
-  const loadSubscriptions = async () => {
+  const loadSubscriptions = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading !== false;
     try {
-      setLoading(true);
+      if (showLoading) {
+        setLoading(true);
+      }
       await waitForFirebase();
-      
-      // Process due subscriptions first (creates transactions automatically)
-      try {
-        await processDueSubscriptions();
-      } catch (error) {
-        console.error('Error processing due subscriptions:', error);
-      }
-      
-      // Backfill subscription links for existing transactions (one-time, runs silently)
-      try {
-        const { backfillSubscriptionLinks } = await import('../services/backfillService');
-        const result = await backfillSubscriptionLinks();
-        if (result.linked > 0) {
-          console.log(`[SubscriptionsScreen] Backfilled ${result.linked} subscription links`);
-        }
-      } catch (error) {
-        // Silent fail - backfill is optional
-        console.error('Error backfilling subscription links:', error);
-      }
-      
       const [subs, trans, settings] = await Promise.all([
         getSubscriptions(),
         getTransactions(),
@@ -68,22 +51,72 @@ export default function SubscriptionsScreen() {
     } catch (error) {
       console.error('Error loading subscriptions:', error);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
-  };
+  }, []);
+
+  const runSubscriptionMaintenance = useCallback(async () => {
+    if (maintenanceInFlight.current) {
+      return maintenanceInFlight.current;
+    }
+
+    const run = (async () => {
+      let shouldReload = false;
+
+      // Process due subscriptions (creates transactions automatically)
+      try {
+        const processedCount = await processDueSubscriptions();
+        if (processedCount > 0) {
+          shouldReload = true;
+        }
+      } catch (error) {
+        console.error('Error processing due subscriptions:', error);
+      }
+
+      // Backfill subscription links for existing transactions (one-time, runs silently)
+      try {
+        const { backfillSubscriptionLinks } = await import('../services/backfillService');
+        const result = await backfillSubscriptionLinks();
+        if (result.linked > 0) {
+          console.log(`[SubscriptionsScreen] Backfilled ${result.linked} subscription links`);
+          shouldReload = true;
+        }
+      } catch (error) {
+        // Silent fail - backfill is optional
+        console.error('Error backfilling subscription links:', error);
+      }
+
+      return shouldReload;
+    })();
+
+    maintenanceInFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      maintenanceInFlight.current = null;
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       const timer = setTimeout(() => {
         loadSubscriptions();
+        runSubscriptionMaintenance().then((shouldReload) => {
+          if (shouldReload) {
+            loadSubscriptions({ showLoading: false });
+          }
+        });
       }, 100);
       return () => clearTimeout(timer);
-    }, [])
+    }, [loadSubscriptions, runSubscriptionMaintenance])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadSubscriptions();
+    await runSubscriptionMaintenance();
+    await loadSubscriptions({ showLoading: false });
     setRefreshing(false);
   };
 
@@ -207,7 +240,6 @@ export default function SubscriptionsScreen() {
 
   const loadingComponent = (
     <>
-      <SkeletonHeader />
       <View style={styles.skeletonStatsContainer}>
         <SkeletonStatCard />
         <SkeletonStatCard />
@@ -226,14 +258,9 @@ export default function SubscriptionsScreen() {
         refreshing={refreshing}
         loading={loading && !refreshing}
         loadingComponent={loadingComponent}
+        contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <ScreenHeader
-          title="Subscriptions"
-          subtitle="Track your recurring payments"
-        />
-
         {/* Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
@@ -336,7 +363,7 @@ export default function SubscriptionsScreen() {
                           <CompanyLogo
                             name={transaction.description || 'Subscription'}
                             type="subscription"
-                            size={56}
+                            size={44}
                           />
                           <View style={styles.subscriptionInfo}>
                             <Text style={styles.subscriptionName} numberOfLines={1}>
@@ -407,7 +434,7 @@ export default function SubscriptionsScreen() {
                           <CompanyLogo
                             name={subscription.name}
                             type="subscription"
-                            size={56}
+                            size={44}
                           />
                           <View style={styles.subscriptionInfo}>
                             <Text style={styles.subscriptionName}>{subscription.name}</Text>
@@ -427,11 +454,23 @@ export default function SubscriptionsScreen() {
                           </View>
                         </View>
                         <View style={styles.subscriptionRight}>
-                          <Ionicons 
-                            name={isExpanded ? "chevron-up" : "chevron-down"} 
-                            size={20} 
-                            color={colors.textSecondary} 
-                          />
+                          <View style={styles.subscriptionTopRow}>
+                            <Ionicons 
+                              name={isExpanded ? "chevron-up" : "chevron-down"} 
+                              size={18} 
+                              color={colors.textSecondary} 
+                            />
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleDelete(subscription.id);
+                              }}
+                              style={styles.deleteButtonInline}
+                              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            >
+                              <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
                           <Text style={styles.subscriptionAmount}>
                             {formatCurrencySync(subscription.amount, currencyCode)}
                           </Text>
@@ -461,15 +500,6 @@ export default function SubscriptionsScreen() {
                         </View>
                       </View>
                     </TouchableOpacity>
-                    <View style={styles.subscriptionActions}>
-                      <TouchableOpacity
-                        onPress={() => handleDelete(subscription.id)}
-                        style={styles.deleteButton}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                    </View>
                     
                     {isExpanded && (
                       <View style={styles.transactionsContainer}>
@@ -531,8 +561,12 @@ const styles = StyleSheet.create({
   statsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
+    paddingTop: 8,
     marginBottom: 24,
     gap: 12,
+  },
+  contentContainer: {
+    paddingTop: 8,
   },
   statCard: {
     flex: 1,
@@ -633,13 +667,14 @@ const styles = StyleSheet.create({
   },
   subscriptionsList: {
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.border,
   },
   subscriptionCard: {
-    padding: 20,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -658,23 +693,23 @@ const styles = StyleSheet.create({
   subscriptionContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 4,
   },
   subscriptionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    gap: 16,
+    gap: 12,
   },
   subscriptionInfo: {
     flex: 1,
   },
   subscriptionName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   subscriptionMeta: {
     flexDirection: 'row',
@@ -736,7 +771,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   subscriptionFrequency: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
     textTransform: 'capitalize',
   },
@@ -754,19 +789,25 @@ const styles = StyleSheet.create({
   subscriptionRight: {
     alignItems: 'flex-end',
   },
+  subscriptionTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 2,
+  },
   subscriptionAmount: {
-    fontSize: 22,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   subscriptionDate: {
-    fontSize: 13,
+    fontSize: 12,
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   subscriptionDays: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.primary,
     fontWeight: '600',
   },
@@ -789,10 +830,9 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
   },
-  deleteButton: {
-    padding: 8,
+  deleteButtonInline: {
+    padding: 4,
     borderRadius: 8,
-    alignSelf: 'flex-end',
   },
   emptyCard: {
     backgroundColor: colors.surface,

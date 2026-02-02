@@ -48,7 +48,7 @@ const isoToTimestamp = (iso: string): Timestamp => {
 
 const mapTransactionDoc = (doc: any): Transaction => {
   const data = doc.data();
-  
+
   // Explicitly preserve null values - don't let them get lost in the spread
   const transaction: Transaction = {
     id: doc.id,
@@ -70,7 +70,7 @@ const mapTransactionDoc = (doc: any): Transaction => {
     ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
     ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
   };
-  
+
   return transaction;
 };
 
@@ -416,7 +416,33 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
       console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions without order`);
     }
     
-    const transactions = snapshot.docs.map(mapTransactionDoc) as Transaction[];
+    const transactions = snapshot.docs.map(doc => {
+      const data = doc.data();
+      
+      // Explicitly preserve null values - don't let them get lost in the spread
+      const transaction: Transaction = {
+        id: doc.id,
+        accountId: data.accountId,
+        amount: data.amount,
+        type: data.type,
+        category: data.category,
+        description: data.description || '',
+        date: timestampToISO(data.date),
+        createdAt: timestampToISO(data.createdAt),
+        // Explicitly handle subscriptionId, debtId, and budgetId to preserve null values
+        subscriptionId: data.subscriptionId !== undefined ? data.subscriptionId : undefined,
+        debtId: data.debtId !== undefined ? data.debtId : undefined,
+        budgetId: data.budgetId !== undefined ? data.budgetId : undefined,
+        // Preserve optional fields
+        ...(data.truelayerTransactionId && { truelayerTransactionId: data.truelayerTransactionId }),
+        ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
+        ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
+        ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
+        ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
+      };
+      
+      return transaction;
+    }) as Transaction[];
     
     return transactions;
   } catch (error: unknown) {
@@ -434,47 +460,44 @@ export const cloudGetTransactionsPage = async (options: {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available');
   }
-  
+
   const db = getFirestoreDb();
   if (!db) {
     throw new Error('Firestore database not initialized');
   }
-  
+
   try {
     const userId = getUserId();
     if (!userId) {
       throw new Error('User not authenticated');
     }
-    
+
     const transactionsRef = collection(db, `users/${userId}/transactions`);
-    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(options.limit)];
+    const constraints: QueryConstraint[] = [];
+
     if (options.accountId) {
-      constraints.unshift(where('accountId', '==', options.accountId));
+      constraints.push(where('accountId', '==', options.accountId));
     }
+
+    constraints.push(orderBy('createdAt', 'desc'));
+
     if (options.startAfter) {
       constraints.push(startAfter(isoToTimestamp(options.startAfter)));
     }
-    
-    let snapshot;
-    try {
-      snapshot = await getDocs(query(transactionsRef, ...constraints));
-      console.log(`[cloudGetTransactionsPage] Fetched ${snapshot.docs.length} transactions`);
-    } catch (queryError: unknown) {
-      const errorMessage = queryError instanceof Error ? queryError.message : 'Unknown query error';
-      console.warn('[cloudGetTransactionsPage] Ordered query failed:', errorMessage);
-      snapshot = await getDocs(query(transactionsRef, limit(options.limit)));
-      console.log(`[cloudGetTransactionsPage] Fetched ${snapshot.docs.length} transactions without order`);
-    }
-    
-    const transactions = snapshot.docs.map(mapTransactionDoc) as Transaction[];
+
+    constraints.push(limit(options.limit));
+
+    const snapshot = await getDocs(query(transactionsRef, ...constraints));
+    const transactions = snapshot.docs.map(mapTransactionDoc);
     const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-    const lastCreatedAt = lastDoc?.data()?.createdAt;
-    const nextCursor = lastCreatedAt ? timestampToISO(lastCreatedAt) : undefined;
-    
+    const nextCursor = lastDoc?.data()?.createdAt
+      ? timestampToISO(lastDoc.data().createdAt)
+      : undefined;
+
     return { transactions, nextCursor };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error fetching transaction page from cloud:', errorMessage);
+    console.error('Error fetching paged transactions from cloud:', errorMessage);
     throw error;
   }
 };

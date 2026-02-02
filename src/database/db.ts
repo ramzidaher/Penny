@@ -159,7 +159,7 @@ export const markSubscriptionAsPaid = async (id: string): Promise<void> => {
   return await cloudDb.markSubscriptionAsPaid(id);
 };
 
-export const processDueSubscriptions = async (): Promise<void> => {
+export const processDueSubscriptions = async (): Promise<number> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }

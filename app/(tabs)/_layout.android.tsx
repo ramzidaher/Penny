@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Animated, Easing } from 'react-native';
 import { useRouter, usePathname, useSegments, Slot } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -56,6 +56,9 @@ export default function TabLayout() {
   const isDark = colorScheme === 'dark';
   const { getPreviousRoute } = useActionMenu();
   const { colors } = useTheme();
+  const wiggleValuesRef = useRef<Record<string, Animated.Value>>({});
+  const wiggleLoopsRef = useRef<Record<string, Animated.CompositeAnimation | null>>({});
+  const wiggleTimersRef = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
   const getActiveTab = () => {
     if (pathname === '/(tabs)' || pathname === '/(tabs)/' || pathname === '/') {
@@ -130,7 +133,79 @@ export default function TabLayout() {
     }
 
     router.push(tab.route as any);
+    startWiggleAfterHighlight(tab.name);
   };
+
+  const getWiggleValue = (tabName: string) => {
+    if (!wiggleValuesRef.current[tabName]) {
+      wiggleValuesRef.current[tabName] = new Animated.Value(0);
+    }
+
+    return wiggleValuesRef.current[tabName];
+  };
+
+  const startWiggle = (tabName: string) => {
+    const wiggleValue = getWiggleValue(tabName);
+
+    wiggleLoopsRef.current[tabName]?.stop();
+    wiggleValue.setValue(0);
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(wiggleValue, {
+          toValue: -1,
+          duration: 80,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(wiggleValue, {
+          toValue: 1,
+          duration: 80,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(wiggleValue, {
+          toValue: 0,
+          duration: 80,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    wiggleLoopsRef.current[tabName] = loop;
+    loop.start();
+  };
+
+  const stopWiggle = (tabName: string) => {
+    const wiggleValue = getWiggleValue(tabName);
+
+    wiggleLoopsRef.current[tabName]?.stop();
+    wiggleLoopsRef.current[tabName] = null;
+    wiggleValue.setValue(0);
+  };
+
+  const startWiggleAfterHighlight = (tabName: string) => {
+    if (wiggleTimersRef.current[tabName]) {
+      clearTimeout(wiggleTimersRef.current[tabName] as ReturnType<typeof setTimeout>);
+    }
+
+    wiggleTimersRef.current[tabName] = setTimeout(() => {
+      startWiggle(tabName);
+      wiggleTimersRef.current[tabName] = setTimeout(() => stopWiggle(tabName), 450);
+    }, 140);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(wiggleLoopsRef.current).forEach((loop) => loop?.stop());
+      Object.values(wiggleTimersRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+    };
+  }, []);
 
   return (
     <View style={[styles.container, { backgroundColor: contentBackground }]}>
@@ -195,10 +270,17 @@ export default function TabLayout() {
             const iconName = isActive ? tab.iconFilled : tab.icon;
             const iconColor = isActive ? (isDark ? '#ffffff' : '#000000') : inactiveColor;
             const labelColor = isActive ? selectedLabelColor : inactiveColor;
+            const wiggleValue = getWiggleValue(tab.name);
+            const wiggleTranslate = wiggleValue.interpolate({
+              inputRange: [-1, 1],
+              outputRange: [-4, 4],
+            });
 
             const tabContent = (
               <>
-                <Ionicons name={iconName} size={24} color={iconColor} />
+                <Animated.View style={{ transform: [{ translateX: wiggleTranslate }] }}>
+                  <Ionicons name={iconName} size={24} color={iconColor} />
+                </Animated.View>
                 <Text style={[styles.tabLabel, { color: labelColor }]} numberOfLines={1}>
                   {tab.label}
                 </Text>

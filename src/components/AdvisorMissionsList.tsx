@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { typography } from '../theme/typography';
 import { AdvisorMission } from '../utils/advisorMissions';
@@ -20,8 +20,7 @@ export default function AdvisorMissionsList({
 }: AdvisorMissionsListProps) {
   if (!missions.length) return null;
   const { colors } = useTheme();
-  const isDark = useColorScheme() === 'dark';
-  const c = isDark ? colors.dark : colors;
+  const c = colors;
   const styles = React.useMemo(() => createStyles(c), [c]);
 
   return (

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, Text, TouchableOpacity, StyleSheet, View, useColorScheme } from 'react-native';
+import { ScrollView, Text, TouchableOpacity, StyleSheet, View } from 'react-native';
 import { typography } from '../theme/typography';
 import { useTheme } from '../contexts/ThemeContext';
 
@@ -12,8 +12,7 @@ interface AdvisorPromptChipsRowProps {
 export default function AdvisorPromptChipsRow({ prompts, disabled, onSelect }: AdvisorPromptChipsRowProps) {
   if (!prompts.length) return null;
   const { colors } = useTheme();
-  const isDark = useColorScheme() === 'dark';
-  const c = isDark ? colors.dark : colors;
+  const c = colors;
   const styles = React.useMemo(() => createStyles(c), [c]);
 
   return (

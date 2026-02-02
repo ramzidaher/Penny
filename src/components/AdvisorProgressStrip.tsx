@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { typography } from '../theme/typography';
 import { useTheme } from '../contexts/ThemeContext';
@@ -13,8 +13,7 @@ interface AdvisorProgressStripProps {
 
 export default function AdvisorProgressStrip({ xp, level, streakCount, compact }: AdvisorProgressStripProps) {
   const { colors } = useTheme();
-  const isDark = useColorScheme() === 'dark';
-  const c = isDark ? colors.dark : colors;
+  const c = colors;
   const styles = React.useMemo(() => createStyles(c), [c]);
   const { intoLevel, toNext, pct } = useMemo(() => {
     const into = xp % 100;

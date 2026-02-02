@@ -55,6 +55,14 @@ export default function FinanceHomeScreen() {
     }
   };
 
+  const handleMoreNavigate = (route: string) => {
+    setShowMoreActions(false);
+    setMoreAnchor(null);
+    requestAnimationFrame(() => {
+      router.push(route as any);
+    });
+  };
+
   const morePopoverLayout = useMemo(() => {
     if (!moreAnchor) return null;
     const { width: screenW, height: screenH } = Dimensions.get('window');
@@ -538,7 +546,7 @@ export default function FinanceHomeScreen() {
       <Modal
         visible={showMoreActions}
         transparent
-        animationType="fade"
+        animationType="none"
         onRequestClose={() => setShowMoreActions(false)}
       >
         <Pressable style={styles.moreOverlay} onPress={() => setShowMoreActions(false)}>
@@ -561,8 +569,7 @@ export default function FinanceHomeScreen() {
                 <TouchableOpacity
                   style={styles.moreItem}
                   onPress={() => {
-                    setShowMoreActions(false);
-                    router.push('/(tabs)/finance/debts');
+                    handleMoreNavigate('/(tabs)/finance/debts');
                   }}
                 >
                   <Ionicons name="people-outline" size={20} color={colors.primary} />
@@ -574,8 +581,7 @@ export default function FinanceHomeScreen() {
                 <TouchableOpacity
                   style={styles.moreItem}
                   onPress={() => {
-                    setShowMoreActions(false);
-                    router.push('/(tabs)/finance/subscriptions');
+                    handleMoreNavigate('/(tabs)/finance/subscriptions');
                   }}
                 >
                   <Ionicons name="repeat-outline" size={20} color={colors.primary} />
@@ -590,8 +596,7 @@ export default function FinanceHomeScreen() {
                 <TouchableOpacity
                   style={styles.moreItem}
                   onPress={() => {
-                    setShowMoreActions(false);
-                    router.push('/(tabs)/finance/debts');
+                    handleMoreNavigate('/(tabs)/finance/debts');
                   }}
                 >
                   <Ionicons name="people-outline" size={20} color={colors.primary} />
@@ -601,8 +606,7 @@ export default function FinanceHomeScreen() {
                 <TouchableOpacity
                   style={styles.moreItem}
                   onPress={() => {
-                    setShowMoreActions(false);
-                    router.push('/(tabs)/finance/subscriptions');
+                    handleMoreNavigate('/(tabs)/finance/subscriptions');
                   }}
                 >
                   <Ionicons name="repeat-outline" size={20} color={colors.primary} />
