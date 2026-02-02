@@ -4,7 +4,7 @@
     "slug": "penny",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Penny Logo RD.png",
+    "icon": "./assets/Logo.png",
     "userInterfaceStyle": "automatic",
     "scheme": "penny",
     "main": "expo-router/entry",
@@ -19,15 +19,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pennyfinance.app",
-      "buildNumber": "7",
+      "buildNumber": "10",
       "associatedDomains": [],
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "Use Face ID to unlock your account securely."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Penny Logo RD.png",
+        "foregroundImage": "./assets/Logo.png",
         "backgroundColor": "#080808"
       },
       "package": "com.pennyfinance.app",
@@ -53,7 +54,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/Penny Logo RD.png",
+      "favicon": "./assets/Logo.png",
       "bundler": "metro",
       "output": "single"
     },

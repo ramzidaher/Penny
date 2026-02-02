@@ -1,7 +1,7 @@
 import React from 'react';
-import { ScrollView, Text, TouchableOpacity, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import { ScrollView, Text, TouchableOpacity, StyleSheet, View, useColorScheme } from 'react-native';
 import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AdvisorPromptChipsRowProps {
   prompts: string[];
@@ -11,6 +11,10 @@ interface AdvisorPromptChipsRowProps {
 
 export default function AdvisorPromptChipsRow({ prompts, disabled, onSelect }: AdvisorPromptChipsRowProps) {
   if (!prompts.length) return null;
+  const { colors } = useTheme();
+  const isDark = useColorScheme() === 'dark';
+  const c = isDark ? colors.dark : colors;
+  const styles = React.useMemo(() => createStyles(c), [c]);
 
   return (
     <ScrollView
@@ -36,30 +40,31 @@ export default function AdvisorPromptChipsRow({ prompts, disabled, onSelect }: A
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 4,
-    gap: 10,
-    alignItems: 'center',
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    maxWidth: 260,
-  },
-  chipText: {
-    ...typography.bodySmall,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  trailingSpacer: {
-    width: 10,
-  },
-});
+const createStyles = (c: { surface: string; border: string; text: string }) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 4,
+      gap: 10,
+      alignItems: 'center',
+    },
+    chip: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      maxWidth: 260,
+    },
+    chipText: {
+      ...typography.bodySmall,
+      color: c.text,
+      fontWeight: '600',
+    },
+    trailingSpacer: {
+      width: 10,
+    },
+  });
 

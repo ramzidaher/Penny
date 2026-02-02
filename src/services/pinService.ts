@@ -1,9 +1,5 @@
-import * as SecureStore from 'expo-secure-store';
 import { getFirestoreDb, getUserId, waitForFirebase, isFirebaseAvailable } from './firebase';
-import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
-
-const PIN_KEY = 'app_pin_hash';
-const PIN_SALT_KEY = 'app_pin_salt';
+import { doc, getDoc, setDoc, deleteDoc, Timestamp } from 'firebase/firestore';
 
 // Lazy load expo-crypto to handle cases where native module isn't available
 let Crypto: typeof import('expo-crypto') | null = null;
@@ -64,21 +60,18 @@ const generateSalt = async (): Promise<string> => {
     .join('');
 };
 
-/**
- * Sync PIN from Firestore to local storage
- */
-const syncPINFromFirestore = async (): Promise<boolean> => {
+const fetchPinFromFirestore = async (): Promise<{ pinHash: string; salt: string } | null> => {
   try {
     await waitForFirebase();
     if (!isFirebaseAvailable()) {
-      return false;
+      return null;
     }
     
     const db = getFirestoreDb();
     const userId = getUserId();
     
     if (!db || !userId) {
-      return false;
+      return null;
     }
     
     const pinRef = doc(db, `users/${userId}/security`, 'pin');
@@ -87,37 +80,23 @@ const syncPINFromFirestore = async (): Promise<boolean> => {
     if (pinSnap.exists()) {
       const data = pinSnap.data();
       if (data.pinHash && data.salt) {
-        // Store in local SecureStore for fast access
-        await SecureStore.setItemAsync(PIN_KEY, data.pinHash);
-        await SecureStore.setItemAsync(PIN_SALT_KEY, data.salt);
-        return true;
+        return { pinHash: data.pinHash, salt: data.salt };
       }
     }
-    return false;
+    return null;
   } catch (error) {
-    console.error('[pinService] Error syncing PIN from Firestore:', error);
-    return false;
+    console.error('[pinService] Error fetching PIN from Firestore:', error);
+    return null;
   }
 };
 
 /**
- * Check if PIN is set (checks local first, then Firestore)
+ * Check if PIN is set (Firestore only)
  */
 export const hasPIN = async (): Promise<boolean> => {
   try {
-    // Check local storage first
-    const pinHash = await SecureStore.getItemAsync(PIN_KEY);
-    if (pinHash !== null) {
-      return true;
-    }
-    
-    // If not in local storage, try to sync from Firestore
-    const synced = await syncPINFromFirestore();
-    if (synced) {
-      return true;
-    }
-    
-    return false;
+    const pinData = await fetchPinFromFirestore();
+    return !!pinData;
   } catch (error) {
     console.error('[pinService] Error checking PIN:', error);
     return false;
@@ -125,7 +104,7 @@ export const hasPIN = async (): Promise<boolean> => {
 };
 
 /**
- * Set or update PIN (stores in both local SecureStore and Firestore)
+ * Set or update PIN (Firestore only)
  * @param pin - Exactly 6 digit PIN
  */
 export const setPIN = async (pin: string): Promise<void> => {
@@ -141,31 +120,25 @@ export const setPIN = async (pin: string): Promise<void> => {
     // Hash PIN
     const pinHash = await hashPIN(pin, salt);
 
-    // Store hash and salt in local SecureStore for fast access
-    await SecureStore.setItemAsync(PIN_KEY, pinHash);
-    await SecureStore.setItemAsync(PIN_SALT_KEY, salt);
-
-    // Also store in Firestore for cross-device sync and persistence
-    try {
-      await waitForFirebase();
-      if (isFirebaseAvailable()) {
-        const db = getFirestoreDb();
-        const userId = getUserId();
-        
-        if (db && userId) {
-          const pinRef = doc(db, `users/${userId}/security`, 'pin');
-          await setDoc(pinRef, {
-            pinHash,
-            salt,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          });
-        }
-      }
-    } catch (firestoreError) {
-      console.error('[pinService] Error storing PIN in Firestore (continuing with local storage):', firestoreError);
-      // Don't throw - local storage is sufficient for basic functionality
+    await waitForFirebase();
+    if (!isFirebaseAvailable()) {
+      throw new Error('Firebase is not available');
     }
+
+    const db = getFirestoreDb();
+    const userId = getUserId();
+    
+    if (!db || !userId) {
+      throw new Error('Missing Firebase user context');
+    }
+
+    const pinRef = doc(db, `users/${userId}/security`, 'pin');
+    await setDoc(pinRef, {
+      pinHash,
+      salt,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
   } catch (error) {
     console.error('[pinService] Error setting PIN:', error);
     throw new Error('Failed to set PIN');
@@ -179,25 +152,14 @@ export const setPIN = async (pin: string): Promise<void> => {
  */
 export const validatePIN = async (pin: string): Promise<boolean> => {
   try {
-    let storedHash = await SecureStore.getItemAsync(PIN_KEY);
-    let storedSalt = await SecureStore.getItemAsync(PIN_SALT_KEY);
-
-    // If not in local storage, try to sync from Firestore
-    if (!storedHash || !storedSalt) {
-      const synced = await syncPINFromFirestore();
-      if (synced) {
-        storedHash = await SecureStore.getItemAsync(PIN_KEY);
-        storedSalt = await SecureStore.getItemAsync(PIN_SALT_KEY);
-      }
-    }
-
-    if (!storedHash || !storedSalt) {
+    const pinData = await fetchPinFromFirestore();
+    if (!pinData) {
       return false;
     }
 
     // Hash the provided PIN with stored salt
-    const providedHash = await hashPIN(pin, storedSalt);
-    const isValid = providedHash === storedHash;
+    const providedHash = await hashPIN(pin, pinData.salt);
+    const isValid = providedHash === pinData.pinHash;
 
     // Compare hashes
     return isValid;
@@ -212,10 +174,22 @@ export const validatePIN = async (pin: string): Promise<boolean> => {
  */
 export const deletePIN = async (): Promise<void> => {
   try {
-    await SecureStore.deleteItemAsync(PIN_KEY);
-    await SecureStore.deleteItemAsync(PIN_SALT_KEY);
+    await waitForFirebase();
+    if (!isFirebaseAvailable()) {
+      throw new Error('Firebase is not available');
+    }
+
+    const db = getFirestoreDb();
+    const userId = getUserId();
+
+    if (!db || !userId) {
+      throw new Error('Missing Firebase user context');
+    }
+
+    const pinRef = doc(db, `users/${userId}/security`, 'pin');
+    await deleteDoc(pinRef);
   } catch (error) {
-    console.error('Error deleting PIN:', error);
+    console.error('[pinService] Error deleting PIN:', error);
   }
 };
 

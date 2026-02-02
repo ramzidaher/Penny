@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ApplicationProperties</key>
+	<dict>
+		<key>ApplicationPath</key>
+		<string>Applications/Penny.app</string>
+		<key>Architectures</key>
+		<array>
+			<string>arm64</string>
+		</array>
+		<key>CFBundleIdentifier</key>
+		<string>com.pennyfinance.app</string>
+		<key>CFBundleShortVersionString</key>
+		<string>1.0.0</string>
+		<key>CFBundleVersion</key>
+		<string>3</string>
+		<key>SigningIdentity</key>
+		<string>Apple Development: ramzi.j.daher@gmail.com (822QG653X4)</string>
+		<key>Team</key>
+		<string>UAD3TXW8XS</string>
+	</dict>
+	<key>ArchiveVersion</key>
+	<integer>2</integer>
+	<key>CreationDate</key>
+	<date>2026-02-01T21:13:44Z</date>
+	<key>Name</key>
+	<string>Penny</string>
+	<key>SchemeName</key>
+	<string>Penny</string>
+</dict>
+</plist>

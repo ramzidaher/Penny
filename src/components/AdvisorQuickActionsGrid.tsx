@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 
 export interface AdvisorQuickAction {
   id: string;
@@ -19,6 +19,12 @@ interface AdvisorQuickActionsGridProps {
 }
 
 export default function AdvisorQuickActionsGrid({ actions, disabled, onSelect }: AdvisorQuickActionsGridProps) {
+  const { colors } = useTheme();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const c = isDark ? colors.dark : colors;
+  const styles = React.useMemo(() => createStyles(c), [c]);
+
   return (
     <View style={styles.grid}>
       {actions.map((a) => (
@@ -30,7 +36,7 @@ export default function AdvisorQuickActionsGrid({ actions, disabled, onSelect }:
           onPress={() => onSelect(a.prompt)}
         >
           <View style={styles.iconCircle}>
-            <Ionicons name={a.icon} size={18} color={colors.primary} />
+            <Ionicons name={a.icon} size={18} color={c.primary} />
           </View>
           <Text style={styles.title} numberOfLines={1}>
             {a.title}
@@ -44,42 +50,49 @@ export default function AdvisorQuickActionsGrid({ actions, disabled, onSelect }:
   );
 }
 
-const styles = StyleSheet.create({
-  grid: {
-    paddingHorizontal: 20,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  card: {
-    width: '48%',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 18,
-    padding: 14,
-    minHeight: 112,
-  },
-  iconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primary + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  title: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '800',
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  subtitle: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-});
+const createStyles = (c: {
+  surface: string;
+  border: string;
+  primary: string;
+  text: string;
+  textSecondary: string;
+}) =>
+  StyleSheet.create({
+    grid: {
+      paddingHorizontal: 20,
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    card: {
+      width: '48%',
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 18,
+      padding: 14,
+      minHeight: 112,
+    },
+    iconCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: c.primary + '10',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    title: {
+      ...typography.body,
+      color: c.text,
+      fontWeight: '800',
+      fontSize: 14,
+      marginBottom: 4,
+    },
+    subtitle: {
+      ...typography.bodySmall,
+      color: c.textSecondary,
+      lineHeight: 18,
+    },
+  });
 

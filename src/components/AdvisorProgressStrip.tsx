@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AdvisorProgressStripProps {
   xp: number;
@@ -12,6 +12,10 @@ interface AdvisorProgressStripProps {
 }
 
 export default function AdvisorProgressStrip({ xp, level, streakCount, compact }: AdvisorProgressStripProps) {
+  const { colors } = useTheme();
+  const isDark = useColorScheme() === 'dark';
+  const c = isDark ? colors.dark : colors;
+  const styles = React.useMemo(() => createStyles(c), [c]);
   const { intoLevel, toNext, pct } = useMemo(() => {
     const into = xp % 100;
     const toNextLevel = 100 - into;
@@ -26,11 +30,11 @@ export default function AdvisorProgressStrip({ xp, level, streakCount, compact }
     <View style={[styles.container, compact && styles.containerCompact]}>
       <View style={styles.row}>
         <View style={styles.pill}>
-          <Ionicons name="flame" size={16} color={colors.primary} />
+          <Ionicons name="flame" size={16} color={c.primary} />
           <Text style={styles.pillText}>{streakCount} day streak</Text>
         </View>
         <View style={styles.pill}>
-          <Ionicons name="trophy" size={16} color={colors.primary} />
+          <Ionicons name="trophy" size={16} color={c.primary} />
           <Text style={styles.pillText}>Level {level}</Text>
         </View>
         {!compact && (
@@ -49,64 +53,71 @@ export default function AdvisorProgressStrip({ xp, level, streakCount, compact }
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  containerCompact: {
-    paddingVertical: 12,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 10,
-    flexWrap: 'wrap',
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary + '10',
-    borderWidth: 1,
-    borderColor: colors.primary + '20',
-  },
-  pillText: {
-    ...typography.bodySmall,
-    color: colors.text,
-    fontWeight: '800',
-  },
-  smallMeta: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '700',
-    marginLeft: 'auto',
-  },
-  progressTrack: {
-    height: 10,
-    borderRadius: 999,
-    backgroundColor: colors.border,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-  },
-  progressLabel: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    fontWeight: '700',
-    marginTop: 8,
-  },
-});
+const createStyles = (c: {
+  surface: string;
+  border: string;
+  primary: string;
+  text: string;
+  textSecondary: string;
+}) =>
+  StyleSheet.create({
+    container: {
+      marginHorizontal: 20,
+      marginBottom: 16,
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    containerCompact: {
+      paddingVertical: 12,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 10,
+      flexWrap: 'wrap',
+    },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: c.primary + '10',
+      borderWidth: 1,
+      borderColor: c.primary + '20',
+    },
+    pillText: {
+      ...typography.bodySmall,
+      color: c.text,
+      fontWeight: '800',
+    },
+    smallMeta: {
+      ...typography.bodySmall,
+      color: c.textSecondary,
+      fontWeight: '700',
+      marginLeft: 'auto',
+    },
+    progressTrack: {
+      height: 10,
+      borderRadius: 999,
+      backgroundColor: c.border,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 999,
+      backgroundColor: c.primary,
+    },
+    progressLabel: {
+      ...typography.bodySmall,
+      color: c.textSecondary,
+      fontWeight: '700',
+      marginTop: 8,
+    },
+  });
 

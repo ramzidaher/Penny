@@ -9,6 +9,9 @@ import {
   query, 
   orderBy, 
   where,
+  limit,
+  startAfter,
+  QueryConstraint,
   Timestamp,
   writeBatch,
   deleteField
@@ -41,6 +44,34 @@ const timestampToISO = (timestamp: any): string => {
 // Helper to convert ISO string to Firestore timestamp
 const isoToTimestamp = (iso: string): Timestamp => {
   return Timestamp.fromDate(new Date(iso));
+};
+
+const mapTransactionDoc = (doc: any): Transaction => {
+  const data = doc.data();
+  
+  // Explicitly preserve null values - don't let them get lost in the spread
+  const transaction: Transaction = {
+    id: doc.id,
+    accountId: data.accountId,
+    amount: data.amount,
+    type: data.type,
+    category: data.category,
+    description: data.description || '',
+    date: timestampToISO(data.date),
+    createdAt: timestampToISO(data.createdAt),
+    // Explicitly handle subscriptionId, debtId, and budgetId to preserve null values
+    subscriptionId: data.subscriptionId !== undefined ? data.subscriptionId : undefined,
+    debtId: data.debtId !== undefined ? data.debtId : undefined,
+    budgetId: data.budgetId !== undefined ? data.budgetId : undefined,
+    // Preserve optional fields
+    ...(data.truelayerTransactionId && { truelayerTransactionId: data.truelayerTransactionId }),
+    ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
+    ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
+    ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
+    ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
+  };
+  
+  return transaction;
 };
 
 // Account operations
@@ -385,38 +416,65 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
       console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions without order`);
     }
     
-    const transactions = snapshot.docs.map(doc => {
-      const data = doc.data();
-      
-      // Explicitly preserve null values - don't let them get lost in the spread
-      const transaction: Transaction = {
-        id: doc.id,
-        accountId: data.accountId,
-        amount: data.amount,
-        type: data.type,
-        category: data.category,
-        description: data.description || '',
-        date: timestampToISO(data.date),
-        createdAt: timestampToISO(data.createdAt),
-        // Explicitly handle subscriptionId, debtId, and budgetId to preserve null values
-        subscriptionId: data.subscriptionId !== undefined ? data.subscriptionId : undefined,
-        debtId: data.debtId !== undefined ? data.debtId : undefined,
-        budgetId: data.budgetId !== undefined ? data.budgetId : undefined,
-        // Preserve optional fields
-        ...(data.truelayerTransactionId && { truelayerTransactionId: data.truelayerTransactionId }),
-        ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
-        ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
-        ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
-        ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
-      };
-      
-      return transaction;
-    }) as Transaction[];
+    const transactions = snapshot.docs.map(mapTransactionDoc) as Transaction[];
     
     return transactions;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error fetching transactions from cloud:', errorMessage);
+    throw error;
+  }
+};
+
+export const cloudGetTransactionsPage = async (options: {
+  limit: number;
+  startAfter?: string;
+  accountId?: string;
+}): Promise<{ transactions: Transaction[]; nextCursor?: string }> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available');
+  }
+  
+  const db = getFirestoreDb();
+  if (!db) {
+    throw new Error('Firestore database not initialized');
+  }
+  
+  try {
+    const userId = getUserId();
+    if (!userId) {
+      throw new Error('User not authenticated');
+    }
+    
+    const transactionsRef = collection(db, `users/${userId}/transactions`);
+    const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc'), limit(options.limit)];
+    if (options.accountId) {
+      constraints.unshift(where('accountId', '==', options.accountId));
+    }
+    if (options.startAfter) {
+      constraints.push(startAfter(isoToTimestamp(options.startAfter)));
+    }
+    
+    let snapshot;
+    try {
+      snapshot = await getDocs(query(transactionsRef, ...constraints));
+      console.log(`[cloudGetTransactionsPage] Fetched ${snapshot.docs.length} transactions`);
+    } catch (queryError: unknown) {
+      const errorMessage = queryError instanceof Error ? queryError.message : 'Unknown query error';
+      console.warn('[cloudGetTransactionsPage] Ordered query failed:', errorMessage);
+      snapshot = await getDocs(query(transactionsRef, limit(options.limit)));
+      console.log(`[cloudGetTransactionsPage] Fetched ${snapshot.docs.length} transactions without order`);
+    }
+    
+    const transactions = snapshot.docs.map(mapTransactionDoc) as Transaction[];
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const lastCreatedAt = lastDoc?.data()?.createdAt;
+    const nextCursor = lastCreatedAt ? timestampToISO(lastCreatedAt) : undefined;
+    
+    return { transactions, nextCursor };
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Error fetching transaction page from cloud:', errorMessage);
     throw error;
   }
 };
@@ -1973,7 +2031,9 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
     const existingAccounts = await cloudGetAccounts();
     
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1892',message:'Existing accounts retrieved for sync',data:{totalExistingAccounts:existingAccounts.length,currentConnectionId:connectionId,existingAccountsByConnection:Array.from(existingAccounts.reduce((map,acc)=>{if(acc.truelayerConnectionId){const connId=acc.truelayerConnectionId;if(!map.has(connId))map.set(connId,[]);map.get(connId)!.push({id:acc.id,name:acc.name,tlAccountId:acc.truelayerAccountId});}return map;},new Map()).entries()).map(([connId,accs])=>({connectionId:connId,accountCount:accs.length,accounts:accs}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    if (__DEV__) {
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1892',message:'Existing accounts retrieved for sync',data:{totalExistingAccounts:existingAccounts.length,currentConnectionId:connectionId,existingAccountsByConnection:Array.from(existingAccounts.reduce((map,acc)=>{if(acc.truelayerConnectionId){const connId=acc.truelayerConnectionId;if(!map.has(connId))map.set(connId,[]);map.get(connId)!.push({id:acc.id,name:acc.name,tlAccountId:acc.truelayerAccountId});}return map;},new Map()).entries()).map(([connId,accs])=>({connectionId:connId,accountCount:accs.length,accounts:accs}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    }
     // #endregion
     
     // Log accounts for this connection only
@@ -1981,7 +2041,9 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
     console.log(`[syncTrueLayerAccounts] Found ${accountsForThisConnection.length} existing account(s) for connection ${connectionId}`);
     
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1896',message:'Accounts for current connection',data:{connectionId,accountsForThisConnectionCount:accountsForThisConnection.length,accountsForThisConnection:accountsForThisConnection.map(a=>({id:a.id,name:a.name,tlAccountId:a.truelayerAccountId})),truelayerAccountsFromApi:truelayerAccounts.map(a=>({accountId:a.account_id,name:a.display_name,provider:a.provider?.display_name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    if (__DEV__) {
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1896',message:'Accounts for current connection',data:{connectionId,accountsForThisConnectionCount:accountsForThisConnection.length,accountsForThisConnection:accountsForThisConnection.map(a=>({id:a.id,name:a.name,tlAccountId:a.truelayerAccountId})),truelayerAccountsFromApi:truelayerAccounts.map(a=>({accountId:a.account_id,name:a.display_name,provider:a.provider?.display_name}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+    }
     // #endregion
     
     // Only match accounts from the SAME connection (old behavior - allows different banks)
@@ -2031,7 +2093,9 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
         const existingAccount = truelayerAccountMap.get(tlAccount.account_id);
         
         // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1974',message:'Checking if account exists in connection',data:{connectionId,tlAccountId:tlAccount.account_id,tlAccountName:tlAccount.display_name,existingAccountFound:!!existingAccount,existingAccountId:existingAccount?.id,existingAccountConnectionId:existingAccount?.truelayerConnectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        if (__DEV__) {
+          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:1974',message:'Checking if account exists in connection',data:{connectionId,tlAccountId:tlAccount.account_id,tlAccountName:tlAccount.display_name,existingAccountFound:!!existingAccount,existingAccountId:existingAccount?.id,existingAccountConnectionId:existingAccount?.truelayerConnectionId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+        }
         // #endregion
         
         if (existingAccount) {
@@ -2083,7 +2147,9 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
           console.log(`[syncTrueLayerAccounts] Creating new account: ${accountData.name} (${accountData.truelayerAccountId}) from ${accountData.truelayerProviderName || 'Unknown'}, connection: ${connectionId}`);
           
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2030',message:'Creating new account',data:{connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId,provider:accountData.truelayerProviderName,checkingForDuplicatesAcrossConnections:true,existingAccountsWithSameTlId:existingAccounts.filter(a=>a.truelayerAccountId===accountData.truelayerAccountId&&a.truelayerConnectionId!==connectionId).map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          if (__DEV__) {
+            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2030',message:'Creating new account',data:{connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId,provider:accountData.truelayerProviderName,checkingForDuplicatesAcrossConnections:true,existingAccountsWithSameTlId:existingAccounts.filter(a=>a.truelayerAccountId===accountData.truelayerAccountId&&a.truelayerConnectionId!==connectionId).map(a=>({id:a.id,name:a.name,connectionId:a.truelayerConnectionId}))},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          }
           // #endregion
           
           const newAccountId = await cloudAddAccount({
@@ -2100,7 +2166,9 @@ export const syncTrueLayerAccounts = async (connectionId: string): Promise<{ dup
           });
           
           // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2045',message:'Account created successfully',data:{newAccountId,connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          if (__DEV__) {
+            fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'cloudDb.ts:2045',message:'Account created successfully',data:{newAccountId,connectionId,accountName:accountData.name,tlAccountId:accountData.truelayerAccountId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+          }
           // #endregion
           
           console.log(`[syncTrueLayerAccounts] Successfully created account with ID: ${newAccountId}`);
@@ -2756,4 +2824,3 @@ export const cloudDeleteAllMemories = async (): Promise<void> => {
     throw error;
   }
 };
-

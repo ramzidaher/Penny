@@ -532,4 +532,3 @@ export const syncPlaidTransactions = onCall(
     return { items: results };
   }
 );
-

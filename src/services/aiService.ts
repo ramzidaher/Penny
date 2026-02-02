@@ -74,7 +74,7 @@ const getToneInstructions = (tone: 'friendly' | 'professional' | 'direct' | 'har
     case 'direct':
       return "Be straightforward and no-nonsense. Speak casually and directly, no sugar-coating. Be honest and to the point. Use casual, conversational language.";
     case 'harsh':
-      return "Be brutally honest and use strong language including swear words when appropriate. Be harsh but helpful - tough love approach. Use casual, edgy language. Don't hold back - tell it like it is. Use profanity when it emphasizes your point or when the user is making a bad financial decision.";
+      return "Be candid and firm without using profanity. Use direct, plain language and focus on clear, actionable feedback. Keep the tone respectful and avoid insults or shock value.";
     default:
       return "Be professional and helpful.";
   }
@@ -108,7 +108,9 @@ export const askAI = async (
     const safeMemories = filterMemoriesForPrompt(memories);
     const memoryBlock = formatMemoryBlock(safeMemories);
     
-    const systemPrompt = `You are a financial advisor AI assistant for Penny app. Analyze the following financial data and answer the user's question.
+    const systemPrompt = `You are a financial planning assistant for the Penny app. Provide general informational guidance based on the user's data.
+Do not present yourself as a licensed advisor and do not provide legal, medical, or tax advice. Include a brief disclaimer when appropriate.
+Avoid asking for or inferring sensitive personal data beyond what is provided. If the user requests something that requires a professional, recommend consulting a qualified expert.
 
 TONE AND COMMUNICATION STYLE:
 ${toneInstructions}
@@ -154,7 +156,7 @@ Provide a concise, helpful answer. If asked about purchasing something, analyze 
     ];
 
     const response = await axios.post(
-      `https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
       {
         contents,
         systemInstruction: {
@@ -168,6 +170,7 @@ Provide a concise, helpful answer. If asked about purchasing something, analyze 
       {
         headers: {
           'Content-Type': 'application/json',
+          'X-goog-api-key': GEMINI_API_KEY,
         },
       }
     );

@@ -1,6 +1,7 @@
 import { checkUsername } from './checkUsername';
 import { checkEmail } from './checkEmail';
 import { processDataRetention } from './dataRetention';
+import { processAccountDeletions } from './accountDeletion';
 import {
   createPlaidHostedLinkToken,
   plaidLinkTokenGet,
@@ -15,6 +16,7 @@ export {
   checkUsername,
   checkEmail,
   processDataRetention,
+  processAccountDeletions,
   createPlaidHostedLinkToken,
   plaidLinkTokenGet,
   exchangePlaidPublicToken,

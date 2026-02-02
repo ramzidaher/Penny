@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import { AdvisorMission } from '../utils/advisorMissions';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AdvisorMissionsListProps {
   missions: AdvisorMission[];
@@ -19,6 +19,10 @@ export default function AdvisorMissionsList({
   onCompleteMission,
 }: AdvisorMissionsListProps) {
   if (!missions.length) return null;
+  const { colors } = useTheme();
+  const isDark = useColorScheme() === 'dark';
+  const c = isDark ? colors.dark : colors;
+  const styles = React.useMemo(() => createStyles(c), [c]);
 
   return (
     <View style={styles.container}>
@@ -35,7 +39,7 @@ export default function AdvisorMissionsList({
               <Ionicons
                 name={completed ? 'checkmark-circle' : 'ellipse-outline'}
                 size={22}
-                color={completed ? colors.primary : colors.textLight}
+                color={completed ? c.primary : c.textLight}
               />
               <View style={styles.textCol}>
                 <Text style={[styles.title, completed && styles.titleCompleted]} numberOfLines={1}>
@@ -65,74 +69,82 @@ export default function AdvisorMissionsList({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    paddingHorizontal: 20,
-    gap: 10,
-  },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
-  },
-  cardCompleted: {
-    opacity: 0.7,
-  },
-  left: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  textCol: {
-    flex: 1,
-  },
-  title: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '900',
-    fontSize: 14,
-    marginBottom: 2,
-  },
-  titleCompleted: {
-    textDecorationLine: 'line-through',
-    color: colors.textSecondary,
-  },
-  desc: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-  right: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-  xp: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '900',
-  },
-  askButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary + '10',
-    borderWidth: 1,
-    borderColor: colors.primary + '20',
-  },
-  askButtonDisabled: {
-    opacity: 0.5,
-  },
-  askText: {
-    ...typography.bodySmall,
-    color: colors.primary,
-    fontWeight: '900',
-  },
-});
+const createStyles = (c: {
+  surface: string;
+  border: string;
+  primary: string;
+  text: string;
+  textSecondary: string;
+  textLight: string;
+}) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 20,
+      gap: 10,
+    },
+    card: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      gap: 12,
+    },
+    cardCompleted: {
+      opacity: 0.7,
+    },
+    left: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    textCol: {
+      flex: 1,
+    },
+    title: {
+      ...typography.body,
+      color: c.text,
+      fontWeight: '900',
+      fontSize: 14,
+      marginBottom: 2,
+    },
+    titleCompleted: {
+      textDecorationLine: 'line-through',
+      color: c.textSecondary,
+    },
+    desc: {
+      ...typography.bodySmall,
+      color: c.textSecondary,
+      lineHeight: 18,
+    },
+    right: {
+      alignItems: 'flex-end',
+      gap: 8,
+    },
+    xp: {
+      ...typography.bodySmall,
+      color: c.primary,
+      fontWeight: '900',
+    },
+    askButton: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: c.primary + '10',
+      borderWidth: 1,
+      borderColor: c.primary + '20',
+    },
+    askButtonDisabled: {
+      opacity: 0.5,
+    },
+    askText: {
+      ...typography.bodySmall,
+      color: c.primary,
+      fontWeight: '900',
+    },
+  });
 

@@ -139,4 +139,3 @@ export interface UserMemory {
   createdAt: string;
   updatedAt: string;
 }
-

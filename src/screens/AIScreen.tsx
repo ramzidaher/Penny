@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -418,10 +418,10 @@ export default function AIScreen() {
   };
 
   const quickQuestions = [
-    'How am I doing financially?',
-    'What are my biggest expenses?',
-    'Can I afford a $500 purchase?',
-    'How much can I spend this month?',
+    'Where am I trending this month?',
+    'What are my biggest expense drivers?',
+    'Can I safely spend $500 this month?',
+    "What's my remaining spend this month?",
   ];
 
   const quickActions = [
@@ -572,7 +572,7 @@ export default function AIScreen() {
       <View style={styles.container}>
         <ScreenHeader
           title="Penny Advisor"
-          subtitle={currentThread?.title || "Ask me anything about your finances"}
+          subtitle={currentThread?.title || 'Your money plan at a glance'}
           titleFontFamily="GulfsDisplay-Normal"
           titleLetterSpacing={0.5}
           rightAction={{
@@ -580,7 +580,6 @@ export default function AIScreen() {
             onPress: () => setShowThreadsModal(true),
           }}
         />
-
         <View style={styles.scrollArea}>
           <ScreenWrapper
             ref={screenWrapperRef}
@@ -629,7 +628,6 @@ export default function AIScreen() {
             onCompleteMission={handleCompleteMission}
           />
         )}
-
         {/* Keep the legacy quick-questions state for now; landing content is shown when messages are empty */}
           </ScreenWrapper>
         </View>

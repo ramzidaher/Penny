@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -156,7 +156,6 @@ export default function AdvisorIndex() {
             titleFontFamily="GulfsDisplay-Normal"
             titleLetterSpacing={0.5}
           />
-
           <AdvisorLanding
             disabled={loading}
             onAsk={(prompt) => goToChat(prompt)}
@@ -177,6 +176,11 @@ export default function AdvisorIndex() {
             onAskForMission={(m) => goToChat(promptForMission(m))}
             onCompleteMission={handleCompleteMission}
           />
+          <View style={styles.disclaimerCard}>
+            <Text style={styles.disclaimerText}>
+              General guidance only. Not financial, legal, or tax advice.
+            </Text>
+          </View>
         </ScreenWrapper>
       </View>
     </View>
@@ -190,6 +194,21 @@ const styles = StyleSheet.create({
   },
   scrollArea: {
     flex: 1,
+  },
+  disclaimerCard: {
+    marginHorizontal: 20,
+    marginTop: 16,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  disclaimerText: {
+    fontSize: 12,
+    color: colors.textSecondary,
   },
 });
 

@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors } from '../theme/colors';
+import { View, Text, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
 import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface AdvisorQuickQuestionsProps {
   title?: string;
@@ -19,6 +19,10 @@ export default function AdvisorQuickQuestions({
   onSelect,
 }: AdvisorQuickQuestionsProps) {
   if (!visible) return null;
+  const { colors } = useTheme();
+  const isDark = useColorScheme() === 'dark';
+  const c = isDark ? colors.dark : colors;
+  const styles = React.useMemo(() => createStyles(c), [c]);
 
   return (
     <View style={styles.quickQuestionsContainer}>
@@ -38,28 +42,29 @@ export default function AdvisorQuickQuestions({
   );
 }
 
-const styles = StyleSheet.create({
-  quickQuestionsContainer: {
-    marginTop: 8,
-    paddingHorizontal: 20,
-  },
-  quickQuestionsTitle: {
-    ...typography.body,
-    color: colors.text,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  quickQuestionButton: {
-    backgroundColor: colors.surface,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 8,
-  },
-  quickQuestionText: {
-    ...typography.bodySmall,
-    color: colors.text,
-  },
-});
+const createStyles = (c: { surface: string; border: string; text: string }) =>
+  StyleSheet.create({
+    quickQuestionsContainer: {
+      marginTop: 8,
+      paddingHorizontal: 20,
+    },
+    quickQuestionsTitle: {
+      ...typography.body,
+      color: c.text,
+      fontWeight: '600',
+      marginBottom: 12,
+    },
+    quickQuestionButton: {
+      backgroundColor: c.surface,
+      padding: 12,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: c.border,
+      marginBottom: 8,
+    },
+    quickQuestionText: {
+      ...typography.bodySmall,
+      color: c.text,
+    },
+  });
 

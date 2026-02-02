@@ -4,7 +4,7 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { Platform, AppState, AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { initFirebase, onAuthStateChanged, getAuth, setCurrentUser, setAuthStateCallback, getIsSigningOut, logoutUser } from '../src/services/firebase';
+import { initFirebase, onAuthStateChanged, getAuth, setCurrentUser, setAuthStateCallback, getIsSigningOut, logoutUser, refreshAccountDeletionStatus } from '../src/services/firebase';
 import { initDatabase } from '../src/database/db';
 import { initializeNotifications } from '../src/services/notifications';
 // NOTE: TrueLayer auto-sync removed (manual-only mode).
@@ -67,6 +67,11 @@ function RootLayoutInner() {
           setIsAuthReady(true);
           
           if (user) {
+            const deletionStatus = await refreshAccountDeletionStatus();
+            if (deletionStatus.status !== 'active') {
+              await logoutUser();
+              return;
+            }
             initPurchases(user.uid).catch((error) => {
               console.warn('[RootLayout] RevenueCat init failed:', error);
             });

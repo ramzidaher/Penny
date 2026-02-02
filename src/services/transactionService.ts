@@ -76,25 +76,30 @@ export const getTransactions = async (forceRefresh: boolean = false): Promise<Tr
       }
     }
 
-    for (const account of connectionAccounts) {
+    const accountPromises = connectionAccounts.map(async (account) => {
       if (!account.truelayerAccountId) {
         console.warn('[transactionService] Account missing truelayerAccountId, skipping');
-        continue;
+        return [] as Transaction[];
       }
-
+      
       try {
-        const transactions = await getCachedTransactions(
+        return await getCachedTransactions(
           connection.id,
           account.truelayerAccountId,
           account.id,
           forceRefresh
         );
-        allTransactions.push(...transactions);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`[transactionService] Error fetching cached transactions:`, errorMessage);
+        return [] as Transaction[];
       }
-    }
+    });
+    
+    const connectionTransactions = await Promise.all(accountPromises);
+    connectionTransactions.forEach(transactions => {
+      allTransactions.push(...transactions);
+    });
   }
 
   // SECURITY: Merge Firestore updates (user categorizations) with cached transactions

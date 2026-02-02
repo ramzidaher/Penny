@@ -10,7 +10,17 @@ import { AppSettings } from '../database/settingsSchema';
 import { useTheme } from '../contexts/ThemeContext';
 import { accentPresets, isValidHexColor, normalizeHex } from '../theme/themePresets';
 import { typography } from '../theme/typography';
-import { waitForFirebase, getUserEmail, verifyPassword, getCurrentUser } from '../services/firebase';
+import {
+  waitForFirebase,
+  getUserEmail,
+  verifyPassword,
+  getCurrentUser,
+  requestAccountDeletion,
+  refreshAccountDeletionStatus,
+  getAccountDeletionStatus,
+  type AccountDeletionStatus,
+  logoutUser,
+} from '../services/firebase';
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 import { ensureDemoSeeded } from '../services/demoSeed';
 import { isDemoUser } from '../services/demoUser';
@@ -61,6 +71,10 @@ export default function SettingsScreen() {
   const [showAccentModal, setShowAccentModal] = useState(false);
   const [accentHexInput, setAccentHexInput] = useState('');
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [accountDeletionStatus, setAccountDeletionStatus] = useState<AccountDeletionStatus>(
+    getAccountDeletionStatus()
+  );
+  const [requestingDeletion, setRequestingDeletion] = useState(false);
 
   // Removed logging for better performance
 
@@ -82,6 +96,9 @@ export default function SettingsScreen() {
       // Check if PIN is set
       const hasPin = await hasPIN();
       setPinSet(hasPin);
+
+      const deletionStatus = await refreshAccountDeletionStatus();
+      setAccountDeletionStatus(deletionStatus);
     } catch (error) {
       console.error('Error loading settings:', error);
       dialog.alert('Error', 'Failed to load settings');
@@ -184,6 +201,54 @@ export default function SettingsScreen() {
       dialog.alert('Cleared', 'All AI memory has been removed.');
     } catch (error: any) {
       dialog.alert('Error', error?.message || 'Failed to clear AI memory.');
+    }
+  };
+
+  const formatDeletionDate = (value?: string) => {
+    if (!value) return 'soon';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'soon';
+    return date.toLocaleDateString();
+  };
+
+  const handleRequestAccountDeletion = async () => {
+    if (requestingDeletion) return;
+
+    if (accountDeletionStatus.status === 'deletion_pending') {
+      await dialog.alert(
+        'Deletion scheduled',
+        `Your account is scheduled for deletion on ${formatDeletionDate(
+          accountDeletionStatus.scheduledDeletionAt
+        )}. Contact support if you need to cancel.`
+      );
+      return;
+    }
+
+    const choice = await dialog.showDialog(
+      'Delete account',
+      'This will schedule your account for deletion and sign you out immediately. You can cancel by contacting support before the scheduled date.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive' },
+      ]
+    );
+    if (choice !== 'Delete') return;
+
+    try {
+      setRequestingDeletion(true);
+      const status = await requestAccountDeletion();
+      setAccountDeletionStatus(status);
+      await dialog.alert(
+        'Deletion requested',
+        `Your account is scheduled for deletion on ${formatDeletionDate(
+          status.scheduledDeletionAt
+        )}. You can cancel by contacting support.`
+      );
+      await logoutUser();
+    } catch (error: any) {
+      dialog.alert('Error', error?.message || 'Failed to request account deletion.');
+    } finally {
+      setRequestingDeletion(false);
     }
   };
 
@@ -858,6 +923,23 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          <View style={styles.divider} />
+          <TouchableOpacity
+            style={[styles.settingRow, requestingDeletion && styles.buttonDisabled]}
+            onPress={handleRequestAccountDeletion}
+            disabled={requestingDeletion}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={[styles.settingLabel, styles.destructiveLabel]}>Delete account</Text>
+              <Text style={styles.settingDescription}>
+                {accountDeletionStatus.status === 'deletion_pending'
+                  ? `Scheduled for deletion on ${formatDeletionDate(accountDeletionStatus.scheduledDeletionAt)}.`
+                  : 'Schedule deletion and remove your data.'}
+              </Text>
+            </View>
+            <Ionicons name="warning-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+
           {isDemoUser() && (
             <>
               <View style={styles.divider} />
@@ -1220,6 +1302,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 4,
+  },
+  destructiveLabel: {
+    color: colors.text,
   },
   settingDescription: {
     fontSize: 13,

@@ -426,7 +426,9 @@ const storeTokensInFirestore = async (
   }
   
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:428',message:'FLOW_TOKEN_STORAGE_START: Storing tokens in Firestore',data:{connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,accessTokenPrefix:accessToken.substring(0,30)+'...',refreshTokenPrefix:refreshToken.substring(0,30)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  if (__DEV__) {
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:428',message:'FLOW_TOKEN_STORAGE_START: Storing tokens in Firestore',data:{connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,accessTokenPrefix:accessToken.substring(0,30)+'...',refreshTokenPrefix:refreshToken.substring(0,30)+'...'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  }
   // #endregion
   
   // CRITICAL: Store with connectionId as document ID to prevent mix-ups
@@ -444,7 +446,9 @@ const storeTokensInFirestore = async (
   }
   
   // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:437',message:'FLOW_TOKEN_STORAGE_END: Token storage verified in Firestore',data:{connectionId,storedConnectionId:verificationData.connectionId,connectionIdsMatch:verificationData.connectionId===connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,verificationResult:verificationData.connectionId===connectionId?'MATCH':'MISMATCH'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  if (__DEV__) {
+    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:437',message:'FLOW_TOKEN_STORAGE_END: Token storage verified in Firestore',data:{connectionId,storedConnectionId:verificationData.connectionId,connectionIdsMatch:verificationData.connectionId===connectionId,documentId:tokenRef.id,documentPath:`users/${userId}/tokens/${connectionId}`,verificationResult:verificationData.connectionId===connectionId?'MATCH':'MISMATCH'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+  }
   // #endregion
   
   console.log('[truelayerService] storeTokensInFirestore: Stored and verified tokens in Firestore:', {
@@ -1801,7 +1805,9 @@ export const fetchAndStoreProviderName = async (connectionId: string): Promise<s
     });
     
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1724',message:'FLOW_PROVIDER_STORAGE: Stored provider name in Firestore',data:{connectionId,providerName,userId,documentPath:`users/${userId}/tokens/${connectionId}`,connectionIdToProvider:`${connectionId} -> ${providerName}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    if (__DEV__) {
+      fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'truelayerService.ts:1724',message:'FLOW_PROVIDER_STORAGE: Stored provider name in Firestore',data:{connectionId,providerName,userId,documentPath:`users/${userId}/tokens/${connectionId}`,connectionIdToProvider:`${connectionId} -> ${providerName}`},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'FLOW'})}).catch(()=>{});
+    }
     // #endregion
     
     console.log('[truelayerService] fetchAndStoreProviderName: Successfully stored provider name:', {

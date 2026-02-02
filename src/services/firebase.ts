@@ -1,4 +1,5 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { addDays } from 'date-fns';
 import { getFirestore, Firestore, enableNetwork, disableNetwork, doc, setDoc, updateDoc, getDoc, collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { getFunctions, Functions, httpsCallable, connectFunctionsEmulator } from 'firebase/functions';
 import {
@@ -212,6 +213,16 @@ export { onFirebaseAuthStateChanged as onAuthStateChanged };
 // Callback to notify App.tsx of auth state changes (set by App.tsx)
 let authStateCallback: ((user: User | null) => void) | null = null;
 let isSigningOut = false; // Flag to prevent auto-restore after sign out
+const DEFAULT_DELETION_GRACE_DAYS = 7;
+
+export type AccountDeletionStatus = {
+  status: 'active' | 'deletion_pending' | 'deleted';
+  requestedAt?: string;
+  scheduledDeletionAt?: string;
+  gracePeriodDays?: number;
+};
+
+let accountDeletionStatus: AccountDeletionStatus = { status: 'active' };
 
 export const setAuthStateCallback = (callback: (user: User | null) => void) => {
   authStateCallback = callback;
@@ -238,7 +249,74 @@ export const setCurrentUser = (user: User | null): void => {
 
 // Check if Firebase is available
 export const isFirebaseAvailable = (): boolean => {
-  return db !== null && currentUser !== null;
+  return db !== null && currentUser !== null && accountDeletionStatus.status === 'active';
+};
+
+export const getAccountDeletionStatus = (): AccountDeletionStatus => accountDeletionStatus;
+
+export const refreshAccountDeletionStatus = async (): Promise<AccountDeletionStatus> => {
+  if (!db || !currentUser) {
+    accountDeletionStatus = { status: 'active' };
+    return accountDeletionStatus;
+  }
+
+  try {
+    const userDoc = await getDoc(doc(db, `users/${currentUser.uid}`));
+    if (!userDoc.exists()) {
+      accountDeletionStatus = { status: 'active' };
+      return accountDeletionStatus;
+    }
+
+    const data = userDoc.data() as {
+      accountStatus?: 'active' | 'deletion_pending' | 'deleted';
+      deletionRequestedAt?: string;
+      scheduledDeletionAt?: string;
+      deletionGraceDays?: number;
+    };
+
+    const status = data.accountStatus || (data.deletionRequestedAt ? 'deletion_pending' : 'active');
+    accountDeletionStatus = {
+      status,
+      requestedAt: data.deletionRequestedAt,
+      scheduledDeletionAt: data.scheduledDeletionAt,
+      gracePeriodDays: data.deletionGraceDays,
+    };
+    return accountDeletionStatus;
+  } catch (error) {
+    console.warn('[firebase] Failed to refresh account deletion status:', error);
+    accountDeletionStatus = { status: 'active' };
+    return accountDeletionStatus;
+  }
+};
+
+export const requestAccountDeletion = async (reason?: string): Promise<AccountDeletionStatus> => {
+  if (!db || !currentUser) {
+    throw new Error('Firebase not initialized');
+  }
+
+  const requestedAt = new Date().toISOString();
+  const scheduledDeletionAt = addDays(new Date(), DEFAULT_DELETION_GRACE_DAYS).toISOString();
+
+  await setDoc(
+    doc(db, `users/${currentUser.uid}`),
+    {
+      accountStatus: 'deletion_pending',
+      deletionRequestedAt: requestedAt,
+      scheduledDeletionAt,
+      deletionGraceDays: DEFAULT_DELETION_GRACE_DAYS,
+      deletionReason: reason || null,
+    },
+    { merge: true }
+  );
+
+  accountDeletionStatus = {
+    status: 'deletion_pending',
+    requestedAt,
+    scheduledDeletionAt,
+    gracePeriodDays: DEFAULT_DELETION_GRACE_DAYS,
+  };
+
+  return accountDeletionStatus;
 };
 
 // Enable/disable network (for offline mode)
@@ -526,6 +604,14 @@ export const loginUser = async (email: string, password: string): Promise<User> 
     console.error('[firebase] Error syncing PIN after login:', error);
     // Don't block login if PIN sync fails
   }
+
+  const deletionStatus = await refreshAccountDeletionStatus();
+  if (deletionStatus.status !== 'active') {
+    await logoutUser();
+    throw new Error(
+      'This account is pending deletion. Contact support if this was a mistake.'
+    );
+  }
   
   return userCredential.user;
 };
@@ -556,6 +642,7 @@ export const logoutUser = async (): Promise<void> => {
   
   // Clear the currentUser immediately
   currentUser = null;
+  accountDeletionStatus = { status: 'active' };
   
   // On web, clear sessionStorage and localStorage to prevent auto-restore
   if (typeof window !== 'undefined') {

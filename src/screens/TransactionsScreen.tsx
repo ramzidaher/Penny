@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, TextInput, Modal, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, TextInput, Modal, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactions, deleteTransaction, updateTransaction, untagTransaction } from '../database/db';
+import { getTransactionsPage, deleteTransaction, updateTransaction, untagTransaction } from '../database/db';
 import { refreshTransactions } from '../services/transactionService';
 import { Transaction } from '../database/schema';
 import { TransactionType } from '../utils/categories';
@@ -30,9 +30,13 @@ export default function TransactionsScreen() {
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const PAGE_SIZE = 50;
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const [hasMore, setHasMore] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -55,18 +59,22 @@ export default function TransactionsScreen() {
     try {
       setLoading(true);
       console.log('[TransactionsScreen] Loading transactions...');
-      const [trans, settings] = await Promise.all([
-        getTransactions(),
+      const [page, settings] = await Promise.all([
+        getTransactionsPage({ limit: PAGE_SIZE }),
         getSettings(),
       ]);
-      console.log(`[TransactionsScreen] Loaded ${trans.length} transactions`);
-      setTransactions(trans);
+      console.log(`[TransactionsScreen] Loaded ${page.transactions.length} transactions`);
+      setTransactions(page.transactions);
+      setCursor(page.nextCursor);
+      setHasMore(page.transactions.length === PAGE_SIZE && !!page.nextCursor);
       setCurrencyCode(settings.defaultCurrency);
       setSwipeDirection(settings.swipeDirection);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[TransactionsScreen] Error loading transactions:', errorMessage);
       setTransactions([]);
+      setCursor(undefined);
+      setHasMore(false);
     } finally {
       setLoading(false);
     }
@@ -89,6 +97,25 @@ export default function TransactionsScreen() {
     }
     await loadTransactions();
     setRefreshing(false);
+  };
+
+  const loadMoreTransactions = async () => {
+    if (loadingMore || !hasMore || !cursor) return;
+    setLoadingMore(true);
+    try {
+      const page = await getTransactionsPage({ limit: PAGE_SIZE, startAfter: cursor });
+      if (page.transactions.length === 0) {
+        setHasMore(false);
+        return;
+      }
+      setTransactions(prev => [...prev, ...page.transactions]);
+      setCursor(page.nextCursor);
+      setHasMore(page.transactions.length === PAGE_SIZE && !!page.nextCursor);
+    } catch (error) {
+      console.error('[TransactionsScreen] Error loading more transactions:', error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -278,6 +305,36 @@ export default function TransactionsScreen() {
     setPendingCategory(null);
   };
 
+  const filteredTransactions = useMemo(() => {
+    let filtered = filterTransactionsByPeriod(transactions, filterPeriod).transactions;
+    
+    if (typeFilter === 'income') {
+      filtered = filtered.filter(t => t.type === 'income');
+    } else if (typeFilter === 'expense') {
+      filtered = filtered.filter(t => t.type === 'expense');
+    }
+    
+    if (tagFilter === 'subscriptions') {
+      filtered = filtered.filter(t => t.subscriptionId);
+    } else if (tagFilter === 'debts') {
+      filtered = filtered.filter(t => t.debtId);
+    } else if (tagFilter === 'untagged') {
+      filtered = filtered.filter(t => !t.subscriptionId && !t.debtId);
+    }
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(t => {
+        const description = (t.description || '').toLowerCase();
+        const category = (t.category || '').toLowerCase();
+        const amount = formatCurrencySync(t.amount, currencyCode).toLowerCase();
+        return description.includes(query) || category.includes(query) || amount.includes(query);
+      });
+    }
+    
+    return filtered;
+  }, [transactions, filterPeriod, typeFilter, tagFilter, searchQuery, currencyCode]);
+
   if (loading && !refreshing) {
     return (
       <View style={styles.container}>
@@ -286,35 +343,6 @@ export default function TransactionsScreen() {
         </View>
       </View>
     );
-  }
-
-  let filteredTransactions = filterTransactionsByPeriod(transactions, filterPeriod).transactions;
-
-  // Apply type filter
-  if (typeFilter === 'income') {
-    filteredTransactions = filteredTransactions.filter(t => t.type === 'income');
-  } else if (typeFilter === 'expense') {
-    filteredTransactions = filteredTransactions.filter(t => t.type === 'expense');
-  }
-
-  // Apply tag filter
-  if (tagFilter === 'subscriptions') {
-    filteredTransactions = filteredTransactions.filter(t => t.subscriptionId);
-  } else if (tagFilter === 'debts') {
-    filteredTransactions = filteredTransactions.filter(t => t.debtId);
-  } else if (tagFilter === 'untagged') {
-    filteredTransactions = filteredTransactions.filter(t => !t.subscriptionId && !t.debtId);
-  }
-
-  // Apply search filter
-  if (searchQuery.trim()) {
-    const query = searchQuery.toLowerCase().trim();
-    filteredTransactions = filteredTransactions.filter(t => {
-      const description = (t.description || '').toLowerCase();
-      const category = (t.category || '').toLowerCase();
-      const amount = formatCurrencySync(t.amount, currencyCode).toLowerCase();
-      return description.includes(query) || category.includes(query) || amount.includes(query);
-    });
   }
 
   return (
@@ -481,12 +509,27 @@ export default function TransactionsScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={11}
+          updateCellsBatchingPeriod={50}
+          removeClippedSubviews={Platform.OS === 'android'}
+          onEndReached={loadMoreTransactions}
+          onEndReachedThreshold={0.5}
+          keyboardShouldPersistTaps="handled"
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="receipt-outline" size={64} color={colors.textLight} />
               <Text style={styles.emptyText}>No transactions yet</Text>
               <Text style={styles.emptySubtext}>Add your first transaction to get started</Text>
             </View>
+          }
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.footerLoader}>
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              </View>
+            ) : null
           }
           renderItem={({ item }) => (
             <SwipeableTransactionCard
@@ -691,6 +734,10 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 20,
     paddingBottom: 100,
+  },
+  footerLoader: {
+    paddingVertical: 16,
+    alignItems: 'center',
   },
   emptyContainer: {
     alignItems: 'center',

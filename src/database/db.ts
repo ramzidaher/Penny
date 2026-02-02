@@ -58,6 +58,14 @@ export const getTransactions = async (accountId?: string): Promise<Transaction[]
   return transactions;
 };
 
+export const getTransactionsPage = async (options: {
+  limit: number;
+  startAfter?: string;
+  accountId?: string;
+}): Promise<{ transactions: Transaction[]; nextCursor?: string }> => {
+  return await cloudDb.cloudGetTransactionsPage(options);
+};
+
 export const addTransaction = async (transaction: Omit<Transaction, 'id' | 'createdAt'>): Promise<string> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
