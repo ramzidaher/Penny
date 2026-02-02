@@ -4,9 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { getTransactionIcon, getSubscriptionIcon } from '../utils/icons';
 
-// You can set this in your .env file as EXPO_PUBLIC_LOGO_DEV_KEY
-// This is your publishable key - safe to use in client-side code
-const LOGO_DEV_PUBLIC_KEY = process.env.EXPO_PUBLIC_LOGO_DEV_KEY || 'pk_WinkY0UARgipCtWGpa1HRg';
+// Set EXPO_PUBLIC_LOGO_DEV_KEY in .env (publishable key - safe in client)
+const LOGO_DEV_PUBLIC_KEY = process.env.EXPO_PUBLIC_LOGO_DEV_KEY || '';
 
 interface CompanyLogoProps {
   name: string;
