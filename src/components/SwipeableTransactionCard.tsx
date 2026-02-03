@@ -149,6 +149,7 @@ export default function SwipeableTransactionCard({
                 type="transaction"
                 category={transaction.category}
                 description={transaction.description}
+                logoUrl={transaction.merchantLogoUrl}
                 size={56}
               />
             ) : (

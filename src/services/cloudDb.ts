@@ -29,6 +29,7 @@ import {
 import { TrueLayerAccount, TrueLayerTransaction } from '../types/truelayer';
 import { clearTransactionCache } from './transactionCache';
 import { clearBalanceCache } from './balanceCache';
+import { normalizeTransactionUpdate, validateNewTransaction, normalizeNewTransaction } from '../utils/transactionEdgeCases';
 
 // Helper to convert Firestore timestamp to ISO string
 const timestampToISO = (timestamp: any): string => {
@@ -68,6 +69,7 @@ const mapTransactionDoc = (doc: any): Transaction => {
     ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
     ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
     ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
+    ...(data.merchantLogoUrl && { merchantLogoUrl: data.merchantLogoUrl }),
     ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
   };
 
@@ -438,9 +440,10 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
         ...(data.plaidTransactionId && { plaidTransactionId: data.plaidTransactionId }),
         ...(data.plaidAccountId && { plaidAccountId: data.plaidAccountId }),
         ...(data.plaidItemId && { plaidItemId: data.plaidItemId }),
+        ...(data.merchantLogoUrl && { merchantLogoUrl: data.merchantLogoUrl }),
         ...(data.descriptionHash && { descriptionHash: data.descriptionHash }),
       };
-      
+
       return transaction;
     }) as Transaction[];
     
@@ -506,23 +509,29 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase not available');
   }
-  
+
   const db = getFirestoreDb();
   if (!db) throw new Error('Firestore not initialized');
-  
+
   try {
+    // Edge cases: validate and normalize (income no tags, category valid for type)
+    const validation = validateNewTransaction(transaction);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+    const normalized = normalizeNewTransaction(transaction);
+
     const userId = getUserId();
     const id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     const now = new Date().toISOString();
     const transactionRef = doc(db, `users/${userId}/transactions`, id);
-    
-    // Hash description for GDPR compliance
+
     const { hashDescription } = await import('../utils/encryption');
-    const descriptionHash = await hashDescription(transaction.description);
-    
+    const descriptionHash = await hashDescription(normalized.description);
+
     const transactionDoc: any = {
-      ...transaction,
-      date: isoToTimestamp(transaction.date),
+      ...normalized,
+      date: isoToTimestamp(normalized.date),
       createdAt: isoToTimestamp(now),
     };
     
@@ -531,20 +540,20 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
       transactionDoc.descriptionHash = descriptionHash;
     }
     
-    console.log(`[cloudAddTransaction] Adding transaction: type=${transaction.type}`);
+    console.log(`[cloudAddTransaction] Adding transaction: type=${normalized.type}`);
     await setDoc(transactionRef, transactionDoc);
     console.log(`[cloudAddTransaction] Successfully added transaction`);
     
     // Update account balance only for manual accounts (not TrueLayer synced)
     // TrueLayer account balances are fetched on-demand from API
-    const accountRef = doc(db, `users/${userId}/accounts`, transaction.accountId);
+    const accountRef = doc(db, `users/${userId}/accounts`, normalized.accountId);
     const accountSnap = await getDoc(accountRef);
     if (accountSnap.exists()) {
       const accountData = accountSnap.data() as Account;
       
       // Only update balance for manual accounts (not synced from TrueLayer)
       if (!accountData.isSynced) {
-        const balanceChange = transaction.type === 'income' ? transaction.amount : -transaction.amount;
+        const balanceChange = normalized.type === 'income' ? normalized.amount : -normalized.amount;
         
         // If this is a card with a linked account, update the linked account balance
         if (accountData.type === 'card' && accountData.linkedAccountId) {
@@ -572,32 +581,29 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
     
     // Update budget if it's an expense
     // Priority: budgetId (explicit link) > category matching (backward compatible)
-    if (transaction.type === 'expense') {
+    if (normalized.type === 'expense') {
       const budgetsRef = collection(db, `users/${userId}/budgets`);
       let budgetDocRef = null;
-      
-      // First, check if there's an explicit budgetId
-      if (transaction.budgetId) {
-        const budgetRef = doc(budgetsRef, transaction.budgetId);
+
+      if (normalized.budgetId) {
+        const budgetRef = doc(budgetsRef, normalized.budgetId);
         const budgetSnap = await getDoc(budgetRef);
         if (budgetSnap.exists()) {
           budgetDocRef = budgetSnap;
         }
       }
-      
-      // If no explicit budgetId or budget not found, fallback to category matching
-      if (!budgetDocRef && transaction.category) {
-        const budgetsSnapshot = await getDocs(query(budgetsRef, where('category', '==', transaction.category)));
+
+      if (!budgetDocRef && normalized.category) {
+        const budgetsSnapshot = await getDocs(query(budgetsRef, where('category', '==', normalized.category)));
         if (!budgetsSnapshot.empty) {
           budgetDocRef = budgetsSnapshot.docs[0];
         }
       }
-      
-      // Update budget if we found one
+
       if (budgetDocRef) {
         const budgetData = budgetDocRef.data();
         await setDoc(budgetDocRef.ref, {
-          currentSpent: (budgetData.currentSpent || 0) + transaction.amount,
+          currentSpent: (budgetData.currentSpent || 0) + normalized.amount,
           updatedAt: isoToTimestamp(now),
         }, { merge: true });
         console.log(`[cloudAddTransaction] Updated budget currentSpent for budget: ${budgetDocRef.id}`);
@@ -886,50 +892,55 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
       }
     }
     // SECURITY: Transaction ownership verified by Firestore rules (path-based) and explicit account check
-    
+
+    // Edge cases: income must have no tags; subscription and debt are mutually exclusive
+    const normalizedUpdates = normalizeTransactionUpdate(updates, existingTransaction);
+
     const now = new Date().toISOString();
     const updateData: any = {
       updatedAt: isoToTimestamp(now),
     };
     
     // Only update provided fields
-    if (updates.type !== undefined) {
-      updateData.type = updates.type;
+    if (normalizedUpdates.type !== undefined) {
+      updateData.type = normalizedUpdates.type;
     }
-    if (updates.category !== undefined) {
-      // Category already validated and sanitized above
-      updateData.category = updates.category;
+    if (normalizedUpdates.category !== undefined) {
+      updateData.category = normalizedUpdates.category;
     }
-    if (updates.description !== undefined) {
-      // Description already sanitized above
-      updateData.description = updates.description;
-      
-      // Hash description for GDPR compliance when description changes
+    if (normalizedUpdates.description !== undefined) {
+      updateData.description = normalizedUpdates.description;
+
       const { hashDescription } = await import('../utils/encryption');
-      const descriptionHash = await hashDescription(updates.description);
+      const descriptionHash = await hashDescription(normalizedUpdates.description);
       if (descriptionHash) {
         updateData.descriptionHash = descriptionHash;
       }
     }
-    if (updates.amount !== undefined) {
-      updateData.amount = updates.amount;
+    if (normalizedUpdates.amount !== undefined) {
+      updateData.amount = normalizedUpdates.amount;
     }
-    if (updates.date !== undefined) {
-      updateData.date = isoToTimestamp(updates.date);
+    if (normalizedUpdates.date !== undefined) {
+      updateData.date = isoToTimestamp(normalizedUpdates.date);
     }
-    if (updates.accountId !== undefined) {
-      updateData.accountId = updates.accountId;
+    if (normalizedUpdates.accountId !== undefined) {
+      updateData.accountId = normalizedUpdates.accountId;
     }
-    // Handle subscriptionId, debtId, and budgetId
-    // null means explicitly removed, undefined means not provided
-    if (updates.subscriptionId !== undefined) {
-      updateData.subscriptionId = updates.subscriptionId || null;
-    }
-    if (updates.debtId !== undefined) {
-      updateData.debtId = updates.debtId || null;
-    }
-    if (updates.budgetId !== undefined) {
-      updateData.budgetId = updates.budgetId || null;
+    // Handle subscriptionId, debtId, budgetId: income must have all null; otherwise apply normalized values
+    if (normalizedUpdates.type === 'income') {
+      updateData.subscriptionId = null;
+      updateData.debtId = null;
+      updateData.budgetId = null;
+    } else {
+      if (normalizedUpdates.subscriptionId !== undefined) {
+        updateData.subscriptionId = normalizedUpdates.subscriptionId || null;
+      }
+      if (normalizedUpdates.debtId !== undefined) {
+        updateData.debtId = normalizedUpdates.debtId || null;
+      }
+      if (normalizedUpdates.budgetId !== undefined) {
+        updateData.budgetId = normalizedUpdates.budgetId || null;
+      }
     }
     
     // REMOVED: All auto-linking logic - users must explicitly tag transactions
@@ -941,17 +952,17 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     // Priority: budgetId (explicit link) > category matching (backward compatible)
     const budgetsRef = collection(db, `users/${userId}/budgets`);
     const oldBudgetId = existingTransaction.budgetId;
-    const newBudgetId = updates.budgetId !== undefined ? (updates.budgetId || null) : existingTransaction.budgetId;
+    const newBudgetId = normalizedUpdates.budgetId !== undefined ? (normalizedUpdates.budgetId || null) : existingTransaction.budgetId;
     const oldCategory = existingTransaction.category || '';
-    const newCategory = updates.category !== undefined ? updates.category : existingTransaction.category || '';
+    const newCategory = normalizedUpdates.category !== undefined ? normalizedUpdates.category : existingTransaction.category || '';
     const oldType = existingTransaction.type;
-    const newType = updates.type !== undefined ? updates.type : existingTransaction.type;
+    const newType = normalizedUpdates.type !== undefined ? normalizedUpdates.type : existingTransaction.type;
     const oldAmount = existingTransaction.amount;
-    const newAmount = updates.amount !== undefined ? updates.amount : existingTransaction.amount;
+    const newAmount = normalizedUpdates.amount !== undefined ? normalizedUpdates.amount : existingTransaction.amount;
     const budgetIdChanged = oldBudgetId !== newBudgetId;
     const categoryChanged = oldCategory !== newCategory;
     const typeChanged = oldType !== newType;
-    const onlyAmountChanged = !categoryChanged && !typeChanged && !budgetIdChanged && updates.amount !== undefined;
+    const onlyAmountChanged = !categoryChanged && !typeChanged && !budgetIdChanged && normalizedUpdates.amount !== undefined;
     
     // Handle budget updates for expenses only
     if (newType === 'expense' || oldType === 'expense') {

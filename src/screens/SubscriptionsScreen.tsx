@@ -15,7 +15,7 @@ import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonList, SkeletonStatCard } from '../components/SkeletonLoader';
-import ScreenWrapper from '../components/ScreenWrapper';
+import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
@@ -32,6 +32,7 @@ export default function SubscriptionsScreen() {
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const maintenanceInFlight = useRef<Promise<boolean> | null>(null);
+  const scrollRef = useRef<ScreenWrapperRef>(null);
 
   const loadSubscriptions = useCallback(async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading !== false;
@@ -101,6 +102,11 @@ export default function SubscriptionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // Scroll to top when returning so title and content are visible (same tick + next frame, no delay)
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      const rafId = requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
       const timer = setTimeout(() => {
         loadSubscriptions();
         runSubscriptionMaintenance().then((shouldReload) => {
@@ -109,7 +115,10 @@ export default function SubscriptionsScreen() {
           }
         });
       }, 100);
-      return () => clearTimeout(timer);
+      return () => {
+        cancelAnimationFrame(rafId);
+        clearTimeout(timer);
+      };
     }, [loadSubscriptions, runSubscriptionMaintenance])
   );
 
@@ -254,6 +263,7 @@ export default function SubscriptionsScreen() {
   return (
     <View style={styles.container}>
       <ScreenWrapper
+        ref={scrollRef}
         onRefresh={onRefresh}
         refreshing={refreshing}
         loading={loading && !refreshing}
@@ -363,6 +373,7 @@ export default function SubscriptionsScreen() {
                           <CompanyLogo
                             name={transaction.description || 'Subscription'}
                             type="subscription"
+                            logoUrl={transaction.merchantLogoUrl}
                             size={44}
                           />
                           <View style={styles.subscriptionInfo}>
@@ -411,6 +422,7 @@ export default function SubscriptionsScreen() {
                 const daysUntil = getDaysUntil(subscription.nextBillingDate);
                 const isUpcoming = daysUntil <= 7 && daysUntil >= 0;
                 const isDueToday = daysUntil === 0;
+                const isOverdue = daysUntil < 0;
                 
                 const subscriptionTransactions = getSubscriptionTransactions(subscription);
                 const isExpanded = expandedSubscriptionId === subscription.id;
@@ -422,7 +434,8 @@ export default function SubscriptionsScreen() {
                       styles.subscriptionCard,
                       index === subscriptions.length - 1 && styles.subscriptionCardLast,
                       isUpcoming && styles.subscriptionCardUpcoming,
-                      isDueToday && styles.subscriptionCardDue
+                      isDueToday && styles.subscriptionCardDue,
+                      isOverdue && styles.subscriptionCardOverdue,
                     ]}
                   >
                     <TouchableOpacity
@@ -474,10 +487,15 @@ export default function SubscriptionsScreen() {
                           <Text style={styles.subscriptionAmount}>
                             {formatCurrencySync(subscription.amount, currencyCode)}
                           </Text>
-                          <Text style={styles.subscriptionDate}>
+                          <Text style={[styles.subscriptionDate, isOverdue && styles.subscriptionDateOverdue]}>
                             {format(new Date(subscription.nextBillingDate), 'MMM dd, yyyy')}
                           </Text>
-                          {daysUntil >= 0 && daysUntil <= 7 && (
+                          {isOverdue && (
+                            <Text style={styles.subscriptionOverdueText}>
+                              {Math.abs(daysUntil)} day{Math.abs(daysUntil) !== 1 ? 's' : ''} overdue
+                            </Text>
+                          )}
+                          {daysUntil >= 0 && daysUntil <= 7 && !isOverdue && (
                             <Text style={[
                               styles.subscriptionDays,
                               isDueToday && styles.subscriptionDaysDue
@@ -690,6 +708,11 @@ const styles = StyleSheet.create({
     borderLeftColor: colors.primary,
     backgroundColor: colors.surface,
   },
+  subscriptionCardOverdue: {
+    borderLeftWidth: 3,
+    borderLeftColor: colors.warning,
+    backgroundColor: colors.warning + '08',
+  },
   subscriptionContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -804,6 +827,16 @@ const styles = StyleSheet.create({
   subscriptionDate: {
     fontSize: 12,
     color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  subscriptionDateOverdue: {
+    color: colors.warning,
+    fontWeight: '600',
+  },
+  subscriptionOverdueText: {
+    fontSize: 11,
+    color: colors.warning,
+    fontWeight: '600',
     marginBottom: 2,
   },
   subscriptionDays: {

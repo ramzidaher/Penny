@@ -77,9 +77,9 @@ export default function DebtsScreen() {
   const getStatusColor = (status: Debt['status']) => {
     switch (status) {
       case 'overdue':
-        return '#FF3B30';
+        return colors.warning;
       case 'paid_off':
-        return '#34C759';
+        return colors.successGreen;
       default:
         return colors.primary;
     }
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   overdueBadge: {
-    backgroundColor: '#FF3B3020',
+    backgroundColor: colors.warning + '20',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
@@ -441,7 +441,7 @@ const styles = StyleSheet.create({
   overdueText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#FF3B30',
+    color: colors.warning,
   },
   daysBadge: {
     backgroundColor: colors.surface,

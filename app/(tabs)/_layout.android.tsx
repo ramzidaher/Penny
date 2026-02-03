@@ -113,6 +113,7 @@ export default function TabLayout() {
     const isActive = activeTab === tab.name;
 
     if (isActive) {
+      startWiggleAfterHighlight(tab.name);
       if (tab.name === 'index') {
         router.replace('/(tabs)' as any);
         return;

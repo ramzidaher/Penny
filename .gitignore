@@ -17,7 +17,9 @@ build/
 .bkenvback
 eas.json
 
-
+# OS / IDE
+.DS_Store
+.cursor/
 
 
 

@@ -23,6 +23,7 @@ import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 import { suggestCategory, learnFromCategorization } from '../services/categoryService';
+import { validateCategoryForType } from '../utils/transactionEdgeCases';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
 import { getBudgets } from '../database/db';
 import { useToast } from '../contexts/ToastContext';
@@ -43,7 +44,7 @@ export default function TransactionsScreen() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [selectedType, setSelectedType] = useState<TransactionType>('expense');
   const [suggestedCategory, setSuggestedCategory] = useState<string | undefined>();
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('month');
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [tagFilter, setTagFilter] = useState<'all' | 'subscriptions' | 'debts' | 'untagged'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -250,11 +251,19 @@ export default function TransactionsScreen() {
     tagOverrides?: Partial<Pick<Transaction, 'subscriptionId' | 'debtId' | 'budgetId'>>
   ) => {
     if (!selectedTransaction) return;
-    
+
+    const categoryValidation = validateCategoryForType(category.trim(), selectedType);
+    if (!categoryValidation.valid) {
+      showError(categoryValidation.error ?? 'Invalid category for this type');
+      setSelectedTransaction(null);
+      setPendingCategory(null);
+      return;
+    }
+
     try {
       // Get suggestion again to check for subscription and debt links
       const suggestion = await suggestCategory(selectedTransaction.description || '', selectedType, selectedTransaction.amount);
-      
+
       // Update transaction type, category, and links if applicable
       const updateData: Partial<Transaction> = {
         type: selectedType,
@@ -425,14 +434,14 @@ export default function TransactionsScreen() {
             <TouchableOpacity
               style={[
                 styles.filterButton,
-                (filterPeriod !== 'month' || typeFilter !== 'all' || tagFilter !== 'all') && styles.filterButtonActive
+                (filterPeriod !== 'all' || typeFilter !== 'all' || tagFilter !== 'all') && styles.filterButtonActive
               ]}
               onPress={() => setFilterModalVisible(true)}
             >
               <Ionicons 
                 name="filter" 
                 size={18} 
-                color={(filterPeriod !== 'month' || typeFilter !== 'all' || tagFilter !== 'all') ? colors.background : colors.textSecondary} 
+                color={(filterPeriod !== 'all' || typeFilter !== 'all' || tagFilter !== 'all') ? colors.background : colors.textSecondary} 
               />
             </TouchableOpacity>
           </View>

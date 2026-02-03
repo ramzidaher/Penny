@@ -11,6 +11,9 @@ const light = {
   error: '#121212',
   success: '#121212',
   accent: '#121212',
+  // Semantic: overspend, over budget, overdue, forgot payment
+  warning: '#B91C1C',
+  successGreen: '#15803D',
 };
 
 const dark = {
@@ -25,6 +28,8 @@ const dark = {
   error: '#faf9f6',
   success: '#faf9f6',
   accent: '#faf9f6',
+  warning: '#F87171',
+  successGreen: '#4ADE80',
 };
 
 export const colors = { ...light, dark };

@@ -13,11 +13,12 @@
  * - User data isolation enforced
  */
 
-import { 
-  getCategoriesByType, 
-  getCategoryMetadata, 
+import {
+  getCategoriesByType,
+  getCategoryMetadata,
   detectCategoryType,
   getDefaultCategory,
+  canCategoryBeType,
   TransactionType,
   CategoryMetadata
 } from '../utils/categories';
@@ -337,10 +338,12 @@ export const learnFromCategorization = async (
   type: TransactionType
 ): Promise<void> => {
   if (!description) return;
-  
+  // Only learn valid category+type pairs to avoid reinforcing wrong mappings
+  if (!canCategoryBeType(category.trim(), type)) return;
+
   const merchantName = extractMerchantName(description);
   const pattern = merchantName || description.substring(0, 50).toLowerCase();
-  
+
   const categoryPattern: CategoryPattern = {
     pattern,
     category,

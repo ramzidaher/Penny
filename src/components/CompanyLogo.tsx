@@ -12,6 +12,8 @@ interface CompanyLogoProps {
   type?: 'transaction' | 'subscription';
   category?: string;
   description?: string;
+  /** When provided (e.g. from Plaid), use this URL instead of Logo.dev */
+  logoUrl?: string | null;
   size?: number;
   fallbackIcon?: keyof typeof Ionicons.glyphMap;
 }
@@ -21,44 +23,38 @@ export default function CompanyLogo({
   type = 'subscription', 
   category,
   description,
+  logoUrl: providedLogoUrl,
   size = 48,
   fallbackIcon 
 }: CompanyLogoProps) {
   const [error, setError] = React.useState(false);
   
-  // Get fallback icon
+  // Get fallback icon for when image fails or no URL
   const getFallbackIcon = () => {
-    if (fallbackIcon) {
-      return fallbackIcon;
-    }
+    if (fallbackIcon) return fallbackIcon;
     if (type === 'transaction' && category) {
       return getTransactionIcon(category, description).name;
     }
     return getSubscriptionIcon(name).name;
   };
-
   const fallbackIconName = getFallbackIcon();
 
-  // Clean company name for logo.dev API
-  // Try to extract domain or company name
+  // Clean company name for Logo.dev API (used when no Plaid logo provided)
   const getLogoIdentifier = () => {
-    // If it looks like a domain (contains .com, .net, etc.), use it directly
     if (name.includes('.com') || name.includes('.net') || name.includes('.org') || name.includes('.io')) {
       return name.toLowerCase().trim();
     }
-    
-    // Otherwise, clean the name
     const cleanName = name
-      .split(' ')[0] // Take first word
-      .replace(/[^a-zA-Z0-9]/g, '') // Remove special characters
+      .split(' ')[0]
+      .replace(/[^a-zA-Z0-9]/g, '')
       .toLowerCase();
-    
-    // Try with .com suffix first (most common)
     return `${cleanName}.com`;
   };
 
-  const logoIdentifier = getLogoIdentifier();
-  const logoUrl = `https://img.logo.dev/${logoIdentifier}?token=${LOGO_DEV_PUBLIC_KEY}`;
+  // Prefer Plaid logo URL when provided; otherwise use Logo.dev
+  const logoUrl = providedLogoUrl && !error
+    ? providedLogoUrl
+    : `https://img.logo.dev/${getLogoIdentifier()}?token=${LOGO_DEV_PUBLIC_KEY}`;
 
   if (error) {
     return (

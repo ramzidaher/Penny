@@ -301,6 +301,14 @@ export default function FinanceLayout() {
       <Stack.Screen name="debts" options={{ title: 'Debts' }} />
       <Stack.Screen name="add-debt" options={{ title: 'Add Debt' }} />
       <Stack.Screen name="subscriptions" options={{ title: 'Subscriptions' }} />
+      <Stack.Screen
+        name="add-subscription"
+        options={{
+          title: 'Add Subscription',
+          headerBackTitle: 'Subscriptions',
+          headerTitleAlign: 'center',
+        }}
+      />
     </Stack>
   );
 }

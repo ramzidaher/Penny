@@ -22,6 +22,8 @@ import { waitForFirebase } from '../../../src/services/firebase';
 import SettingsScreen from '../../../src/screens/SettingsScreen';
 import { getSettings } from '../../../src/services/settingsService';
 import { formatCurrencySync } from '../../../src/utils/currency';
+import { filterTransactionsByPeriod, getPeriodLabel, type FilterPeriod } from '../../../src/utils/transactionFilters';
+import { convertAmountsToCurrency } from '../../../src/services/currencyConversionService';
 
 type ViewStyle = 'cards' | 'bars' | 'compact';
 
@@ -35,6 +37,9 @@ export default function FinanceHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [viewStyle, setViewStyle] = useState<ViewStyle>('cards');
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
+  const [convertedPeriodIncome, setConvertedPeriodIncome] = useState<number | null>(null);
+  const [convertedPeriodExpenses, setConvertedPeriodExpenses] = useState<number | null>(null);
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [moreAnchor, setMoreAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const moreButtonRef = useRef<View | null>(null);
@@ -135,28 +140,56 @@ export default function FinanceHomeScreen() {
     setRefreshing(false);
   };
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
+  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   const now = new Date();
   const startOfCurrentMonth = startOfMonth(now);
   const endOfCurrentMonth = endOfMonth(now);
-  
-  const monthlyTransactions = transactions.filter(t => {
-    const date = new Date(t.date);
-    const isInRange = date >= startOfCurrentMonth && date <= endOfCurrentMonth;
-    return isInRange;
-  });
-  
-  const monthlyIncome = monthlyTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0);
-  
-  const monthlyExpenses = monthlyTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0);
+
+  const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
+  const periodIncomeRaw = filteredData.income;
+  const periodExpensesRaw = filteredData.expenses;
+  const periodNetRaw = filteredData.net;
+  const periodTransactionsCount = filteredData.transactions.length;
+
+  // Convert income/expenses to display currency (matches HomeScreen behaviour)
+  useEffect(() => {
+    const data = filterTransactionsByPeriod(transactions, filterPeriod);
+    const convertTotals = async () => {
+      if (!currencyCode || (accounts.length === 0 && data.transactions.length === 0)) {
+        setConvertedPeriodIncome(data.income);
+        setConvertedPeriodExpenses(data.expenses);
+        return;
+      }
+      try {
+        const incomeTransactions = data.transactions.filter(t => t.type === 'income');
+        const expenseTransactions = data.transactions.filter(t => t.type === 'expense');
+        const incomeAmounts = incomeTransactions.map(t => {
+          const account = accounts.find(a => a.id === t.accountId);
+          return { amount: t.amount, currency: account?.currency || currencyCode || 'USD' };
+        });
+        const expenseAmounts = expenseTransactions.map(t => {
+          const account = accounts.find(a => a.id === t.accountId);
+          return { amount: t.amount, currency: account?.currency || currencyCode || 'USD' };
+        });
+        const convertedIncome = await convertAmountsToCurrency(incomeAmounts, currencyCode);
+        const convertedExpenses = await convertAmountsToCurrency(expenseAmounts, currencyCode);
+        setConvertedPeriodIncome(convertedIncome);
+        setConvertedPeriodExpenses(convertedExpenses);
+      } catch (error) {
+        console.error('[Finance Overview] Error converting currencies:', error);
+        setConvertedPeriodIncome(data.income);
+        setConvertedPeriodExpenses(data.expenses);
+      }
+    };
+    convertTotals();
+  }, [accounts, transactions, filterPeriod, currencyCode]);
+
+  const displayIncome = convertedPeriodIncome ?? periodIncomeRaw;
+  const displayExpenses = convertedPeriodExpenses ?? periodExpensesRaw;
+  const displayNet = displayIncome - displayExpenses;
+  const savingsRate = displayIncome > 0 ? ((displayIncome - displayExpenses) / displayIncome) * 100 : 0;
 
   const activeBudgets = budgets.length;
-  const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
-  const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.currentSpent, 0);
 
   const loadingComponent = (
     <>
@@ -190,39 +223,54 @@ export default function FinanceHomeScreen() {
 
       {/* Combined Overview Section */}
       <View style={styles.section}>
-        <View style={styles.sectionHeaderWithToggle}>
+        <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Overview</Text>
-          <View style={styles.viewToggle}>
-            <TouchableOpacity
-              style={[styles.toggleButton, viewStyle === 'cards' && styles.toggleButtonActive]}
-              onPress={() => setViewStyle('cards')}
-            >
-              <Ionicons 
-                name="grid-outline" 
-                size={18} 
-                color={viewStyle === 'cards' ? colors.background : colors.textSecondary} 
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleButton, viewStyle === 'bars' && styles.toggleButtonActive]}
-              onPress={() => setViewStyle('bars')}
-            >
-              <Ionicons 
-                name="bar-chart-outline" 
-                size={18} 
-                color={viewStyle === 'bars' ? colors.background : colors.textSecondary} 
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.toggleButton, viewStyle === 'compact' && styles.toggleButtonActive]}
-              onPress={() => setViewStyle('compact')}
-            >
-              <Ionicons 
-                name="list-outline" 
-                size={18} 
-                color={viewStyle === 'compact' ? colors.background : colors.textSecondary} 
-              />
-            </TouchableOpacity>
+          <View style={styles.sectionControls}>
+            <View style={styles.periodChips}>
+              {(['all', 'month', 'week', 'year'] as const).map((period) => (
+                <TouchableOpacity
+                  key={period}
+                  style={[styles.periodChip, filterPeriod === period && styles.periodChipActive]}
+                  onPress={() => setFilterPeriod(period)}
+                >
+                  <Text style={[styles.periodChipText, filterPeriod === period && styles.periodChipTextActive]}>
+                    {period === 'all' ? 'All' : period === 'month' ? 'Month' : period === 'week' ? 'Week' : 'Year'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.viewToggle}>
+              <TouchableOpacity
+                style={[styles.toggleButton, viewStyle === 'cards' && styles.toggleButtonActive]}
+                onPress={() => setViewStyle('cards')}
+              >
+                <Ionicons
+                  name="grid-outline"
+                  size={18}
+                  color={viewStyle === 'cards' ? colors.background : colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toggleButton, viewStyle === 'bars' && styles.toggleButtonActive]}
+                onPress={() => setViewStyle('bars')}
+              >
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={18}
+                  color={viewStyle === 'bars' ? colors.background : colors.textSecondary}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.toggleButton, viewStyle === 'compact' && styles.toggleButtonActive]}
+                onPress={() => setViewStyle('compact')}
+              >
+                <Ionicons
+                  name="list-outline"
+                  size={18}
+                  color={viewStyle === 'compact' ? colors.background : colors.textSecondary}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -241,7 +289,7 @@ export default function FinanceHomeScreen() {
                 <View style={styles.statIconSmall}>
                   <Ionicons name="receipt" size={20} color={colors.primary} />
                 </View>
-                <Text style={styles.statValueSmall}>{transactions.length}</Text>
+                <Text style={styles.statValueSmall}>{periodTransactionsCount}</Text>
                 <Text style={styles.statLabelSmall}>Transactions</Text>
               </View>
               <View style={styles.statItem}>
@@ -261,40 +309,51 @@ export default function FinanceHomeScreen() {
               <View style={styles.overviewItem}>
                 <Text style={styles.overviewLabel}>Income</Text>
                 <Text style={[styles.overviewAmount, styles.incomeText]}>
-                  {formatCurrencySync(monthlyIncome, currencyCode)}
+                  {formatCurrencySync(displayIncome, currencyCode)}
                 </Text>
               </View>
               <View style={styles.overviewDivider} />
               <View style={styles.overviewItem}>
                 <Text style={styles.overviewLabel}>Expenses</Text>
-                <Text style={[styles.overviewAmount, styles.expenseText]}>
-                  {formatCurrencySync(monthlyExpenses, currencyCode)}
+                <Text
+                  style={[
+                    styles.overviewAmount,
+                    styles.expenseText,
+                    displayExpenses > displayIncome && { color: colors.warning },
+                  ]}
+                >
+                  {formatCurrencySync(displayExpenses, currencyCode)}
                 </Text>
               </View>
             </View>
 
-            {/* Budget Usage */}
-            {totalBudgetLimit > 0 && (
-              <>
-                <View style={styles.cardDivider} />
-                <View style={styles.budgetOverview}>
-                  <View style={styles.budgetOverviewHeader}>
-                    <Text style={styles.budgetOverviewLabel}>Budget Usage</Text>
-                    <Text style={styles.budgetOverviewPercent}>
-                      {((totalBudgetSpent / totalBudgetLimit) * 100).toFixed(0)}%
-                    </Text>
-                  </View>
-                  <View style={styles.budgetProgressBar}>
-                    <View 
-                      style={[
-                        styles.budgetProgressFill, 
-                        { width: `${Math.min((totalBudgetSpent / totalBudgetLimit) * 100, 100)}%` }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              </>
-            )}
+            {/* Net & insight */}
+            <View style={styles.insightRow}>
+              <View style={styles.netRow}>
+                <Text style={styles.netLabel}>Net ({getPeriodLabel(filterPeriod)})</Text>
+                <Text
+                  style={[
+                    styles.netAmount,
+                    { color: displayNet >= 0 ? colors.successGreen : colors.warning },
+                  ]}
+                >
+                  {displayNet >= 0 ? '+' : ''}{formatCurrencySync(displayNet, currencyCode)}
+                </Text>
+              </View>
+              {displayIncome > 0 && (
+                <Text
+                  style={[
+                    styles.savingsRateText,
+                    { color: savingsRate >= 0 ? colors.successGreen : colors.warning },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {savingsRate >= 0
+                    ? `${Math.min(savingsRate, 999).toFixed(0)}% saved`
+                    : `${Math.min(Math.abs(savingsRate), 999).toFixed(0)}% over income${Math.abs(savingsRate) > 999 ? '+' : ''}`}
+                </Text>
+              )}
+            </View>
           </View>
         )}
 
@@ -313,7 +372,7 @@ export default function FinanceHomeScreen() {
                 <View style={styles.statIconSmall}>
                   <Ionicons name="receipt" size={20} color={colors.primary} />
                 </View>
-                <Text style={styles.statValueSmall}>{transactions.length}</Text>
+                <Text style={styles.statValueSmall}>{periodTransactionsCount}</Text>
                 <Text style={styles.statLabelSmall}>Transactions</Text>
               </View>
               <View style={styles.statItem}>
@@ -334,7 +393,7 @@ export default function FinanceHomeScreen() {
                 <View style={styles.barChartHeader}>
                   <Text style={styles.barChartLabel}>Income</Text>
                   <Text style={[styles.barChartValue, styles.incomeText]}>
-                    {formatCurrencySync(monthlyIncome, currencyCode)}
+                    {formatCurrencySync(displayIncome, currencyCode)}
                   </Text>
                 </View>
                 <View style={styles.barChartBarContainer}>
@@ -343,7 +402,7 @@ export default function FinanceHomeScreen() {
                       styles.barChartBar, 
                       styles.barChartBarIncome,
                       { 
-                        width: `${Math.min((monthlyIncome / Math.max(monthlyIncome + monthlyExpenses, 1)) * 100, 100)}%` 
+                        width: `${Math.min((displayIncome / Math.max(displayIncome + displayExpenses, 1)) * 100, 100)}%` 
                       }
                     ]} 
                   />
@@ -352,8 +411,14 @@ export default function FinanceHomeScreen() {
               <View style={styles.barChartItem}>
                 <View style={styles.barChartHeader}>
                   <Text style={styles.barChartLabel}>Expenses</Text>
-                  <Text style={[styles.barChartValue, styles.expenseText]}>
-                    {formatCurrencySync(monthlyExpenses, currencyCode)}
+                  <Text
+                    style={[
+                      styles.barChartValue,
+                      styles.expenseText,
+                      displayExpenses > displayIncome && { color: colors.warning },
+                    ]}
+                  >
+                    {formatCurrencySync(displayExpenses, currencyCode)}
                   </Text>
                 </View>
                 <View style={styles.barChartBarContainer}>
@@ -361,37 +426,15 @@ export default function FinanceHomeScreen() {
                     style={[
                       styles.barChartBar, 
                       styles.barChartBarExpense,
+                      displayExpenses > displayIncome && { backgroundColor: colors.warning },
                       { 
-                        width: `${Math.min((monthlyExpenses / Math.max(monthlyIncome + monthlyExpenses, 1)) * 100, 100)}%` 
+                        width: `${Math.min((displayExpenses / Math.max(displayIncome + displayExpenses, 1)) * 100, 100)}%` 
                       }
                     ]} 
                   />
                 </View>
               </View>
             </View>
-
-            {/* Budget Usage */}
-            {totalBudgetLimit > 0 && (
-              <>
-                <View style={styles.cardDivider} />
-                <View style={styles.budgetOverview}>
-                  <View style={styles.budgetOverviewHeader}>
-                    <Text style={styles.budgetOverviewLabel}>Budget Usage</Text>
-                    <Text style={styles.budgetOverviewPercent}>
-                      {((totalBudgetSpent / totalBudgetLimit) * 100).toFixed(0)}%
-                    </Text>
-                  </View>
-                  <View style={styles.budgetProgressBar}>
-                    <View 
-                      style={[
-                        styles.budgetProgressFill, 
-                        { width: `${Math.min((totalBudgetSpent / totalBudgetLimit) * 100, 100)}%` }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              </>
-            )}
           </View>
         )}
 
@@ -410,7 +453,7 @@ export default function FinanceHomeScreen() {
                 <Ionicons name="receipt" size={20} color={colors.primary} />
                 <View style={styles.compactTextContainer}>
                   <Text style={styles.compactLabel}>Transactions</Text>
-                  <Text style={styles.compactValue}>{transactions.length}</Text>
+                  <Text style={styles.compactValue}>{periodTransactionsCount}</Text>
                 </View>
               </View>
               <View style={styles.compactItem}>
@@ -430,43 +473,30 @@ export default function FinanceHomeScreen() {
                 <View style={styles.compactTextContainer}>
                   <Text style={styles.compactLabel}>Income</Text>
                   <Text style={[styles.compactValue, styles.incomeText]}>
-                    {formatCurrencySync(monthlyIncome, currencyCode)}
+                    {formatCurrencySync(displayIncome, currencyCode)}
                   </Text>
                 </View>
               </View>
               <View style={styles.compactItem}>
-                <Ionicons name="arrow-down-circle" size={20} color={colors.text} />
+                <Ionicons
+                  name="arrow-down-circle"
+                  size={20}
+                  color={displayExpenses > displayIncome ? colors.warning : colors.text}
+                />
                 <View style={styles.compactTextContainer}>
                   <Text style={styles.compactLabel}>Expenses</Text>
-                  <Text style={[styles.compactValue, styles.expenseText]}>
-                    {formatCurrencySync(monthlyExpenses, currencyCode)}
+                  <Text
+                    style={[
+                      styles.compactValue,
+                      styles.expenseText,
+                      displayExpenses > displayIncome && { color: colors.warning },
+                    ]}
+                  >
+                    {formatCurrencySync(displayExpenses, currencyCode)}
                   </Text>
                 </View>
               </View>
             </View>
-
-            {/* Budget Usage */}
-            {totalBudgetLimit > 0 && (
-              <>
-                <View style={styles.cardDivider} />
-                <View style={styles.budgetOverview}>
-                  <View style={styles.budgetOverviewHeader}>
-                    <Text style={styles.budgetOverviewLabel}>Budget Usage</Text>
-                    <Text style={styles.budgetOverviewPercent}>
-                      {((totalBudgetSpent / totalBudgetLimit) * 100).toFixed(0)}%
-                    </Text>
-                  </View>
-                  <View style={styles.budgetProgressBar}>
-                    <View 
-                      style={[
-                        styles.budgetProgressFill, 
-                        { width: `${Math.min((totalBudgetSpent / totalBudgetLimit) * 100, 100)}%` }
-                      ]} 
-                    />
-                  </View>
-                </View>
-              </>
-            )}
           </View>
         )}
       </View>
@@ -628,10 +658,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginBottom: 32,
   },
-  sectionHeaderWithToggle: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  sectionHeader: {
     marginBottom: 16,
   },
   sectionTitle: {
@@ -639,6 +666,39 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -0.5,
+    marginBottom: 12,
+  },
+  sectionControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  periodChips: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: 2,
+  },
+  periodChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  periodChipActive: {
+    backgroundColor: colors.primary,
+  },
+  periodChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  periodChipTextActive: {
+    color: colors.background,
   },
   viewToggle: {
     flexDirection: 'row',
@@ -700,7 +760,7 @@ const styles = StyleSheet.create({
   cardDivider: {
     height: 1,
     backgroundColor: colors.border,
-    marginVertical: 16,
+    marginVertical: 14,
   },
   overviewCard: {
     backgroundColor: colors.surface,
@@ -712,7 +772,8 @@ const styles = StyleSheet.create({
   overviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginBottom: 20,
+    alignItems: 'center',
+    marginBottom: 0,
   },
   overviewItem: {
     alignItems: 'center',
@@ -739,38 +800,31 @@ const styles = StyleSheet.create({
     backgroundColor: colors.border,
     marginHorizontal: 16,
   },
-  budgetOverview: {
-    marginTop: 20,
-    paddingTop: 20,
+  insightRow: {
+    marginTop: 12,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  budgetOverviewHeader: {
+  netRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
-  budgetOverviewLabel: {
+  netLabel: {
     fontSize: 13,
     color: colors.textSecondary,
     fontWeight: '500',
   },
-  budgetOverviewPercent: {
-    fontSize: 16,
+  netAmount: {
+    fontSize: 18,
     fontWeight: '700',
-    color: colors.text,
   },
-  budgetProgressBar: {
-    height: 6,
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  budgetProgressFill: {
-    height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: 3,
+  savingsRateText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   barChartContainer: {
     gap: 16,

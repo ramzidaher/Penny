@@ -13,6 +13,8 @@ export type ThemeColors = {
   error: string;
   success: string;
   accent: string;
+  warning: string;
+  successGreen: string;
   dark: Omit<ThemeColors, 'dark'>;
 };
 
@@ -24,6 +26,8 @@ const lightBase = {
   textSecondary: '#6B6B6B',
   textLight: '#9B9B9B',
   border: '#D8D8D8',
+  warning: '#B91C1C',
+  successGreen: '#15803D',
 };
 
 const darkBase = {
@@ -34,6 +38,8 @@ const darkBase = {
   textSecondary: '#B0B0B0',
   textLight: '#808080',
   border: '#2A2A2A',
+  warning: '#F87171',
+  successGreen: '#4ADE80',
 };
 
 const resolveAccentHex = (settings: Partial<AppSettings> | null | undefined): string => {
@@ -59,7 +65,6 @@ export const buildThemeColors = (settings: Partial<AppSettings> | null | undefin
 
   const dark = {
     ...darkBase,
-    // Keep accent consistent across modes
     primary: accent,
     error: accent,
     success: accent,

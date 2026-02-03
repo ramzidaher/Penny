@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, getTransactions, getBudgets, getSubscriptions, updateTransaction } from '../database/db';
@@ -16,7 +17,7 @@ import DebtCreationDialog from '../components/DebtCreationDialog';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
-import ScreenWrapper from '../components/ScreenWrapper';
+import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import AIInsightCard from '../components/AIInsightCard';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
@@ -27,8 +28,10 @@ import { convertAmountsToCurrency } from '../services/currencyConversionService'
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const scrollRef = useRef<ScreenWrapperRef>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -40,7 +43,7 @@ export default function HomeScreen() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [selectedType, setSelectedType] = useState<TransactionType>('expense');
   const [suggestedCategory, setSuggestedCategory] = useState<string | undefined>();
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('month');
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
   const [subscriptionDialogVisible, setSubscriptionDialogVisible] = useState(false);
   const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
   const [debtDialogVisible, setDebtDialogVisible] = useState(false);
@@ -86,10 +89,14 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      // Only show loading on initial load, refresh silently on subsequent focuses
+      // Scroll to top when Home gains focus (fixes Android opening scrolled down)
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      const rafId = requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
       const isInitialLoad = !hasLoadedRef.current;
-      // Remove delay for faster loading - load immediately
       loadData(isInitialLoad);
+      return () => cancelAnimationFrame(rafId);
     }, [])
   );
 
@@ -163,7 +170,7 @@ export default function HomeScreen() {
     }
   }, [accounts, transactions, filterPeriod, currencyCode]);
   
-  const recentTransactions = filteredData.transactions.slice(0, 5);
+  const recentTransactions = filteredData.transactions.slice(0, 4);
   const now = new Date();
   const upcomingSubscriptions = subscriptions
     .filter(s => new Date(s.nextBillingDate) >= now)
@@ -328,11 +335,13 @@ export default function HomeScreen() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ScreenWrapper
+        ref={scrollRef}
         onRefresh={onRefresh}
         refreshing={refreshing}
         loading={loading && !refreshing}
         loadingComponent={loadingComponent}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 24 + insets.bottom + 80 }}
       >
       {/* Header Section */}
       <ScreenHeader
@@ -406,9 +415,6 @@ export default function HomeScreen() {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/finance/transactions')}>
-            <Text style={styles.seeAll}>View All</Text>
-          </TouchableOpacity>
         </View>
         {recentTransactions.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -432,6 +438,12 @@ export default function HomeScreen() {
                 />
               );
             })}
+            <Text
+              style={styles.viewAllText}
+              onPress={() => router.push('/(tabs)/finance/transactions')}
+            >
+              Click here to view all
+            </Text>
           </View>
         )}
       </View>
@@ -476,7 +488,6 @@ export default function HomeScreen() {
         </View>
       )}
 
-      <View style={styles.bottomPadding} />
       </ScreenWrapper>
       
       <CategoryPickerDialog
@@ -638,6 +649,13 @@ const createStyles = (colors: any) => StyleSheet.create({
   transactionsList: {
     borderRadius: 20,
     overflow: 'hidden',
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingTop: 10,
   },
   transactionCard: {
     flexDirection: 'row',

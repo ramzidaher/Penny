@@ -70,7 +70,7 @@ export default function BudgetsScreen() {
   };
 
   const getProgressColor = (percentage: number) => {
-    if (percentage >= 100) return colors.error;
+    if (percentage >= 100) return colors.warning;
     if (percentage >= 80) return colors.textSecondary;
     return colors.primary;
   };
@@ -144,8 +144,18 @@ export default function BudgetsScreen() {
                 </View>
               </TouchableOpacity>
               <View style={styles.budgetAmounts}>
-                <Text style={styles.budgetSpent}>{formatCurrencySync(item.currentSpent, currencyCode)}</Text>
+                <Text
+                  style={[
+                    styles.budgetSpent,
+                    item.currentSpent > item.limit && { color: colors.warning },
+                  ]}
+                >
+                  {formatCurrencySync(item.currentSpent, currencyCode)}
+                </Text>
                 <Text style={styles.budgetLimit}>/ {formatCurrencySync(item.limit, currencyCode)}</Text>
+                {item.currentSpent > item.limit && (
+                  <Text style={styles.overBudgetLabel}>Over budget</Text>
+                )}
               </View>
               <View style={styles.progressContainer}>
                 <View style={[styles.progressBar, { width: `${percentage}%`, backgroundColor: progressColor }]} />
@@ -187,7 +197,14 @@ export default function BudgetsScreen() {
             </View>
           );
         }}
-        contentContainerStyle={[styles.listContent, { paddingTop: insets.top + 20 }]}
+        contentContainerStyle={[
+          styles.listContent,
+          {
+            paddingTop: 12,
+            paddingBottom: 24 + insets.bottom + 80,
+            flexGrow: 1,
+          },
+        ]}
       />
       <TouchableOpacity
         style={[styles.fab, { bottom: 20 + insets.bottom + 80 }]}
@@ -295,6 +312,12 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     marginLeft: 4,
+  },
+  overBudgetLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.warning,
+    marginLeft: 8,
   },
   progressContainer: {
     height: 4,

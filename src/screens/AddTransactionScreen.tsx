@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
@@ -9,20 +9,8 @@ import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
-
-const categories = [
-  'Food & Dining',
-  'Shopping',
-  'Transportation',
-  'Bills & Utilities',
-  'Subscription',
-  'Entertainment',
-  'Healthcare',
-  'Education',
-  'Travel',
-  'Income',
-  'Other',
-];
+import { getCategoriesByType, getDefaultCategory, canCategoryBeType } from '../utils/categories';
+import { validateNewTransaction } from '../utils/transactionEdgeCases';
 
 export default function AddTransactionScreen() {
   const navigation = useNavigation();
@@ -31,10 +19,18 @@ export default function AddTransactionScreen() {
   const [accountId, setAccountId] = useState('');
   const [amount, setAmount] = useState('');
   const [type, setType] = useState<'income' | 'expense'>('expense');
-  const [category, setCategory] = useState(categories[0]);
+  const [category, setCategory] = useState(getDefaultCategory('expense'));
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const categories = useMemo(() => getCategoriesByType(type).map((c) => c.name), [type]);
+
+  useEffect(() => {
+    if (!canCategoryBeType(category, type)) {
+      setCategory(getDefaultCategory(type));
+    }
+  }, [type]);
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -59,15 +55,22 @@ export default function AddTransactionScreen() {
       return;
     }
 
+    const payload = {
+      accountId,
+      amount: amountNum,
+      type,
+      category: category.trim(),
+      description: description.trim(),
+      date: date.toISOString(),
+    };
+    const validation = validateNewTransaction(payload);
+    if (!validation.valid) {
+      dialog.alert('Error', validation.error ?? 'Invalid transaction');
+      return;
+    }
+
     try {
-      await addTransaction({
-        accountId,
-        amount: amountNum,
-        type,
-        category,
-        description: description.trim(),
-        date: date.toISOString(),
-      });
+      await addTransaction(payload);
       // Reschedule notifications after adding transaction (affects budgets and balances)
       await scheduleAllNotifications();
       navigation.goBack();
@@ -101,7 +104,12 @@ export default function AddTransactionScreen() {
           <View style={styles.typeContainer}>
             <TouchableOpacity
               style={[styles.typeButton, type === 'income' && styles.typeButtonActive]}
-              onPress={() => setType('income')}
+              onPress={() => {
+              setType('income');
+              if (!canCategoryBeType(category, 'income')) {
+                setCategory(getDefaultCategory('income'));
+              }
+            }}
             >
               <Text style={[styles.typeButtonText, type === 'income' && styles.typeButtonTextActive]}>
                 Income
@@ -109,7 +117,12 @@ export default function AddTransactionScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.typeButton, type === 'expense' && styles.typeButtonActive]}
-              onPress={() => setType('expense')}
+              onPress={() => {
+              setType('expense');
+              if (!canCategoryBeType(category, 'expense')) {
+                setCategory(getDefaultCategory('expense'));
+              }
+            }}
             >
               <Text style={[styles.typeButtonText, type === 'expense' && styles.typeButtonTextActive]}>
                 Expense

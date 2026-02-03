@@ -40,6 +40,7 @@ export interface Transaction {
   plaidTransactionId?: string;
   plaidAccountId?: string;
   plaidItemId?: string;
+  merchantLogoUrl?: string; // Plaid merchant logo URL when synced from Plaid
   subscriptionId?: string; // Link to subscription if this transaction is a subscription payment
   debtId?: string; // Link to debt if this transaction is a debt payment
   budgetId?: string; // Link to budget if this transaction is explicitly linked to a budget
@@ -120,9 +121,7 @@ export type MemoryCategory =
   | 'health'
   | 'legal'
   | 'family'
-  | 'other';
-
-export interface UserMemory {
+  | 'other';export interface UserMemory {
   id: string;
   tier: MemoryTier;
   category: MemoryCategory;

@@ -237,6 +237,7 @@ export default function TransactionDetailScreen() {
                 type="transaction"
                 category={transaction.category}
                 description={transaction.description}
+                logoUrl={transaction.merchantLogoUrl}
                 size={80}
               />
             ) : (

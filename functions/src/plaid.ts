@@ -13,6 +13,7 @@ type PlaidTransaction = {
   amount: number;
   name?: string;
   merchant_name?: string;
+  logo_url?: string; // Plaid merchant logo (100x100 PNG)
   date?: string;
   authorized_date?: string;
 };
@@ -159,6 +160,7 @@ const syncPlaidTransactionsForItem = async (args: {
           plaidTransactionId: tx.transaction_id,
           plaidAccountId: tx.account_id,
           plaidItemId: itemId,
+          ...(tx.logo_url && { merchantLogoUrl: tx.logo_url }),
         },
         { merge: true }
       );
@@ -501,9 +503,7 @@ export const syncPlaidTransactions = onCall(
     const uid = request.auth?.uid;
     if (!uid) {
       throw new HttpsError('unauthenticated', 'You must be authenticated.');
-    }
-
-    const itemId = (request.data?.item_id as string | undefined)?.trim();
+    }    const itemId = (request.data?.item_id as string | undefined)?.trim();
     const db = admin.firestore();
 
     const itemsSnap = itemId

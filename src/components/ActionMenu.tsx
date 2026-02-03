@@ -35,7 +35,7 @@ const menuSections: Array<{ title: string; items: ActionMenuItem[] }> = [
       {
         label: 'Add Subscription',
         icon: 'repeat-outline',
-        route: '/(tabs)/finance/subscriptions/add',
+        route: '/(tabs)/finance/add-subscription',
         description: 'Manual recurring',
         tone: 'primary',
       },

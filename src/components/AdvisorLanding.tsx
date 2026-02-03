@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { typography } from '../theme/typography';
 import AdvisorQuickActionsGrid, { AdvisorQuickAction } from './AdvisorQuickActionsGrid';
@@ -47,6 +47,16 @@ export default function AdvisorLanding({
   onCompleteMission,
 }: AdvisorLandingProps) {
   const searchInputRef = useRef<TextInput>(null);
+  const [searchContentHeight, setSearchContentHeight] = useState(0);
+  const isIOS = Platform.OS === 'ios';
+  const searchLineHeight = isIOS ? 20 : 18;
+  const searchInputHeight = React.useMemo(() => {
+    const min = 20;
+    const max = 88;
+    if (!searchContentHeight) return min;
+    return Math.max(min, Math.min(max, searchContentHeight));
+  }, [searchContentHeight]);
+  const searchVerticalPadding = Math.max(0, (searchInputHeight - searchLineHeight) / 2);
   const { colors } = useTheme();
   const c = colors;
   const styles = React.useMemo(() => createStyles(c), [c]);
@@ -93,7 +103,15 @@ export default function AdvisorLanding({
             <Ionicons name="search" size={18} color={c.textSecondary} />
             <TextInput
               ref={searchInputRef}
-              style={styles.searchInput}
+              style={[
+                styles.searchInput,
+                {
+                  height: searchInputHeight,
+                  lineHeight: searchLineHeight,
+                  paddingTop: isIOS ? searchVerticalPadding : 0,
+                  paddingBottom: isIOS ? searchVerticalPadding : 0,
+                },
+              ]}
               value={searchValue}
               onChangeText={onSearchChange}
               placeholder="Review this month or search…"
@@ -102,6 +120,9 @@ export default function AdvisorLanding({
               returnKeyType="send"
               onSubmitEditing={onSearchSubmit}
               blurOnSubmit={false}
+              multiline
+              onContentSizeChange={(event) => setSearchContentHeight(event.nativeEvent.contentSize.height)}
+              textAlignVertical={isIOS ? 'top' : 'center'}
             />
             {!!searchValue && !disabled && (
               <TouchableOpacity onPress={() => onSearchChange('')} activeOpacity={0.8} hitSlop={10}>
@@ -272,7 +293,7 @@ const createStyles = (c: {
       alignItems: 'center',
       gap: 10,
       paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingVertical: 10,
       borderRadius: 999,
       backgroundColor: c.surface,
       borderWidth: 1,
@@ -286,6 +307,7 @@ const createStyles = (c: {
       ...typography.body,
       color: c.text,
       paddingVertical: 0,
+      includeFontPadding: false,
     },
     searchSendButton: {
       width: 44,
