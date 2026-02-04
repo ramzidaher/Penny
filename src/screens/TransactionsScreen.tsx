@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform, TextInput, Modal, TouchableWithoutFeedback, ActivityIndicator } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useRouter } from 'expo-router';
@@ -6,26 +6,16 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactionsPage, deleteTransaction, updateTransaction, untagTransaction } from '../database/db';
+import { getTransactionsPage, deleteTransaction } from '../database/db';
 import { refreshTransactions } from '../services/transactionService';
 import { Transaction } from '../database/schema';
-import { TransactionType } from '../utils/categories';
 import { colors } from '../theme/colors';
 import { typography } from '../theme/typography';
-import { format } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
-import CategoryPickerDialog from '../components/CategoryPickerDialog';
-import SubscriptionCreationDialog from '../components/SubscriptionCreationDialog';
-import BudgetCreationDialog from '../components/BudgetCreationDialog';
-import DebtCreationDialog from '../components/DebtCreationDialog';
 import { SkeletonList } from '../components/SkeletonLoader';
-import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
-import { suggestCategory, learnFromCategorization } from '../services/categoryService';
-import { validateCategoryForType } from '../utils/transactionEdgeCases';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
-import { getBudgets } from '../database/db';
 import { useToast } from '../contexts/ToastContext';
 
 export default function TransactionsScreen() {
@@ -40,27 +30,23 @@ export default function TransactionsScreen() {
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [hasMore, setHasMore] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
-  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [selectedType, setSelectedType] = useState<TransactionType>('expense');
-  const [suggestedCategory, setSuggestedCategory] = useState<string | undefined>();
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [tagFilter, setTagFilter] = useState<'all' | 'subscriptions' | 'debts' | 'untagged'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [filterModalVisible, setFilterModalVisible] = useState(false);
-  const [subscriptionDialogVisible, setSubscriptionDialogVisible] = useState(false);
-  const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
-  const [debtDialogVisible, setDebtDialogVisible] = useState(false);
-  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
     'right-income-left-expense'
   );
-  const { showSuccess, showError } = useToast();
+  const { showError } = useToast();
+  const hasLoadedRef = useRef(false);
 
-  const loadTransactions = async () => {
+  const loadTransactions = async (showLoading = true) => {
     try {
-      setLoading(true);
+      // Only show full-screen skeleton on initial load; on focus reuse existing data and refresh in background
+      if (showLoading && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       console.log('[TransactionsScreen] Loading transactions...');
       const [page, settings] = await Promise.all([
         getTransactionsPage({ limit: PAGE_SIZE }),
@@ -72,6 +58,7 @@ export default function TransactionsScreen() {
       setHasMore(page.transactions.length === PAGE_SIZE && !!page.nextCursor);
       setCurrencyCode(settings.defaultCurrency);
       setSwipeDirection(settings.swipeDirection);
+      hasLoadedRef.current = true;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('[TransactionsScreen] Error loading transactions:', errorMessage);
@@ -85,7 +72,8 @@ export default function TransactionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadTransactions();
+      // First focus: show loading. Subsequent: show existing data and refresh in background.
+      loadTransactions(!hasLoadedRef.current);
     }, [])
   );
 
@@ -98,7 +86,7 @@ export default function TransactionsScreen() {
     } catch (error: any) {
       console.error('[TransactionsScreen] Error refreshing transactions:', error?.message || error);
     }
-    await loadTransactions();
+    await loadTransactions(false);
     setRefreshing(false);
   };
 
@@ -123,245 +111,7 @@ export default function TransactionsScreen() {
 
   const handleDelete = async (id: string) => {
     await deleteTransaction(id);
-    await loadTransactions();
-  };
-
-  const handleUncategorize = async (transaction: Transaction) => {
-    console.log('[TransactionsScreen] handleUncategorize called for transaction:', transaction.id, 'type:', transaction.type, 'hasTags:', !!(transaction.subscriptionId || transaction.debtId));
-    try {
-      // Always call untagTransaction to ensure Firestore has null values
-      // This handles cases where tags exist in cache but aren't detected, or were set long ago
-      console.log('[TransactionsScreen] Removing tags from transaction:', transaction.id, 'subscriptionId:', transaction.subscriptionId, 'debtId:', transaction.debtId);
-      await untagTransaction(transaction.id, 'all');
-      console.log('[TransactionsScreen] Tags removed successfully');
-      
-      // For income transactions, reset to default category
-      if (transaction.type === 'income') {
-        console.log('[TransactionsScreen] Updating income transaction category to Other Income:', transaction.id, 'current category:', transaction.category);
-        await updateTransaction(transaction.id, {
-          category: 'Other Income',
-        });
-        console.log('[TransactionsScreen] Successfully updated income transaction category');
-      }
-      
-      console.log('[TransactionsScreen] Reloading transactions after uncategorize');
-      // Force refresh to get latest data
-      await onRefresh();
-      console.log('[TransactionsScreen] Transactions reloaded after uncategorize');
-    } catch (error) {
-      console.error('[TransactionsScreen] Error uncategorizing transaction:', error);
-    }
-  };
-  
-  const handleSwipeRight = async (transaction: Transaction) => {
-    // Get swipe direction preference
-    const rightSwipeType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
-    
-    // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
-    if (rightSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
-      try {
-        await untagTransaction(transaction.id, 'all');
-      } catch (error) {
-        console.error('Error uncategorizing before marking as income:', error);
-      }
-    }
-    
-    const suggestion = await suggestCategory(transaction.description || '', rightSwipeType, transaction.amount);
-    setSelectedTransaction(transaction);
-    setSelectedType(rightSwipeType);
-    setSuggestedCategory(suggestion.category);
-    setCategoryPickerVisible(true);
-  };
-  
-  const handleSwipeLeft = async (transaction: Transaction) => {
-    // Get swipe direction preference
-    const leftSwipeType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
-    
-    // First uncategorize if it has tags (income shouldn't have subscription/debt tags)
-    if (leftSwipeType === 'income' && (transaction.subscriptionId || transaction.debtId)) {
-      try {
-        await untagTransaction(transaction.id, 'all');
-      } catch (error) {
-        console.error('Error uncategorizing before marking as income:', error);
-      }
-    }
-    
-    const suggestion = await suggestCategory(transaction.description || '', leftSwipeType, transaction.amount);
-    setSelectedTransaction(transaction);
-    setSelectedType(leftSwipeType);
-    setSuggestedCategory(suggestion.category);
-    setCategoryPickerVisible(true);
-  };
-  
-  const handleCategorySelect = async (category: string) => {
-    if (!selectedTransaction) return;
-    
-    // Close category picker first
-    setCategoryPickerVisible(false);
-    
-    // Small delay to ensure category picker closes before showing next dialog
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    setPendingCategory(category);
-    
-    try {
-      let matchingBudgetId: string | undefined;
-      // If category is Subscription, show subscription creation dialog
-      if (category === 'Subscription') {
-        setSubscriptionDialogVisible(true);
-        return;
-      }
-      
-      // If it's an expense category, check if budget exists
-      if (selectedType === 'expense' && category !== 'Income') {
-        const budgets = await getBudgets();
-        const matchingBudget = budgets.find(b => b.category === category);
-        const budgetExists = !!matchingBudget;
-        matchingBudgetId = matchingBudget?.id;
-        
-        console.log('[TransactionsScreen] Checking budget for category:', category, 'Budget exists:', budgetExists);
-        
-        if (!budgetExists) {
-          // Show budget creation dialog
-          console.log('[TransactionsScreen] Showing budget creation dialog for category:', category);
-          setBudgetDialogVisible(true);
-          return;
-        }
-
-      }
-      
-      // Check if this might be a debt-related category
-      const debtCategories = ['Debt', 'Loan', 'Credit Card'];
-      if (debtCategories.includes(category) || category.toLowerCase().includes('debt')) {
-        setDebtDialogVisible(true);
-        return;
-      }
-      
-      // Otherwise, proceed with normal update
-      await proceedWithCategoryUpdate(category, matchingBudgetId ? { budgetId: matchingBudgetId } : undefined);
-    } catch (error) {
-      console.error('[TransactionsScreen] Error in category selection:', error);
-      setPendingCategory(null);
-      setSelectedTransaction(null);
-    }
-  };
-
-  const proceedWithCategoryUpdate = async (
-    category: string,
-    tagOverrides?: Partial<Pick<Transaction, 'subscriptionId' | 'debtId' | 'budgetId'>>
-  ) => {
-    if (!selectedTransaction) return;
-
-    const categoryValidation = validateCategoryForType(category.trim(), selectedType);
-    if (!categoryValidation.valid) {
-      showError(categoryValidation.error ?? 'Invalid category for this type');
-      setSelectedTransaction(null);
-      setPendingCategory(null);
-      return;
-    }
-
-    try {
-      // Get suggestion again to check for subscription and debt links
-      const suggestion = await suggestCategory(selectedTransaction.description || '', selectedType, selectedTransaction.amount);
-
-      // Update transaction type, category, and links if applicable
-      const updateData: Partial<Transaction> = {
-        type: selectedType,
-        category,
-      };
-      
-      // Only link debt if it's an expense (income shouldn't have debt tags)
-      if (selectedType === 'expense') {
-        const resolvedDebtId = tagOverrides?.debtId ?? suggestion.debtId;
-        if (resolvedDebtId) {
-          updateData.debtId = resolvedDebtId;
-        }
-      } else if (selectedType === 'income') {
-        // For income, make sure to remove any existing tags
-        if (selectedTransaction.debtId || selectedTransaction.subscriptionId || selectedTransaction.budgetId) {
-          await untagTransaction(selectedTransaction.id, 'all');
-        }
-      }
-
-      if (tagOverrides?.subscriptionId) {
-        updateData.subscriptionId = tagOverrides.subscriptionId;
-      }
-
-      if (tagOverrides?.budgetId) {
-        updateData.budgetId = tagOverrides.budgetId;
-      }
-      
-      await updateTransaction(selectedTransaction.id, updateData);
-      
-      // Learn from user's categorization
-      await learnFromCategorization(
-        selectedTransaction.description || '',
-        category,
-        selectedType
-      );
-      
-      const clearTagsForIncome =
-        selectedType === 'income'
-          ? { subscriptionId: undefined, debtId: undefined, budgetId: undefined }
-          : {};
-
-      setTransactions((prev) =>
-        prev.map((transaction) =>
-          transaction.id === selectedTransaction.id
-            ? { ...transaction, ...updateData, ...clearTagsForIncome }
-            : transaction
-        )
-      );
-
-      if (tagOverrides?.subscriptionId) {
-        showSuccess('Subscription linked');
-      } else if (tagOverrides?.budgetId) {
-        showSuccess(`Budget linked · ${category}`);
-      } else if (updateData.debtId) {
-        showSuccess('Debt linked');
-      } else {
-        showSuccess(`Tagged as ${category}`);
-      }
-    } catch (error) {
-      console.error('[TransactionsScreen] Error updating transaction');
-      showError('Tagging failed. Please try again.');
-    } finally {
-      setSelectedTransaction(null);
-      setPendingCategory(null);
-      setSuggestedCategory(undefined);
-    }
-  };
-
-  const handleSubscriptionDialogComplete = async (subscriptionId?: string) => {
-    setSubscriptionDialogVisible(false);
-    if (pendingCategory) {
-      await proceedWithCategoryUpdate(
-        pendingCategory,
-        subscriptionId ? { subscriptionId } : undefined
-      );
-    }
-  };
-
-  const handleBudgetDialogComplete = async (budgetId?: string) => {
-    setBudgetDialogVisible(false);
-    if (pendingCategory) {
-      await proceedWithCategoryUpdate(
-        pendingCategory,
-        budgetId ? { budgetId } : undefined
-      );
-    }
-  };
-
-  const handleDebtDialogComplete = async (debtId?: string) => {
-    setDebtDialogVisible(false);
-    // Debt dialog already updates the transaction with type='expense' and debtId
-    // Just reload transactions to reflect changes
-    await loadTransactions();
-    setSelectedTransaction(null);
-    setPendingCategory(null);
-    if (debtId) {
-      showSuccess('Debt linked');
-    }
+    await loadTransactions(false);
   };
 
   const filteredTransactions = useMemo(() => {
@@ -595,10 +345,7 @@ export default function TransactionsScreen() {
               transaction={item}
               currencyCode={currencyCode}
               onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: item.id } })}
-              onSwipeRight={() => handleSwipeRight(item)}
-              onSwipeLeft={() => handleSwipeLeft(item)}
               onDelete={() => handleDelete(item.id)}
-              onUncategorize={(item.subscriptionId || item.debtId) ? () => handleUncategorize(item) : undefined}
               showTagBadges={true}
               swipeDirection={swipeDirection}
             />
@@ -612,60 +359,6 @@ export default function TransactionsScreen() {
         >
           <Ionicons name="add" size={28} color={colors.background} />
         </TouchableOpacity>
-        
-        <CategoryPickerDialog
-          visible={categoryPickerVisible}
-          type={selectedType}
-          onSelect={handleCategorySelect}
-          onClose={() => {
-            // Only clear if we're not about to show another dialog
-            if (!subscriptionDialogVisible && !budgetDialogVisible && !debtDialogVisible) {
-              setCategoryPickerVisible(false);
-              setSelectedTransaction(null);
-              setSuggestedCategory(undefined);
-              setPendingCategory(null);
-            } else {
-              // Just close the category picker, keep transaction for next dialog
-              setCategoryPickerVisible(false);
-            }
-          }}
-          suggestedCategory={suggestedCategory}
-        />
-        
-        <SubscriptionCreationDialog
-          visible={subscriptionDialogVisible}
-          transaction={selectedTransaction}
-          onClose={() => {
-            setSubscriptionDialogVisible(false);
-            setPendingCategory(null);
-          }}
-          onComplete={handleSubscriptionDialogComplete}
-        />
-        
-        <BudgetCreationDialog
-          visible={budgetDialogVisible}
-          transaction={selectedTransaction}
-          category={pendingCategory || ''}
-          onClose={() => {
-            setBudgetDialogVisible(false);
-            setPendingCategory(null);
-          }}
-          onComplete={handleBudgetDialogComplete}
-        />
-        
-        <DebtCreationDialog
-          visible={debtDialogVisible}
-          transaction={selectedTransaction}
-          category={pendingCategory || ''}
-          onClose={() => {
-            setDebtDialogVisible(false);
-            setPendingCategory(null);
-          }}
-          onComplete={handleDebtDialogComplete}
-          onNavigateToDebts={() => {
-            router.push('/(tabs)/finance/debts' as any);
-          }}
-        />
       </View>
     </GestureHandlerRootView>
   );

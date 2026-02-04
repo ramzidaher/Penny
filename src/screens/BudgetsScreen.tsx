@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useRouter } from 'expo-router';
@@ -25,10 +25,13 @@ export default function BudgetsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const hasLoadedRef = useRef(false);
 
-  const loadBudgets = async () => {
+  const loadBudgets = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       await waitForFirebase();
       const [buds, trans, settings] = await Promise.all([
         getBudgets(),
@@ -38,6 +41,7 @@ export default function BudgetsScreen() {
       setBudgets(buds);
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading budgets:', error);
     } finally {
@@ -48,7 +52,7 @@ export default function BudgetsScreen() {
   useFocusEffect(
     useCallback(() => {
       const timer = setTimeout(() => {
-        loadBudgets();
+        loadBudgets(!hasLoadedRef.current);
       }, 100);
       return () => clearTimeout(timer);
     }, [])
@@ -56,13 +60,13 @@ export default function BudgetsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadBudgets();
+    await loadBudgets(false);
     setRefreshing(false);
   };
 
   const handleDelete = async (id: string) => {
     await deleteBudget(id);
-    await loadBudgets();
+    await loadBudgets(false);
   };
 
   const getProgressPercentage = (budget: Budget) => {

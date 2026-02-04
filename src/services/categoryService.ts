@@ -59,6 +59,25 @@ const extractMerchantName = (description: string): string | null => {
   return null;
 };
 
+/**
+ * Normalize merchant/description for matching and grouping (lowercase, strip prefixes/suffixes).
+ * Exported for use by auto-tagging and recurrence detection.
+ */
+export const normalizeMerchantName = (description: string): string => {
+  if (!description) return '';
+  return description
+    .replace(/^Subscription:\s*/i, '')
+    .replace(/^Payment\s+to\s+/i, '')
+    .replace(/^Payment\s+/i, '')
+    .replace(/^Purchase\s+at\s+/i, '')
+    .replace(/^PURCHASE\s*-\s*/i, '')
+    .replace(/^RECURRENT\s+TRANSACTION\s+AT\s+/i, '')
+    .replace(/\s+AT\s+.*$/i, '')
+    .replace(/\s+OF\s+\d+\.\d+\s+\w+\s+ON\s+.*$/i, '')
+    .toLowerCase()
+    .trim();
+};
+
 // Pattern matching for common merchants/descriptions
 const getPatternMatch = (description: string, type: TransactionType): CategoryMetadata | null => {
   if (!description) return null;
@@ -327,6 +346,39 @@ export const suggestCategory = async (
   
   // 4. Default category
   return { category: getDefaultCategory(type), confidence: 0.1, subscriptionId: undefined, debtId: undefined };
+};
+
+export interface SuggestCategorySilentOptions {
+  /** Only override currentCategory when confidence >= minConfidence (default 0.6) */
+  minConfidence?: number;
+  /** Current category; if confidence < minConfidence, returned category will be this */
+  currentCategory?: string;
+}
+
+/**
+ * Non-interactive category suggestion for auto-tagging (no user in the loop).
+ * Returns category + confidence + optional subscriptionId/debtId.
+ * When minConfidence and currentCategory are set, returns currentCategory if confidence < minConfidence
+ * so callers only override "Other" when confident.
+ */
+export const suggestCategorySilent = async (
+  description: string,
+  type: TransactionType,
+  amount?: number,
+  options?: SuggestCategorySilentOptions
+): Promise<{ category: string; confidence: number; subscriptionId?: string; debtId?: string }> => {
+  const result = await suggestCategory(description, type, amount);
+  const minConfidence = options?.minConfidence ?? 0.6;
+  const currentCategory = options?.currentCategory;
+  if (currentCategory != null && result.confidence < minConfidence) {
+    return {
+      category: currentCategory,
+      confidence: result.confidence,
+      subscriptionId: undefined,
+      debtId: undefined,
+    };
+  }
+  return result;
 };
 
 /**

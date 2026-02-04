@@ -617,6 +617,59 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
   }
 };
 
+/**
+ * Upsert a transaction by id (e.g. tl_${truelayerTransactionId}).
+ * Creates or merges the document so auto-tagged transactions can be persisted with stable ids.
+ */
+export const cloudUpsertTransaction = async (
+  id: string,
+  data: Omit<Transaction, 'id'> & { id?: string }
+): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  const userId = getUserId();
+  if (!userId) throw new Error('User not authenticated');
+  if (!id || typeof id !== 'string' || id.length < 1 || id.length > 200) {
+    throw new Error('Invalid transaction ID format');
+  }
+  const { normalizeNewTransaction } = await import('../utils/transactionEdgeCases');
+  const normalized = normalizeNewTransaction({
+    accountId: data.accountId,
+    amount: data.amount,
+    type: data.type,
+    category: data.category,
+    description: data.description ?? '',
+    date: data.date,
+    ...(data.truelayerTransactionId && { truelayerTransactionId: data.truelayerTransactionId }),
+    ...(data.subscriptionId != null && { subscriptionId: data.subscriptionId }),
+    ...(data.debtId != null && { debtId: data.debtId }),
+    ...(data.budgetId != null && { budgetId: data.budgetId }),
+  });
+  const now = new Date().toISOString();
+  const transactionRef = doc(db, `users/${userId}/transactions`, id);
+  const docData: any = {
+    ...normalized,
+    date: isoToTimestamp(normalized.date),
+    updatedAt: isoToTimestamp(now),
+  };
+  if (data.createdAt) {
+    docData.createdAt = isoToTimestamp(data.createdAt);
+  } else {
+    docData.createdAt = isoToTimestamp(now);
+  }
+  if (normalized.truelayerTransactionId != null) docData.truelayerTransactionId = normalized.truelayerTransactionId;
+  if (normalized.subscriptionId !== undefined) docData.subscriptionId = normalized.subscriptionId;
+  if (normalized.debtId !== undefined) docData.debtId = normalized.debtId;
+  if (normalized.budgetId !== undefined) docData.budgetId = normalized.budgetId;
+  const { hashDescription } = await import('../utils/encryption');
+  const descriptionHash = await hashDescription(normalized.description);
+  if (descriptionHash) docData.descriptionHash = descriptionHash;
+  await setDoc(transactionRef, docData, { merge: true });
+};
+
 export const cloudUpdateTransaction = async (id: string, updates: Partial<Transaction>): Promise<void> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase not available');

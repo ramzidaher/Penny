@@ -33,11 +33,13 @@ export default function SubscriptionsScreen() {
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const maintenanceInFlight = useRef<Promise<boolean> | null>(null);
   const scrollRef = useRef<ScreenWrapperRef>(null);
+  const hasLoadedRef = useRef(false);
 
   const loadSubscriptions = useCallback(async (options?: { showLoading?: boolean }) => {
     const showLoading = options?.showLoading !== false;
     try {
-      if (showLoading) {
+      // Only show full-screen skeleton on initial load; on focus reuse existing data and refresh in background
+      if (showLoading && !hasLoadedRef.current) {
         setLoading(true);
       }
       await waitForFirebase();
@@ -49,6 +51,7 @@ export default function SubscriptionsScreen() {
       setSubscriptions(subs);
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading subscriptions:', error);
     } finally {
@@ -108,7 +111,8 @@ export default function SubscriptionsScreen() {
         scrollRef.current?.scrollTo({ y: 0, animated: false });
       });
       const timer = setTimeout(() => {
-        loadSubscriptions();
+        // First focus: show loading. Subsequent: show existing data and refresh in background.
+        loadSubscriptions({ showLoading: !hasLoadedRef.current });
         runSubscriptionMaintenance().then((shouldReload) => {
           if (shouldReload) {
             loadSubscriptions({ showLoading: false });

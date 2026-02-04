@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect } from 'expo-router';
@@ -21,10 +21,13 @@ export default function DebtsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const hasLoadedRef = useRef(false);
 
-  const loadDebts = async () => {
+  const loadDebts = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       await waitForFirebase();
       const [debtsData, settings] = await Promise.all([
         getDebts(),
@@ -32,6 +35,7 @@ export default function DebtsScreen() {
       ]);
       setDebts(debtsData);
       setCurrencyCode(settings.defaultCurrency);
+      hasLoadedRef.current = true;
     } catch (error) {
       console.error('Error loading debts:', error);
     } finally {
@@ -42,7 +46,7 @@ export default function DebtsScreen() {
   useFocusEffect(
     useCallback(() => {
       const timer = setTimeout(() => {
-        loadDebts();
+        loadDebts(!hasLoadedRef.current);
       }, 100);
       return () => clearTimeout(timer);
     }, [])
@@ -50,13 +54,13 @@ export default function DebtsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadDebts();
+    await loadDebts(false);
     setRefreshing(false);
   };
 
   const handleDelete = async (id: string) => {
     await deleteDebt(id);
-    await loadDebts();
+    await loadDebts(false);
   };
 
   const getDebtIcon = (type: Debt['type']) => {

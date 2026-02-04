@@ -4,16 +4,12 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getAccounts, getTransactions, getBudgets, getSubscriptions, updateTransaction } from '../database/db';
+import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
+import { enrichAccountsWithBalances } from '../services/accountBalanceService';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
-import { TransactionType } from '../utils/categories';
 import { useTheme } from '../contexts/ThemeContext';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
-import CategoryPickerDialog from '../components/CategoryPickerDialog';
-import SubscriptionCreationDialog from '../components/SubscriptionCreationDialog';
-import BudgetCreationDialog from '../components/BudgetCreationDialog';
-import DebtCreationDialog from '../components/DebtCreationDialog';
 import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
@@ -22,7 +18,6 @@ import AIInsightCard from '../components/AIInsightCard';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync, getCurrencySymbol } from '../utils/currency';
-import { suggestCategory, learnFromCategorization } from '../services/categoryService';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
 import { convertAmountsToCurrency } from '../services/currencyConversionService';
 
@@ -39,15 +34,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
-  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [selectedType, setSelectedType] = useState<TransactionType>('expense');
-  const [suggestedCategory, setSuggestedCategory] = useState<string | undefined>();
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
-  const [subscriptionDialogVisible, setSubscriptionDialogVisible] = useState(false);
-  const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
-  const [debtDialogVisible, setDebtDialogVisible] = useState(false);
-  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const [convertedTotalBalance, setConvertedTotalBalance] = useState<number | null>(null);
   const [convertedPeriodIncome, setConvertedPeriodIncome] = useState<number | null>(null);
   const [convertedPeriodExpenses, setConvertedPeriodExpenses] = useState<number | null>(null);
@@ -55,6 +42,11 @@ export default function HomeScreen() {
     'right-income-left-expense'
   );
   const hasLoadedRef = useRef(false);
+  // Keep last displayed converted values to avoid balance/income/expense flicker when
+  // switching to Home or when conversion runs async (show previous value until new one is ready).
+  const lastStableBalanceRef = useRef<number | null>(null);
+  const lastStableIncomeRef = useRef<number | null>(null);
+  const lastStableExpensesRef = useRef<number | null>(null);
 
   const loadData = async (showLoading = false) => {
     try {
@@ -73,7 +65,9 @@ export default function HomeScreen() {
         getSubscriptions(),
         getSettings(),
       ]);
-      setAccounts(accs);
+      // Enrich TrueLayer accounts with balances (not stored in Firestore) so we don't show $0 then real number
+      const accountsWithBalances = await enrichAccountsWithBalances(accs);
+      setAccounts(accountsWithBalances);
       setTransactions(trans);
       setBudgets(buds);
       setSubscriptions(subs);
@@ -114,58 +108,119 @@ export default function HomeScreen() {
   const periodIncome = filteredData.income;
   const periodExpenses = filteredData.expenses;
 
-  // Convert balances and transactions to default currency
+  // When all accounts use the same currency as default, no conversion needed — use raw totals
+  // so the balance doesn't flicker (async conversion would show totalBalance then convertedTotalBalance).
+  const balanceNeedsConversion = accounts.some(
+    (acc) => (acc.currency || currencyCode || 'USD') !== (currencyCode || 'USD')
+  );
+  const incomeTransactions = filteredData.transactions.filter((t) => t.type === 'income');
+  const expenseTransactions = filteredData.transactions.filter((t) => t.type === 'expense');
+  const incomeNeedsConversion = incomeTransactions.some((t) => {
+    const account = accounts.find((a) => a.id === t.accountId);
+    return (account?.currency || currencyCode || 'USD') !== (currencyCode || 'USD');
+  });
+  const expenseNeedsConversion = expenseTransactions.some((t) => {
+    const account = accounts.find((a) => a.id === t.accountId);
+    return (account?.currency || currencyCode || 'USD') !== (currencyCode || 'USD');
+  });
+
+  // Stable display values: avoid flicker by using previous converted value until new one is ready.
+  const displayBalance =
+    !balanceNeedsConversion
+      ? totalBalance
+      : (convertedTotalBalance ?? lastStableBalanceRef.current ?? totalBalance);
+  const displayIncome =
+    !incomeNeedsConversion
+      ? periodIncome
+      : (convertedPeriodIncome ?? lastStableIncomeRef.current ?? periodIncome);
+  const displayExpenses =
+    !expenseNeedsConversion
+      ? periodExpenses
+      : (convertedPeriodExpenses ?? lastStableExpensesRef.current ?? periodExpenses);
+
+  // Convert balances and transactions to default currency (only when needed)
   React.useEffect(() => {
+    if (!currencyCode) {
+      console.warn('[HomeScreen] Currency code not set, skipping conversion');
+      return;
+    }
+
+    const targetCurrency = currencyCode || 'USD';
+
+    // No conversion needed: set state and refs so next time we have stable values.
+    if (!balanceNeedsConversion && !incomeNeedsConversion && !expenseNeedsConversion) {
+      setConvertedTotalBalance(totalBalance);
+      setConvertedPeriodIncome(periodIncome);
+      setConvertedPeriodExpenses(periodExpenses);
+      lastStableBalanceRef.current = totalBalance;
+      lastStableIncomeRef.current = periodIncome;
+      lastStableExpensesRef.current = periodExpenses;
+      return;
+    }
+
     const convertTotals = async () => {
-      // Don't convert if currencyCode is not set
-      if (!currencyCode) {
-        console.warn('[HomeScreen] Currency code not set, skipping conversion');
-        return;
-      }
-      
       try {
-        // Convert account balances
-        const accountAmounts = accounts.map(acc => ({
-          amount: acc.balance ?? 0,
-          currency: acc.currency || currencyCode || 'USD',
-        }));
-        const convertedBalance = await convertAmountsToCurrency(accountAmounts, currencyCode);
-        setConvertedTotalBalance(convertedBalance);
+        if (balanceNeedsConversion) {
+          const accountAmounts = accounts.map((acc) => ({
+            amount: acc.balance ?? 0,
+            currency: acc.currency || targetCurrency,
+          }));
+          const convertedBalance = await convertAmountsToCurrency(accountAmounts, targetCurrency);
+          setConvertedTotalBalance(convertedBalance);
+          lastStableBalanceRef.current = convertedBalance;
+        } else {
+          setConvertedTotalBalance(totalBalance);
+          lastStableBalanceRef.current = totalBalance;
+        }
 
-        // Convert transaction amounts
-        const incomeTransactions = filteredData.transactions.filter(t => t.type === 'income');
-        const expenseTransactions = filteredData.transactions.filter(t => t.type === 'expense');
-        
-        const incomeAmounts = incomeTransactions.map(t => {
-          const account = accounts.find(a => a.id === t.accountId);
-          return {
-            amount: t.amount,
-            currency: account?.currency || currencyCode || 'USD',
-          };
-        });
-        const expenseAmounts = expenseTransactions.map(t => {
-          const account = accounts.find(a => a.id === t.accountId);
-          return {
-            amount: t.amount,
-            currency: account?.currency || currencyCode || 'USD',
-          };
-        });
+        if (incomeNeedsConversion || expenseNeedsConversion) {
+          const incomeAmounts = incomeTransactions.map((t) => {
+            const account = accounts.find((a) => a.id === t.accountId);
+            return {
+              amount: t.amount,
+              currency: account?.currency || targetCurrency,
+            };
+          });
+          const expenseAmounts = expenseTransactions.map((t) => {
+            const account = accounts.find((a) => a.id === t.accountId);
+            return {
+              amount: t.amount,
+              currency: account?.currency || targetCurrency,
+            };
+          });
 
-        const convertedIncome = await convertAmountsToCurrency(incomeAmounts, currencyCode);
-        const convertedExpenses = await convertAmountsToCurrency(expenseAmounts, currencyCode);
-        
-        setConvertedPeriodIncome(convertedIncome);
-        setConvertedPeriodExpenses(convertedExpenses);
+          if (incomeNeedsConversion) {
+            const convertedIncome = await convertAmountsToCurrency(incomeAmounts, targetCurrency);
+            setConvertedPeriodIncome(convertedIncome);
+            lastStableIncomeRef.current = convertedIncome;
+          } else {
+            setConvertedPeriodIncome(periodIncome);
+            lastStableIncomeRef.current = periodIncome;
+          }
+          if (expenseNeedsConversion) {
+            const convertedExpenses = await convertAmountsToCurrency(expenseAmounts, targetCurrency);
+            setConvertedPeriodExpenses(convertedExpenses);
+            lastStableExpensesRef.current = convertedExpenses;
+          } else {
+            setConvertedPeriodExpenses(periodExpenses);
+            lastStableExpensesRef.current = periodExpenses;
+          }
+        } else {
+          setConvertedPeriodIncome(periodIncome);
+          setConvertedPeriodExpenses(periodExpenses);
+          lastStableIncomeRef.current = periodIncome;
+          lastStableExpensesRef.current = periodExpenses;
+        }
       } catch (error) {
         console.error('[HomeScreen] Error converting currencies:', error);
-        // Fallback to original values if conversion fails
         setConvertedTotalBalance(null);
         setConvertedPeriodIncome(null);
         setConvertedPeriodExpenses(null);
+        // Refs keep previous values so we don't flash wrong numbers
       }
     };
 
-    if ((accounts.length > 0 || filteredData.transactions.length > 0) && currencyCode) {
+    if (accounts.length > 0 || filteredData.transactions.length > 0) {
       convertTotals();
     }
   }, [accounts, transactions, filterPeriod, currencyCode]);
@@ -176,132 +231,6 @@ export default function HomeScreen() {
     .filter(s => new Date(s.nextBillingDate) >= now)
     .slice(0, 3);
   
-  const handleSwipeRight = async (transaction: Transaction) => {
-    const rightSwipeType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
-    const suggestion = await suggestCategory(transaction.description || '', rightSwipeType, transaction.amount);
-    setSelectedTransaction(transaction);
-    setSelectedType(rightSwipeType);
-    setSuggestedCategory(suggestion.category);
-    setCategoryPickerVisible(true);
-  };
-  
-  const handleSwipeLeft = async (transaction: Transaction) => {
-    const leftSwipeType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
-    const suggestion = await suggestCategory(transaction.description || '', leftSwipeType, transaction.amount);
-    setSelectedTransaction(transaction);
-    setSelectedType(leftSwipeType);
-    setSuggestedCategory(suggestion.category);
-    setCategoryPickerVisible(true);
-  };
-  
-  const handleCategorySelect = async (category: string) => {
-    if (!selectedTransaction) return;
-    
-    // Close category picker first
-    setCategoryPickerVisible(false);
-    
-    // Small delay to ensure category picker closes before showing next dialog
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
-    setPendingCategory(category);
-    
-    try {
-      // If category is Subscription, show subscription creation dialog
-      if (category === 'Subscription') {
-        setSubscriptionDialogVisible(true);
-        return;
-      }
-      
-      // If it's an expense category, check if budget exists
-      if (selectedType === 'expense' && category !== 'Income') {
-        const budgets = await getBudgets();
-        const budgetExists = budgets.some(b => b.category === category);
-        
-        console.log('[HomeScreen] Checking budget for category:', category, 'Budget exists:', budgetExists);
-        
-        if (!budgetExists) {
-          // Show budget creation dialog
-          console.log('[HomeScreen] Showing budget creation dialog for category:', category);
-          setBudgetDialogVisible(true);
-          return;
-        }
-      }
-      
-      // Check if this might be a debt-related category
-      const debtCategories = ['Debt', 'Loan', 'Credit Card'];
-      if (debtCategories.includes(category) || category.toLowerCase().includes('debt')) {
-        setDebtDialogVisible(true);
-        return;
-      }
-      
-      // Otherwise, proceed with normal update
-      await proceedWithCategoryUpdate(category);
-    } catch (error) {
-      console.error('[HomeScreen] Error in category selection:', error);
-      setPendingCategory(null);
-      setSelectedTransaction(null);
-    }
-  };
-
-  const proceedWithCategoryUpdate = async (category: string) => {
-    if (!selectedTransaction) return;
-    
-    try {
-      // Get suggestion again to check for subscription and debt links
-      const suggestion = await suggestCategory(selectedTransaction.description || '', selectedType, selectedTransaction.amount);
-      
-      // Update transaction type, category, and links if applicable
-      const updateData: Partial<Transaction> = {
-        type: selectedType,
-        category,
-      };
-      
-      // If we found a matching debt, link it
-      if (suggestion.debtId) {
-        updateData.debtId = suggestion.debtId;
-      }
-      
-      await updateTransaction(selectedTransaction.id, updateData);
-      
-      await learnFromCategorization(
-        selectedTransaction.description || '',
-        category,
-        selectedType
-      );
-      
-      await loadData();
-    } catch (error) {
-      console.error('[HomeScreen] Error updating transaction');
-    } finally {
-      setSelectedTransaction(null);
-      setPendingCategory(null);
-      setSuggestedCategory(undefined);
-    }
-  };
-
-  const handleSubscriptionDialogComplete = async (subscriptionId?: string) => {
-    setSubscriptionDialogVisible(false);
-    if (pendingCategory) {
-      await proceedWithCategoryUpdate(pendingCategory);
-    }
-  };
-
-  const handleBudgetDialogComplete = async (budgetId?: string) => {
-    setBudgetDialogVisible(false);
-    if (pendingCategory) {
-      await proceedWithCategoryUpdate(pendingCategory);
-    }
-  };
-
-  const handleDebtDialogComplete = async (debtId?: string) => {
-    setDebtDialogVisible(false);
-    // Debt dialog already updates the transaction with type='expense' and debtId
-    // Just reload data to reflect changes
-    await loadData();
-    setSelectedTransaction(null);
-    setPendingCategory(null);
-  };
-
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -382,20 +311,20 @@ export default function HomeScreen() {
           </View>
         </View>
         <Text style={styles.balanceAmount}>
-          {formatCurrencySync(convertedTotalBalance ?? totalBalance, currencyCode)}
+          {formatCurrencySync(displayBalance, currencyCode)}
         </Text>
         <View style={styles.balanceFooter}>
           <View style={styles.balanceStat}>
             <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Income</Text>
             <Text style={styles.balanceStatValue}>
-              {formatCurrencySync(convertedPeriodIncome ?? periodIncome, currencyCode)}
+              {formatCurrencySync(displayIncome, currencyCode)}
             </Text>
           </View>
           <View style={styles.balanceDivider} />
           <View style={styles.balanceStat}>
             <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Expenses</Text>
             <Text style={styles.balanceStatValue}>
-              {formatCurrencySync(convertedPeriodExpenses ?? periodExpenses, currencyCode)}
+              {formatCurrencySync(displayExpenses, currencyCode)}
             </Text>
           </View>
         </View>
@@ -432,8 +361,6 @@ export default function HomeScreen() {
                   transaction={transaction}
                   currencyCode={currencyCode}
                   onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
-                  onSwipeRight={() => handleSwipeRight(transaction)}
-                  onSwipeLeft={() => handleSwipeLeft(transaction)}
                   swipeDirection={swipeDirection}
                 />
               );
@@ -489,60 +416,6 @@ export default function HomeScreen() {
       )}
 
       </ScreenWrapper>
-      
-      <CategoryPickerDialog
-        visible={categoryPickerVisible}
-        type={selectedType}
-        onSelect={handleCategorySelect}
-        onClose={() => {
-          // Only clear if we're not about to show another dialog
-          if (!subscriptionDialogVisible && !budgetDialogVisible && !debtDialogVisible) {
-            setCategoryPickerVisible(false);
-            setSelectedTransaction(null);
-            setSuggestedCategory(undefined);
-            setPendingCategory(null);
-          } else {
-            // Just close the category picker, keep transaction for next dialog
-            setCategoryPickerVisible(false);
-          }
-        }}
-        suggestedCategory={suggestedCategory}
-      />
-      
-      <SubscriptionCreationDialog
-        visible={subscriptionDialogVisible}
-        transaction={selectedTransaction}
-        onClose={() => {
-          setSubscriptionDialogVisible(false);
-          setPendingCategory(null);
-        }}
-        onComplete={handleSubscriptionDialogComplete}
-      />
-      
-      <BudgetCreationDialog
-        visible={budgetDialogVisible}
-        transaction={selectedTransaction}
-        category={pendingCategory || ''}
-        onClose={() => {
-          setBudgetDialogVisible(false);
-          setPendingCategory(null);
-        }}
-        onComplete={handleBudgetDialogComplete}
-      />
-      
-      <DebtCreationDialog
-        visible={debtDialogVisible}
-        transaction={selectedTransaction}
-        category={pendingCategory || ''}
-        onClose={() => {
-          setDebtDialogVisible(false);
-          setPendingCategory(null);
-        }}
-        onComplete={handleDebtDialogComplete}
-        onNavigateToDebts={() => {
-          router.push('/(tabs)/finance/debts' as any);
-        }}
-      />
     </GestureHandlerRootView>
   );
 }

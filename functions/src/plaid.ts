@@ -92,6 +92,29 @@ const mapPlaidTransaction = (tx: PlaidTransaction) => {
   return { amount, type, description, date };
 };
 
+/** Server-side category classification for Plaid transactions (deterministic rules only). */
+function classifyPlaidTransaction(
+  description: string,
+  type: 'income' | 'expense'
+): string {
+  const lower = (description || '').toLowerCase();
+  if (type === 'income') {
+    if (lower.includes('salary') || lower.includes('paycheck') || lower.includes('deposit') || lower.includes('payment received')) return 'Salary';
+    if (lower.includes('refund')) return 'Refunds';
+    return 'Other Income';
+  }
+  if (lower.includes('restaurant') || lower.includes('cafe') || lower.includes('starbucks') || lower.includes('uber eats') || lower.includes('doordash') || lower.includes('food') || lower.includes('dining')) return 'Food & Dining';
+  if (lower.includes('amazon') || lower.includes('target') || lower.includes('walmart') || lower.includes('store') || lower.includes('shop')) return 'Shopping';
+  if (lower.includes('uber') || lower.includes('lyft') || lower.includes('taxi') || lower.includes('gas') || lower.includes('fuel') || lower.includes('parking') || lower.includes('transport')) return 'Transport';
+  if (lower.includes('subscription') || lower.includes('netflix') || lower.includes('spotify') || lower.includes('apple music') || lower.includes('disney') || lower.includes('hulu') || lower.includes('prime')) return 'Subscription';
+  if (lower.includes('electric') || lower.includes('water') || lower.includes('internet') || lower.includes('phone') || lower.includes('utility') || lower.includes('bill')) return 'Bills & Utilities';
+  if (lower.includes('movie') || lower.includes('concert') || lower.includes('theater') || lower.includes('game') || lower.includes('entertainment')) return 'Entertainment';
+  if (lower.includes('doctor') || lower.includes('pharmacy') || lower.includes('hospital') || lower.includes('medical') || lower.includes('cvs') || lower.includes('walgreens')) return 'Healthcare';
+  if (lower.includes('grocer') || lower.includes('supermarket') || lower.includes('basket')) return 'Groceries';
+  if (lower.includes('credit card') || lower.includes('amex') || lower.includes('visa') || lower.includes('loan') || lower.includes('klarna') || lower.includes('affirm')) return 'Debt';
+  return 'Other';
+}
+
 const syncPlaidTransactionsForItem = async (args: {
   uid: string;
   itemId: string;
@@ -144,6 +167,7 @@ const syncPlaidTransactionsForItem = async (args: {
 
       const docId = `plaid_${itemId}_${tx.transaction_id}`;
       const { amount, type, description, date } = mapPlaidTransaction(tx);
+      const category = classifyPlaidTransaction(description, type);
       const createdAt = existingCreatedAt.get(docId) || admin.firestore.FieldValue.serverTimestamp();
 
       batch.set(
@@ -152,7 +176,7 @@ const syncPlaidTransactionsForItem = async (args: {
           accountId,
           amount,
           type,
-          category: 'Other',
+          category,
           description,
           date,
           createdAt,

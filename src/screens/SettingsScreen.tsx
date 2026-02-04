@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, TextInput, Modal, KeyboardAvoidingView } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useFocusEffect, usePathname, useSegments, useRouter } from 'expo-router';
@@ -75,15 +75,19 @@ export default function SettingsScreen() {
     getAccountDeletionStatus()
   );
   const [requestingDeletion, setRequestingDeletion] = useState(false);
+  const hasLoadedRef = useRef(false);
 
   // Removed logging for better performance
 
-  const loadSettings = async () => {
+  const loadSettings = async (showLoading = true) => {
     try {
-      setLoading(true);
+      if (showLoading && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       await waitForFirebase();
       const userSettings = await getSettings();
       setSettings(userSettings);
+      hasLoadedRef.current = true;
       
       // Check biometric availability
       const available = await isBiometricAvailable();
@@ -109,7 +113,7 @@ export default function SettingsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadSettings();
+      loadSettings(!hasLoadedRef.current);
     }, [])
   );
 

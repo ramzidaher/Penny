@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
@@ -56,6 +56,7 @@ export default function AccountsScreen() {
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
   const [showConvertedAmounts, setShowConvertedAmounts] = useState<boolean>(false);
   const [convertedBalances, setConvertedBalances] = useState<Map<string, number>>(new Map());
+  const hasLoadedRef = useRef(false);
 
   useEffect(() => {
     console.log('[AccountsScreen] 🟢 SCREEN MOUNTED - AccountsScreen');
@@ -64,9 +65,12 @@ export default function AccountsScreen() {
     };
   }, []);
 
-  const loadAccounts = async () => {
+  const loadAccounts = async (showLoading = true) => {
     try {
-      setLoading(true);
+      // Only show full-screen skeleton on initial load; on focus reuse existing data and refresh in background
+      if (showLoading && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       await waitForFirebase();
       const [accs, settings] = await Promise.all([
         getAccounts(),
@@ -78,6 +82,7 @@ export default function AccountsScreen() {
       setAccounts(accs);
       const defaultCurrency = settings.defaultCurrency || 'USD';
       setCurrencyCode(defaultCurrency);
+      hasLoadedRef.current = true;
       
       // Pre-convert all account balances if conversion is enabled
       if (showConvertedAmounts && defaultCurrency) {
@@ -119,17 +124,15 @@ export default function AccountsScreen() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      loadAccounts();
+      loadAccounts(true);
     }, 100);
-    // Use focus listener to reload accounts when screen comes into focus
+    // Use focus listener to reload accounts when screen comes into focus (background refresh, no loading UI)
     const focusListener = navigation.addListener('focus', () => {
       console.log('[AccountsScreen] Focus detected, reloading accounts...');
-      // Always reload accounts on focus to ensure new connections are shown
-      loadAccounts();
+      loadAccounts(false);
     });
     return () => {
       clearTimeout(timer);
-      // Cleanup: remove the focus listener
       if (typeof focusListener === 'function') {
         focusListener();
       }
@@ -138,13 +141,13 @@ export default function AccountsScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadAccounts();
+    await loadAccounts(false);
     setRefreshing(false);
   };
 
   const handleDelete = async (id: string) => {
     await deleteAccount(id);
-    await loadAccounts();
+    await loadAccounts(false);
   };
 
   const calculateTotalBalance = () => {

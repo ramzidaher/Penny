@@ -15,6 +15,7 @@ import { Transaction } from '../database/schema';
 import { getAllConnections } from './truelayerService';
 import { cloudGetAccounts } from './cloudDb';
 import { getCachedTransactions, clearTransactionCache } from './transactionCache';
+import { triggerAutoTaggingInBackground } from './autoTaggingService';
 
 /**
  * Get all transactions for all connected accounts
@@ -204,9 +205,13 @@ export const getTransactions = async (forceRefresh: boolean = false): Promise<Tr
     
     
     // Sort by date (newest first)
-    return mergedTransactions.sort((a, b) => {
+    const sorted = mergedTransactions.sort((a, b) => {
       return new Date(b.date).getTime() - new Date(a.date).getTime();
     });
+    if (forceRefresh && sorted.length > 0) {
+      triggerAutoTaggingInBackground(sorted);
+    }
+    return sorted;
   } catch (error) {
     // If Firestore merge fails, return cached transactions
     console.error('[transactionService] Error merging Firestore transactions, returning cached only');

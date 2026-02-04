@@ -14,9 +14,10 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { getAllConnections } from './truelayerService';
 import { syncTrueLayerAccounts } from './cloudDb';
-import { refreshTransactions } from './transactionService';
+import { refreshTransactions, getTransactions } from './transactionService';
 import { refreshAccountBalances } from './accountBalanceService';
 import { getAccounts } from '../database/db';
+import { triggerAutoTaggingInBackground } from './autoTaggingService';
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours (4x per day)
 const MIN_SYNC_INTERVAL_MS = 60 * 60 * 1000; // Minimum 1 hour between syncs
@@ -88,6 +89,11 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
         // Continue with other connections even if one fails
       }
     }
+
+    // Auto-tagging: run once in background (non-blocking) after all connections synced
+    getTransactions(false).then((transactions) => {
+      triggerAutoTaggingInBackground(transactions);
+    }).catch(() => {});
 
     lastSyncTime = now;
   } catch (error: unknown) {
