@@ -18,6 +18,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { registerUser, initFirebase, isUsernameAvailable, isEmailAvailable } from '../services/firebase';
+import Avatar from './Avatar';
+import { AVATAR_SEEDS } from '../utils/avatarUtils';
 import { requestPermissions } from '../services/notifications';
 import { isBiometricAvailable, getBiometricType, saveBiometricCredentials } from '../services/biometricService';
 import { setPIN } from '../services/pinService';
@@ -37,6 +39,7 @@ interface SignupData {
   pin: string;
   confirmPin: string;
   aiTone: 'friendly' | 'professional' | 'direct' | 'harsh' | null;
+  avatarSeed: string | null;
 }
 
 export default function SignupOnboarding() {
@@ -60,6 +63,7 @@ export default function SignupOnboarding() {
     pin: '',
     confirmPin: '',
     aiTone: null,
+    avatarSeed: null,
   });
   
   // PIN step state
@@ -91,7 +95,7 @@ export default function SignupOnboarding() {
   const [isCustomThreshold, setIsCustomThreshold] = useState(false);
   const [customThreshold, setCustomThreshold] = useState<string>('');
 
-  const totalSteps = 8;
+  const totalSteps = 9;
 
   // Check biometric availability on mount
   useEffect(() => {
@@ -291,7 +295,7 @@ export default function SignupOnboarding() {
     // Handle final step separately
     if (currentStep === totalSteps) {
       // Final step - create account
-      console.log('[SignupOnboarding] Step 8 - calling handleCreateAccount');
+      console.log('[SignupOnboarding] Final step - calling handleCreateAccount');
       await handleCreateAccount();
       return;
     }
@@ -359,7 +363,15 @@ export default function SignupOnboarding() {
       console.log('[SignupOnboarding] Step 2 validation passed, moving to step 3');
       setCurrentStep(3);
     } else if (currentStep === 3) {
-      console.log('[SignupOnboarding] Validating step 3...');
+      // Avatar selection
+      if (!formData.avatarSeed || formData.avatarSeed.trim() === '') {
+        dialog.alert('Error', 'Please choose an avatar');
+        return;
+      }
+      console.log('[SignupOnboarding] Step 3 (avatar) validation passed, moving to step 4');
+      setCurrentStep(4);
+    } else if (currentStep === 4) {
+      console.log('[SignupOnboarding] Validating step 4 (password)...');
       // Password validation with security checks
       if (!formData.password.trim()) {
         dialog.alert('Error', 'Please enter a password');
@@ -382,11 +394,11 @@ export default function SignupOnboarding() {
         dialog.alert('Error', 'Passwords do not match');
         return;
       }
-      console.log('[SignupOnboarding] Step 3 validation passed, moving to step 4');
-      setCurrentStep(4);
+      console.log('[SignupOnboarding] Step 4 validation passed, moving to step 5');
+      setCurrentStep(5);
       setPinStep('enter');
-    } else if (currentStep === 4) {
-      console.log('[SignupOnboarding] Validating step 4 (PIN)...');
+    } else if (currentStep === 5) {
+      console.log('[SignupOnboarding] Validating step 5 (PIN)...');
       // PIN validation
       if (pinStep === 'enter') {
         if (!formData.pin || formData.pin.length !== 6) {
@@ -411,25 +423,25 @@ export default function SignupOnboarding() {
           return;
         }
         
-        console.log('[SignupOnboarding] Step 4 validation passed, moving to step 5');
-        setCurrentStep(5);
+        console.log('[SignupOnboarding] Step 5 validation passed, moving to step 6');
+        setCurrentStep(6);
       }
-    } else if (currentStep === 5) {
+    } else if (currentStep === 6) {
       // AI Tone selection - validate selection
       if (!formData.aiTone) {
         dialog.alert('Error', 'Please select an AI tone preference');
         return;
       }
-      console.log('[SignupOnboarding] Step 5 validation passed, moving to step 6');
-      setCurrentStep(6);
-    } else if (currentStep === 6) {
-      // Preferences - no validation needed, all have defaults
-      console.log('[SignupOnboarding] Moving from step 6 (preferences) to step 7');
+      console.log('[SignupOnboarding] Step 6 validation passed, moving to step 7');
       setCurrentStep(7);
     } else if (currentStep === 7) {
-      // Permissions - can skip, so just proceed
-      console.log('[SignupOnboarding] Moving from step 7 to 8');
+      // Preferences - no validation needed, all have defaults
+      console.log('[SignupOnboarding] Moving from step 7 (preferences) to step 8');
       setCurrentStep(8);
+    } else if (currentStep === 8) {
+      // Permissions - can skip, so just proceed
+      console.log('[SignupOnboarding] Moving from step 8 to 9');
+      setCurrentStep(9);
     }
   };
 
@@ -522,7 +534,8 @@ export default function SignupOnboarding() {
         formData.password, // Password doesn't need sanitization, Firebase handles it
         sanitizedName,
         sanitizedUsername,
-        formData.dateOfBirth || undefined
+        formData.dateOfBirth || undefined,
+        formData.avatarSeed || undefined
       );
       
       console.log('[SignupOnboarding] User registered successfully:', user?.uid);
@@ -585,6 +598,7 @@ export default function SignupOnboarding() {
         pin: '',
         confirmPin: '',
         aiTone: null,
+        avatarSeed: null,
       });
       
       console.log('[SignupOnboarding] Account creation complete');
@@ -659,7 +673,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.iconContainer}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logo}
           resizeMode="contain"
         />
@@ -699,7 +713,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -895,11 +909,45 @@ export default function SignupOnboarding() {
     </View>
   );
 
+  const renderStep3Avatar = () => (
+    <View style={styles.stepContainer}>
+      <View style={styles.logoContainerSmall}>
+        <Image 
+          source={require('../../assets/PennyLogoTransparent.png')} 
+          style={styles.logoSmall}
+          resizeMode="contain"
+        />
+      </View>
+      <Text style={styles.stepTitle}>Choose your avatar</Text>
+      <Text style={styles.stepDescription}>Pick an avatar to represent you</Text>
+      <View style={styles.avatarGrid}>
+        {AVATAR_SEEDS.map((seed) => (
+          <TouchableOpacity
+            key={seed}
+            style={[
+              styles.avatarGridItem,
+              formData.avatarSeed === seed && styles.avatarGridItemSelected,
+            ]}
+            onPress={() => setFormData({ ...formData, avatarSeed: seed })}
+            activeOpacity={0.7}
+          >
+            <Avatar seed={seed} size={56} />
+            {formData.avatarSeed === seed && (
+              <View style={styles.avatarGridCheck}>
+                <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+              </View>
+            )}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -979,7 +1027,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -1114,7 +1162,7 @@ export default function SignupOnboarding() {
       <View style={styles.stepContainer}>
         <View style={styles.logoContainerSmall}>
           <Image 
-            source={require('../../assets/Penny Logo RD.png')} 
+            source={require('../../assets/PennyLogoTransparent.png')} 
             style={styles.logoSmall}
             resizeMode="contain"
           />
@@ -1192,7 +1240,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -1345,7 +1393,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -1421,7 +1469,7 @@ export default function SignupOnboarding() {
     <View style={styles.stepContainer}>
       <View style={styles.logoContainerSmall}>
         <Image 
-          source={require('../../assets/Penny Logo RD.png')} 
+          source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
@@ -1441,16 +1489,18 @@ export default function SignupOnboarding() {
       case 2:
         return renderStep2();
       case 3:
-        return renderStep3();
+        return renderStep3Avatar();
       case 4:
-        return renderStep4();
+        return renderStep3();
       case 5:
-        return renderStep5();
+        return renderStep4();
       case 6:
-        return renderStep6();
+        return renderStep5();
       case 7:
-        return renderStep7();
+        return renderStep6();
       case 8:
+        return renderStep7();
+      case 9:
         return renderStep8();
       default:
         return renderStep1();
@@ -1530,9 +1580,9 @@ export default function SignupOnboarding() {
                   ? 'Creating Account...' 
                   : currentStep === totalSteps 
                     ? 'Create Account' 
-                    : currentStep === 4 && pinStep === 'enter'
+                    : currentStep === 5 && pinStep === 'enter'
                     ? 'Continue'
-                    : currentStep === 4 && pinStep === 'confirm'
+                    : currentStep === 5 && pinStep === 'confirm'
                     ? 'Confirm'
                     : 'Continue'
                 }
@@ -2297,6 +2347,35 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: isSmallScreen ? 12 : 13,
     fontStyle: 'italic',
     marginTop: 8,
+  },
+  avatarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: isSmallScreen ? 12 : 16,
+    width: '100%',
+    paddingHorizontal: 8,
+  },
+  avatarGridItem: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  avatarGridItemSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+  },
+  avatarGridCheck: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: colors.background,
+    borderRadius: 12,
   },
 });
 

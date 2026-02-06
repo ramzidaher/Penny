@@ -9,6 +9,7 @@ import { ToastProvider } from '../src/contexts/ToastContext';
 import { DialogProvider } from '../src/contexts/DialogContext';
 import { ThemeProvider } from '../src/contexts/ThemeContext';
 import AppLockScreen from '../src/components/AppLockScreen';
+import PINSetupScreen from '../src/components/PINSetupScreen';
 import { getOAuthFlowActive } from '../src/services/oAuthFlowService';
 import { useAuthAndLock } from '../src/hooks/useAuthAndLock';
 
@@ -26,6 +27,7 @@ function RootLayoutInner() {
     isPinSet,
     lockStateDetermined,
     handleUnlock,
+    refreshPinState,
   } = useAuthAndLock();
 
   const segments = useSegments();
@@ -83,11 +85,14 @@ function RootLayoutInner() {
 
     // Navigation rules:
     // 1. If not logged in and not on auth screen → go to login
-    // 2. If logged in and on auth screen → go to main app (unless app is locked)
-    // 3. Lock screen is handled by conditional rendering above
-    // 4. CRITICAL: Don't navigate if app is locked - lock screen will be shown
+    // 2. If logged in and on auth screen → go to main app (unless app is locked or PIN setup required)
+    // 3. Lock screen / PIN setup are handled by conditional rendering above
+    // 4. Don't navigate if app is locked or PIN setup required
     if (user && isAppLocked) {
       return;
+    }
+    if (user && !isPinSet) {
+      return; // PIN setup screen is shown, don't navigate to tabs
     }
     // Note: OAuth flow check already done above, no need to check again here
     
@@ -99,7 +104,7 @@ function RootLayoutInner() {
       console.log('[RootLayout] 🟢 Navigating to tabs - user logged in and on auth screen');
       router.replace('/(tabs)' as any);
     }
-  }, [user, segments, isAuthReady, fontsLoaded, router, isAppLocked, lockStateDetermined]);
+  }, [user, segments, isAuthReady, fontsLoaded, router, isAppLocked, isPinSet, lockStateDetermined]);
 
   // Don't render anything until fonts are loaded, auth is ready, initialization is complete,
   // AND lock state is determined. This prevents login screen flash and ensures correct screen shows immediately
@@ -126,11 +131,14 @@ function RootLayoutInner() {
           <ToastProvider>
             <ActionMenuProvider>
             <StatusBar style="dark" />
+            {/* PIN Setup - Show when user is logged in but has no PIN (e.g. new device or first time). Blocks app until PIN is set. */}
+            {user && !isPinSet && !isAppLocked && (
+              <PINSetupScreen onComplete={refreshPinState} />
+            )}
             {/* Lock Screen - Show if user is logged in, PIN is set, and app is locked */}
             {user && isPinSet && isAppLocked && <AppLockScreen onUnlock={handleUnlockAndMaybeNavigate} />}
-            {/* Main App - Show if user is logged in and app is not locked */}
-            {/* CRITICAL: Only render Stack when app is NOT locked to prevent login screen flash */}
-            {user && !isAppLocked && (() => {
+            {/* Main App - Show if user is logged in, has PIN set, and app is not locked (don't show when PIN setup is required) */}
+            {user && isPinSet && !isAppLocked && (() => {
               return (
                 <>
                   <Stack screenOptions={{ headerShown: false }}>
@@ -142,6 +150,10 @@ function RootLayoutInner() {
                       options={{ 
                         headerShown: false
                       }} 
+                    />
+                    <Stack.Screen 
+                      name="change-avatar" 
+                      options={{ headerShown: false }} 
                     />
                     <Stack.Screen 
                       name="settings" 

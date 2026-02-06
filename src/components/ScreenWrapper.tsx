@@ -14,6 +14,8 @@ interface ScreenWrapperProps {
   loadingComponent?: ReactNode;
   contentContainerStyle?: object;
   showsVerticalScrollIndicator?: boolean;
+  /** Use "handled" for chat screens so tapping the input/send doesn't dismiss keyboard. */
+  keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
 }
 
 export interface ScreenWrapperRef {
@@ -32,6 +34,7 @@ const ScreenWrapper = forwardRef<ScreenWrapperRef, ScreenWrapperProps>(({
   loadingComponent,
   contentContainerStyle,
   showsVerticalScrollIndicator = false,
+  keyboardShouldPersistTaps,
 }, ref) => {
   const insets = useSafeAreaInsets();
   const scrollViewRef = React.useRef<ScrollView>(null);
@@ -59,6 +62,7 @@ const ScreenWrapper = forwardRef<ScreenWrapperRef, ScreenWrapperProps>(({
       contentContainerStyle={contentContainerStyle}
       refreshControl={refreshControlElement}
       showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
     >
       {loading && loadingComponent ? loadingComponent : children}
     </ScrollView>

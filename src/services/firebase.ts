@@ -247,6 +247,30 @@ export const setCurrentUser = (user: User | null): void => {
   currentUser = user;
 };
 
+/** Get current user profile from Firestore (e.g. avatarSeed). Returns null if not signed in or doc missing. */
+export const getCurrentUserProfile = async (): Promise<{ avatarSeed?: string } | null> => {
+  if (!currentUser || !db) return null;
+  try {
+    const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+    if (!userDoc.exists()) return null;
+    const data = userDoc.data();
+    return { avatarSeed: data?.avatarSeed };
+  } catch {
+    return null;
+  }
+};
+
+/** Update current user profile in Firestore (e.g. avatarSeed). Creates the document if it doesn't exist (e.g. user created before profile docs were written). */
+export const updateUserProfile = async (updates: { avatarSeed?: string }): Promise<void> => {
+  if (!currentUser || !db) throw new Error('Not signed in or Firebase not initialized');
+  const userProfileRef = doc(db, 'users', currentUser.uid);
+  const payload: Record<string, unknown> = { updatedAt: Timestamp.now() };
+  if (updates.avatarSeed !== undefined && updates.avatarSeed.trim()) {
+    payload.avatarSeed = updates.avatarSeed.trim();
+  }
+  await setDoc(userProfileRef, payload, { merge: true });
+};
+
 // Check if Firebase is available
 export const isFirebaseAvailable = (): boolean => {
   return db !== null && currentUser !== null && accountDeletionStatus.status === 'active';
@@ -448,7 +472,8 @@ export const registerUser = async (
   password: string, 
   displayName?: string,
   username?: string,
-  dateOfBirth?: Date
+  dateOfBirth?: Date,
+  avatarSeed?: string
 ): Promise<User> => {
   if (!auth) {
     throw new Error('Firebase not initialized');
@@ -533,6 +558,10 @@ export const registerUser = async (
   
   if (dateOfBirth) {
     profileData.dateOfBirth = Timestamp.fromDate(dateOfBirth);
+  }
+  
+  if (avatarSeed && typeof avatarSeed === 'string' && avatarSeed.trim()) {
+    profileData.avatarSeed = avatarSeed.trim();
   }
   
   // Write user profile first
@@ -643,28 +672,41 @@ export const logoutUser = async (): Promise<void> => {
   // Clear the currentUser immediately
   currentUser = null;
   accountDeletionStatus = { status: 'active' };
+
+  // Clear settings cache so next login fetches fresh settings
+  try {
+    const { clearSettingsCache } = await import('./settingsService');
+    clearSettingsCache();
+  } catch {
+    // Ignore if settings service not loaded
+  }
   
-  // On web, clear sessionStorage and localStorage to prevent auto-restore
-  if (typeof window !== 'undefined') {
+  // On web only, clear sessionStorage and localStorage to prevent auto-restore
+  // (React Native does not have localStorage/sessionStorage)
+  if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
     try {
-      // Clear all Firebase-related storage
       const allKeys = Object.keys(localStorage);
       allKeys.forEach(key => {
         if (key.includes('firebase') || key.includes('auth')) {
           localStorage.removeItem(key);
         }
       });
-      
+      console.log('Cleared Firebase auth from localStorage');
+    } catch (error) {
+      console.warn('Could not clear localStorage:', error);
+    }
+  }
+  if (typeof window !== 'undefined' && typeof sessionStorage !== 'undefined') {
+    try {
       const sessionKeys = Object.keys(sessionStorage);
       sessionKeys.forEach(key => {
         if (key.includes('firebase') || key.includes('auth')) {
           sessionStorage.removeItem(key);
         }
       });
-      
-      console.log('Cleared Firebase auth from storage');
+      console.log('Cleared Firebase auth from sessionStorage');
     } catch (error) {
-      console.warn('Could not clear storage:', error);
+      console.warn('Could not clear sessionStorage:', error);
     }
   }
   
@@ -698,8 +740,48 @@ export const resetPassword = async (email: string): Promise<void> => {
   if (!auth) {
     throw new Error('Firebase not initialized');
   }
-  
-  await sendPasswordResetEmail(auth, email);
+  const sanitized = email.trim().toLowerCase();
+  if (!sanitized) {
+    throw new Error('Invalid email address');
+  }
+  await sendPasswordResetEmail(auth, sanitized);
+};
+
+/**
+ * Request a branded password reset email (Penny template, from your domain via Resend).
+ * Falls back to Firebase default email if the Cloud Function is not configured (e.g. RESEND_API_KEY not set).
+ */
+export const requestBrandedPasswordReset = async (email: string): Promise<void> => {
+  const sanitized = email.trim().toLowerCase();
+  if (!sanitized) {
+    throw new Error('Invalid email address');
+  }
+  if (!functions) {
+    await initFirebase();
+  }
+  if (!functions) {
+    throw new Error('Firebase not initialized');
+  }
+  try {
+    const requestReset = httpsCallable<{ email: string }, { success: boolean }>(functions, 'requestPasswordReset');
+    await requestReset({ email: sanitized });
+    return;
+  } catch (error: any) {
+    const code = error?.code || error?.details?.code;
+    const message = error?.message || '';
+    // Function not deployed, not configured, or unavailable → fall back to default Firebase email
+    const shouldFallback =
+      code === 'functions/not-found' ||
+      code === 'functions/failed-precondition' ||
+      code === 'failed-precondition' ||
+      message.includes('not configured');
+    if (shouldFallback) {
+      if (!auth) throw new Error('Firebase not initialized');
+      await sendPasswordResetEmail(auth, sanitized);
+      return;
+    }
+    throw error;
+  }
 };
 
 // Check if user is authenticated

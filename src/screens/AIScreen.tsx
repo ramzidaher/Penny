@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, Keyboard, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,14 +44,16 @@ import {
   inferMemoriesFromTransactions,
 } from '../services/memoryService';
 import { getSettings } from '../services/settingsService';
+import { useAuthAndLock } from '../hooks/useAuthAndLock';
 
 export default function AIScreen() {
+  const { user } = useAuthAndLock();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const router = useRouter();
-  const params = useLocalSearchParams<{ prompt?: string }>();
+  const params = useLocalSearchParams<{ prompt?: string; openThreads?: string }>();
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<AdvisorChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,9 +68,11 @@ export default function AIScreen() {
   const [memorySyncing, setMemorySyncing] = useState(false);
   const [memoryEnabled, setMemoryEnabled] = useState(true);
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const screenWrapperRef = useRef<ScreenWrapperRef>(null);
   const requestGenerationRef = useRef(0);
   const lastAutoPromptRef = useRef<string | null>(null);
+  const openThreadsHandledRef = useRef(false);
 
   const resetToLanding = useCallback(() => {
     requestGenerationRef.current += 1;
@@ -94,18 +98,38 @@ export default function AIScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.prompt]);
 
-  // Load threads on mount - no delay for faster loading
+  // Load threads only when user is logged in (avoids Firebase errors after sign out)
   useEffect(() => {
+    if (!user) {
+      setThreads([]);
+      return;
+    }
     loadThreads();
-  }, []);
+  }, [user]);
 
-  // Load AI memory settings on mount
+  // When navigated from main advisor with openThreads=1, open the conversations modal.
   useEffect(() => {
+    if (params.openThreads === '1' && !openThreadsHandledRef.current) {
+      openThreadsHandledRef.current = true;
+      setShowThreadsModal(true);
+    }
+  }, [params.openThreads]);
+
+  // Load AI memory settings only when user is logged in (avoids Firebase errors after sign out)
+  useEffect(() => {
+    if (!user) {
+      setMemories([]);
+      return;
+    }
     loadMemorySettings();
-  }, []);
+  }, [user]);
 
-  // Load progress on mount
+  // Load progress only when user is logged in
   useEffect(() => {
+    if (!user) {
+      setAdvisorProgress(null);
+      return;
+    }
     (async () => {
       try {
         const p = await getAdvisorProgress();
@@ -115,7 +139,7 @@ export default function AIScreen() {
         // If Firebase isn't ready yet, we'll just skip progress for now.
       }
     })();
-  }, []);
+  }, [user]);
 
   // Load messages when thread changes
   useEffect(() => {
@@ -565,13 +589,29 @@ export default function AIScreen() {
     };
   }, [navigation, resetToLanding]);
 
+  // Production-style keyboard handling: composer above keyboard + list padding + scroll to end.
+  const composerReserve = 260; // Space reserved for composer bar (matches layout)
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      const height = e.endCoordinates.height;
+      setKeyboardHeight(height);
+      // Scroll to end when keyboard opens so user sees latest messages above the input (like iMessage/WhatsApp).
+      if (showChatUI) {
+        const delay = Platform.OS === 'ios' ? 100 : 150;
+        setTimeout(() => screenWrapperRef.current?.scrollToEnd({ animated: true }), delay);
+      }
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [showChatUI]);
+
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={0}
-    >
-      <View style={styles.container}>
+    <View style={styles.container}>
         <ScreenHeader
           title="Penny Advisor"
           subtitle={currentThread?.title || 'Your money plan at a glance'}
@@ -586,10 +626,11 @@ export default function AIScreen() {
           <ScreenWrapper
             ref={screenWrapperRef}
             enableKeyboardAvoiding={false}
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               ...styles.scrollContent,
-              // Reserve space for the fixed composer + tab bar overlay.
-              paddingBottom: insets.bottom + tabBarOverlayOffset + 260,
+              // Reserve space for composer + tab bar. When keyboard is open, add keyboard height so user can scroll to see all messages above the input.
+              paddingBottom: insets.bottom + tabBarOverlayOffset + composerReserve + keyboardHeight,
             }}
             showsVerticalScrollIndicator={false}
           >
@@ -634,7 +675,7 @@ export default function AIScreen() {
           </ScreenWrapper>
         </View>
 
-        <View pointerEvents="box-none" style={styles.composerOverlay}>
+        <View pointerEvents="box-none" style={[styles.composerOverlay, { bottom: keyboardHeight }]}>
           <AdvisorChatComposer
             value={question}
             onChangeText={setQuestion}
@@ -659,7 +700,6 @@ export default function AIScreen() {
           onDeleteThread={handleDeleteThread}
         />
       </View>
-    </KeyboardAvoidingView>
   );
 }
 

@@ -17,6 +17,8 @@ import { getOAuthFlowActive } from '../services/oAuthFlowService';
 import { initPurchases } from '../services/subscriptionService';
 import type { User } from 'firebase/auth';
 
+const PIN_CHECK_TIMEOUT_MS = 8000;
+
 export interface UseAuthAndLockResult {
   user: User | null;
   isAuthReady: boolean;
@@ -25,6 +27,7 @@ export interface UseAuthAndLockResult {
   isPinSet: boolean;
   lockStateDetermined: boolean;
   handleUnlock: () => void;
+  refreshPinState: () => Promise<void>;
 }
 
 export function useAuthAndLock(): UseAuthAndLockResult {
@@ -73,7 +76,19 @@ export function useAuthAndLock(): UseAuthAndLockResult {
               console.warn('[useAuthAndLock] RevenueCat init failed:', error);
             });
 
-            const requiresPIN = await isPINSetupRequired();
+            // Ensure Firestore is ready before reading PIN (avoids false "no PIN" on new device / cold start)
+            await initDatabase();
+
+            const pinCheckWithTimeout = Promise.race([
+              isPINSetupRequired(),
+              new Promise<boolean>((resolve) =>
+                setTimeout(() => {
+                  console.warn('[useAuthAndLock] PIN check timed out, requiring PIN setup');
+                  resolve(true);
+                }, PIN_CHECK_TIMEOUT_MS)
+              ),
+            ]);
+            const requiresPIN = await pinCheckWithTimeout;
             const pinIsSet = !requiresPIN;
             setIsPinSet(pinIsSet);
 
@@ -90,8 +105,8 @@ export function useAuthAndLock(): UseAuthAndLockResult {
 
             setLockStateDetermined(true);
 
-            Promise.all([initDatabase(), initializeNotifications()]).catch((err) => {
-              console.error('[useAuthAndLock] Error in background initialization:', err);
+            initializeNotifications().catch((err) => {
+              console.error('[useAuthAndLock] Error in notifications initialization:', err);
             });
 
             appWentToBackgroundRef.current = false;
@@ -193,7 +208,8 @@ export function useAuthAndLock(): UseAuthAndLockResult {
         isAuthReady
       ) {
         const isOAuthFlow = getOAuthFlowActive();
-        if (appWentToBackgroundRef.current && isPinSet && !isOAuthFlow) {
+        // Show lock when returning from background if user has PIN (don't rely on appWentToBackgroundRef in case auth state cleared it)
+        if (isPinSet && !isOAuthFlow) {
           setIsAppLocked(true);
         }
       }
@@ -210,6 +226,21 @@ export function useAuthAndLock(): UseAuthAndLockResult {
     hasCheckedInitialLock.current = true;
   }, []);
 
+  const refreshPinState = useCallback(async () => {
+    try {
+      const requiresPIN = await isPINSetupRequired();
+      const pinIsSet = !requiresPIN;
+      setIsPinSet(pinIsSet);
+      if (pinIsSet) {
+        setIsAppLocked(true);
+        hasCheckedInitialLock.current = true;
+      }
+    } catch (err) {
+      console.error('[useAuthAndLock] refreshPinState failed:', err);
+      setIsPinSet(false);
+    }
+  }, []);
+
   return {
     user,
     isAuthReady,
@@ -218,5 +249,6 @@ export function useAuthAndLock(): UseAuthAndLockResult {
     isPinSet,
     lockStateDetermined,
     handleUnlock,
+    refreshPinState,
   };
 }

@@ -155,6 +155,10 @@ export default function AdvisorIndex() {
             subtitle="Ask me anything about your finances"
             titleFontFamily="GulfsDisplay-Normal"
             titleLetterSpacing={0.5}
+            rightAction={{
+              icon: 'chatbubbles',
+              onPress: () => router.push({ pathname: '/(tabs)/ai/chat' as any, params: { openThreads: '1' } }),
+            }}
           />
           <AdvisorLanding
             disabled={loading}

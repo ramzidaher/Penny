@@ -1,24 +1,29 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactions, deleteTransaction, untagTransaction, updateTransaction } from '../database/db';
+import { getTransactions, deleteTransaction, untagTransaction, updateTransaction, getBudgets } from '../database/db';
 import { Transaction } from '../database/schema';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
-import { SkeletonList } from '../components/SkeletonLoader';
+import { SkeletonList, SkeletonStatStrip } from '../components/SkeletonLoader';
+import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
-import { getDefaultCategory } from '../utils/categories';
+import type { TransactionType } from '../utils/categories';
+import CategoryPickerDialog from '../components/CategoryPickerDialog';
+import SubscriptionCreationDialog from '../components/SubscriptionCreationDialog';
+import BudgetCreationDialog from '../components/BudgetCreationDialog';
+import DebtCreationDialog from '../components/DebtCreationDialog';
+import { suggestCategory, learnFromCategorization } from '../services/categoryService';
 import { useDialog } from '../contexts/DialogContext';
-import ScreenHeader from '../components/ScreenHeader';
 
 type TabType = 'income' | 'expense' | 'all';
 type FilterType = 'all' | 'subscriptions' | 'debts' | 'untagged';
@@ -41,7 +46,16 @@ export default function IncomeExpenseScreen() {
   const [swipeDirection, setSwipeDirection] = useState<'right-income-left-expense' | 'right-expense-left-income'>(
     'right-income-left-expense'
   );
+  const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
+  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedType, setSelectedType] = useState<TransactionType>('expense');
+  const [suggestedCategory, setSuggestedCategory] = useState<string | undefined>();
+  const [subscriptionDialogVisible, setSubscriptionDialogVisible] = useState(false);
+  const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
+  const [debtDialogVisible, setDebtDialogVisible] = useState(false);
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
   const hasLoadedRef = useRef(false);
+  const scrollRef = useRef<ScreenWrapperRef>(null);
 
   const loadTransactions = async (showLoading = true) => {
     try {
@@ -67,7 +81,12 @@ export default function IncomeExpenseScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+      const rafId = requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
       loadTransactions(!hasLoadedRef.current);
+      return () => cancelAnimationFrame(rafId);
     }, [])
   );
 
@@ -155,32 +174,103 @@ export default function IncomeExpenseScreen() {
     }
   };
 
-  const getSwipeType = (direction: 'right' | 'left') => {
-    if (swipeDirection === 'right-income-left-expense') {
-      return direction === 'right' ? 'income' : 'expense';
-    }
-    return direction === 'right' ? 'expense' : 'income';
-  };
+  const proceedWithCategoryUpdate = useCallback(
+    async (category: string) => {
+      if (!selectedTransaction) return;
+      try {
+        const updateData: Partial<Transaction> = { type: selectedType, category };
+        const suggestion = await suggestCategory(selectedTransaction.description || '', selectedType, selectedTransaction.amount);
+        if (suggestion.debtId) updateData.debtId = suggestion.debtId;
+        await updateTransaction(selectedTransaction.id, updateData);
+        await learnFromCategorization(selectedTransaction.description || '', category, selectedType);
+        await loadTransactions(false);
+      } catch (error) {
+        console.error('[IncomeExpenseScreen] Error updating transaction', error);
+        dialog.alert('Error', 'Failed to update transaction');
+      } finally {
+        setSelectedTransaction(null);
+        setPendingCategory(null);
+        setSuggestedCategory(undefined);
+      }
+    },
+    [selectedTransaction, selectedType, dialog]
+  );
 
-  const handleSwipeRight = async (item: Transaction) => {
-    const newType = getSwipeType('right');
-    try {
-      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
-      await loadTransactions(false);
-    } catch (e) {
-      dialog.alert('Error', 'Failed to update transaction');
-    }
-  };
+  const handleCategorySelect = useCallback(
+    async (category: string) => {
+      if (!selectedTransaction) return;
+      setCategoryPickerVisible(false);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      setPendingCategory(category);
 
-  const handleSwipeLeft = async (item: Transaction) => {
-    const newType = getSwipeType('left');
-    try {
-      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
-      await loadTransactions(false);
-    } catch (e) {
-      dialog.alert('Error', 'Failed to update transaction');
-    }
-  };
+      try {
+        if (category === 'Subscription') {
+          setSubscriptionDialogVisible(true);
+          return;
+        }
+        if (selectedType === 'expense' && category !== 'Income') {
+          const budgetList = await getBudgets();
+          const budgetExists = budgetList.some((b) => b.category === category);
+          if (!budgetExists) {
+            setBudgetDialogVisible(true);
+            return;
+          }
+        }
+        const debtCategories = ['Debt', 'Loan', 'Credit Card'];
+        if (debtCategories.includes(category) || category.toLowerCase().includes('debt')) {
+          setDebtDialogVisible(true);
+          return;
+        }
+        await proceedWithCategoryUpdate(category);
+      } catch (error) {
+        console.error('[IncomeExpenseScreen] Error in category selection', error);
+        setPendingCategory(null);
+        setSelectedTransaction(null);
+      }
+    },
+    [selectedTransaction, selectedType, proceedWithCategoryUpdate]
+  );
+
+  const handleSubscriptionDialogComplete = useCallback(async () => {
+    setSubscriptionDialogVisible(false);
+    if (pendingCategory) await proceedWithCategoryUpdate(pendingCategory);
+  }, [pendingCategory, proceedWithCategoryUpdate]);
+
+  const handleBudgetDialogComplete = useCallback(async () => {
+    setBudgetDialogVisible(false);
+    if (pendingCategory) await proceedWithCategoryUpdate(pendingCategory);
+  }, [pendingCategory, proceedWithCategoryUpdate]);
+
+  const handleDebtDialogComplete = useCallback(async () => {
+    setDebtDialogVisible(false);
+    await loadTransactions(false);
+    setSelectedTransaction(null);
+    setPendingCategory(null);
+  }, []);
+
+  const handleSwipeRight = useCallback(
+    async (item: Transaction) => {
+      const rightSwipeType: TransactionType = swipeDirection === 'right-income-left-expense' ? 'income' : 'expense';
+      const suggestion = await suggestCategory(item.description || '', rightSwipeType, item.amount);
+      setSelectedTransaction(item);
+      setSelectedType(rightSwipeType);
+      setSuggestedCategory(suggestion.category);
+      setCategoryPickerVisible(true);
+    },
+    [swipeDirection]
+  );
+
+  const handleSwipeLeft = useCallback(
+    async (item: Transaction) => {
+      const leftSwipeType: TransactionType = swipeDirection === 'right-income-left-expense' ? 'expense' : 'income';
+      const suggestion = await suggestCategory(item.description || '', leftSwipeType, item.amount);
+      setSelectedTransaction(item);
+      setSelectedType(leftSwipeType);
+      setSuggestedCategory(suggestion.category);
+      setCategoryPickerVisible(true);
+    },
+    [swipeDirection]
+  );
 
   // Filter transactions
   const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
@@ -220,54 +310,52 @@ export default function IncomeExpenseScreen() {
     .reduce((sum, t) => sum + t.amount, 0);
   const net = income - expenses;
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.container}>
-        <View style={styles.listContent}>
-          <SkeletonList count={5} />
-        </View>
+  const loadingComponent = (
+    <>
+      <SkeletonStatStrip />
+      <View style={styles.skeletonContainer}>
+        <SkeletonList count={5} />
       </View>
-    );
-  }
+    </>
+  );
 
   return (
     <GestureHandlerRootView style={styles.container}>
       <View style={styles.container}>
-      <ScreenHeader
-        title="Income & Expenses"
-        rightAction={
-          selectedIds.size > 0
-            ? {
-                icon: 'close-outline',
-                onPress: () => setSelectedIds(new Set()),
-              }
-            : undefined
-        }
-      />
+        <ScreenWrapper
+          ref={scrollRef}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          loading={loading && !refreshing}
+          loadingComponent={loadingComponent}
+          contentContainerStyle={[styles.contentContainer, { paddingBottom: 24 + insets.bottom + 80 }]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Stats strip (same layout as Debts) */}
+          <View style={styles.statsStrip}>
+            <View style={styles.statsSegment}>
+              <Text style={styles.statsSegmentLabel}>Income</Text>
+              <Text style={[styles.statsSegmentValue, styles.incomeValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                {formatCurrencySync(income, currencyCode)}
+              </Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsSegment}>
+              <Text style={styles.statsSegmentLabel}>Expenses</Text>
+              <Text style={[styles.statsSegmentValue, styles.expenseValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                {formatCurrencySync(expenses, currencyCode)}
+              </Text>
+            </View>
+            <View style={styles.statsDivider} />
+            <View style={styles.statsSegment}>
+              <Text style={styles.statsSegmentLabel}>Net</Text>
+              <Text style={[styles.statsSegmentValue, net >= 0 ? styles.incomeValue : styles.expenseValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+                {formatCurrencySync(net, currencyCode)}
+              </Text>
+            </View>
+          </View>
 
-        {/* Stats Cards */}
-        <View style={[styles.statsContainer, { paddingTop: insets.top + 12 }]}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Income</Text>
-            <Text style={[styles.statValue, styles.incomeValue]}>
-              {formatCurrencySync(income, currencyCode)}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Expenses</Text>
-            <Text style={[styles.statValue, styles.expenseValue]}>
-              {formatCurrencySync(expenses, currencyCode)}
-            </Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>Net</Text>
-            <Text style={[styles.statValue, net >= 0 ? styles.incomeValue : styles.expenseValue]}>
-              {formatCurrencySync(net, currencyCode)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Tabs */}
+          {/* Tabs */}
         <View style={styles.tabsContainer}>
           {(['all', 'income', 'expense'] as TabType[]).map((tab) => (
             <TouchableOpacity
@@ -354,65 +442,118 @@ export default function IncomeExpenseScreen() {
           ))}
         </View>
 
-        {/* Bulk Actions */}
-        {selectedIds.size > 0 && (
-          <View style={styles.bulkActions}>
-            <Text style={styles.bulkActionsText}>{selectedIds.size} selected</Text>
-            <View style={styles.bulkButtons}>
-              <TouchableOpacity
-                style={styles.bulkButton}
-                onPress={() => handleBulkUntag('subscription')}
-              >
-                <Ionicons name="repeat" size={18} color={colors.text} />
-                <Text style={styles.bulkButtonText}>Untag Sub</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.bulkButton}
-                onPress={() => handleBulkUntag('debt')}
-              >
-                <Ionicons name="card" size={18} color={colors.text} />
-                <Text style={styles.bulkButtonText}>Untag Debt</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.bulkButton, styles.bulkButtonDanger]}
-                onPress={handleBulkDelete}
-              >
-                <Ionicons name="trash" size={18} color={colors.error} />
-                <Text style={[styles.bulkButtonText, styles.bulkButtonTextDanger]}>Delete</Text>
-              </TouchableOpacity>
+          {/* Bulk Actions */}
+          {selectedIds.size > 0 && (
+            <View style={styles.bulkActions}>
+              <Text style={styles.bulkActionsText}>{selectedIds.size} selected</Text>
+              <View style={styles.bulkButtons}>
+                <TouchableOpacity
+                  style={styles.bulkButton}
+                  onPress={() => setSelectedIds(new Set())}
+                >
+                  <Ionicons name="close-outline" size={18} color={colors.text} />
+                  <Text style={styles.bulkButtonText}>Clear</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bulkButton}
+                  onPress={() => handleBulkUntag('subscription')}
+                >
+                  <Ionicons name="repeat" size={18} color={colors.text} />
+                  <Text style={styles.bulkButtonText}>Untag Sub</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.bulkButton}
+                  onPress={() => handleBulkUntag('debt')}
+                >
+                  <Ionicons name="card" size={18} color={colors.text} />
+                  <Text style={styles.bulkButtonText}>Untag Debt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.bulkButton, styles.bulkButtonDanger]}
+                  onPress={handleBulkDelete}
+                >
+                  <Ionicons name="trash" size={18} color={colors.error} />
+                  <Text style={[styles.bulkButtonText, styles.bulkButtonTextDanger]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
-
-        <FlatList
-          data={filteredTransactions}
-          keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="receipt-outline" size={64} color={colors.textLight} />
-              <Text style={styles.emptyText}>No transactions found</Text>
-              <Text style={styles.emptySubtext}>
-                {searchQuery ? 'Try a different search term' : 'No transactions match your filters'}
-              </Text>
-            </View>
-          }
-          renderItem={({ item }) => (
-            <SwipeableTransactionCard
-              transaction={item}
-              currencyCode={currencyCode}
-              onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: item.id } })}
-              onSwipeRight={() => handleSwipeRight(item)}
-              onSwipeLeft={() => handleSwipeLeft(item)}
-              onDelete={() => handleDelete(item.id)}
-              showTagBadges={true}
-              swipeDirection={swipeDirection}
-            />
           )}
-          contentContainerStyle={styles.listContent}
-        />
+
+          {/* Transaction list */}
+          <View style={styles.listContent}>
+            {filteredTransactions.length === 0 ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="receipt-outline" size={64} color={colors.textLight} />
+                <Text style={styles.emptyText}>No transactions found</Text>
+                <Text style={styles.emptySubtext}>
+                  {searchQuery ? 'Try a different search term' : 'No transactions match your filters'}
+                </Text>
+              </View>
+            ) : (
+              filteredTransactions.map((item) => (
+                <SwipeableTransactionCard
+                  key={item.id}
+                  transaction={item}
+                  currencyCode={currencyCode}
+                  onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: item.id } })}
+                  onSwipeRight={() => handleSwipeRight(item)}
+                  onSwipeLeft={() => handleSwipeLeft(item)}
+                  onDelete={() => handleDelete(item.id)}
+                  showTagBadges={true}
+                  swipeDirection={swipeDirection}
+                />
+              ))
+            )}
+          </View>
+        </ScreenWrapper>
       </View>
+
+      <CategoryPickerDialog
+        visible={categoryPickerVisible}
+        type={selectedType}
+        onSelect={handleCategorySelect}
+        onClose={() => {
+          if (!subscriptionDialogVisible && !budgetDialogVisible && !debtDialogVisible) {
+            setCategoryPickerVisible(false);
+            setSelectedTransaction(null);
+            setSuggestedCategory(undefined);
+            setPendingCategory(null);
+          } else {
+            setCategoryPickerVisible(false);
+          }
+        }}
+        suggestedCategory={suggestedCategory}
+      />
+      <SubscriptionCreationDialog
+        visible={subscriptionDialogVisible}
+        transaction={selectedTransaction}
+        onClose={() => {
+          setSubscriptionDialogVisible(false);
+          setPendingCategory(null);
+        }}
+        onComplete={handleSubscriptionDialogComplete}
+      />
+      <BudgetCreationDialog
+        visible={budgetDialogVisible}
+        transaction={selectedTransaction}
+        category={pendingCategory || ''}
+        onClose={() => {
+          setBudgetDialogVisible(false);
+          setPendingCategory(null);
+        }}
+        onComplete={handleBudgetDialogComplete}
+      />
+      <DebtCreationDialog
+        visible={debtDialogVisible}
+        transaction={selectedTransaction}
+        category={pendingCategory || ''}
+        onClose={() => {
+          setDebtDialogVisible(false);
+          setPendingCategory(null);
+        }}
+        onComplete={handleDebtDialogComplete}
+        onNavigateToDebts={() => router.push('/(tabs)/finance/debts' as any)}
+      />
     </GestureHandlerRootView>
   );
 }
@@ -422,32 +563,45 @@ const createStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  contentContainer: {
+    paddingTop: 8,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 12,
+  skeletonContainer: {
+    padding: 20,
+  },
+  statsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  statLabel: {
-    ...typography.bodySmall,
+  statsSegment: {
+    flex: 1,
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  statsSegmentLabel: {
+    fontSize: 11,
     color: colors.textSecondary,
     marginBottom: 4,
+    fontWeight: '500',
   },
-  statValue: {
-    ...typography.h3,
-    fontSize: 18,
+  statsSegmentValue: {
+    fontSize: 15,
     fontWeight: '700',
+    color: colors.text,
+  },
+  statsDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: colors.border,
+    marginHorizontal: 4,
   },
   incomeValue: {
     color: colors.primary,

@@ -11,10 +11,12 @@ import {
   syncPlaidTransactions,
 } from './plaid';
 import { cannyCreatePost, cannyListPosts } from './canny';
+import { requestPasswordReset } from './requestPasswordReset';
 
 export {
   checkUsername,
   checkEmail,
+  requestPasswordReset,
   processDataRetention,
   processAccountDeletions,
   createPlaidHostedLinkToken,

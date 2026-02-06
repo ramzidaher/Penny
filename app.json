@@ -4,7 +4,7 @@
     "slug": "penny",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/Logo.png",
+    "icon": "./assets/PennyLogo.png",
     "userInterfaceStyle": "automatic",
     "scheme": "penny",
     "main": "expo-router/entry",
@@ -28,7 +28,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/Logo.png",
+        "foregroundImage": "./assets/PennyLogo.png",
         "backgroundColor": "#080808"
       },
       "package": "com.pennyfinance.app",
@@ -55,7 +55,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/Logo.png",
+      "favicon": "./assets/PennyLogo.png",
       "bundler": "metro",
       "output": "single"
     },

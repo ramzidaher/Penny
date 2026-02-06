@@ -60,23 +60,26 @@ const generateSalt = async (): Promise<string> => {
     .join('');
 };
 
-const fetchPinFromFirestore = async (): Promise<{ pinHash: string; salt: string } | null> => {
+const FETCH_PIN_RETRY_DELAY_MS = 1500;
+const FETCH_PIN_MAX_ATTEMPTS = 2;
+
+const fetchPinFromFirestore = async (attempt = 1): Promise<{ pinHash: string; salt: string } | null> => {
   try {
     await waitForFirebase();
     if (!isFirebaseAvailable()) {
       return null;
     }
-    
+
     const db = getFirestoreDb();
     const userId = getUserId();
-    
+
     if (!db || !userId) {
       return null;
     }
-    
+
     const pinRef = doc(db, `users/${userId}/security`, 'pin');
     const pinSnap = await getDoc(pinRef);
-    
+
     if (pinSnap.exists()) {
       const data = pinSnap.data();
       if (data.pinHash && data.salt) {
@@ -85,7 +88,12 @@ const fetchPinFromFirestore = async (): Promise<{ pinHash: string; salt: string 
     }
     return null;
   } catch (error) {
-    console.error('[pinService] Error fetching PIN from Firestore:', error);
+    console.error('[pinService] Error fetching PIN from Firestore (attempt ' + attempt + '):', error);
+    // Retry once after delay (e.g. Firestore/network not ready on new device or cold start)
+    if (attempt < FETCH_PIN_MAX_ATTEMPTS) {
+      await new Promise((r) => setTimeout(r, FETCH_PIN_RETRY_DELAY_MS));
+      return fetchPinFromFirestore(attempt + 1);
+    }
     return null;
   }
 };

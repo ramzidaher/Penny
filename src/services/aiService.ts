@@ -1,6 +1,8 @@
 import axios from 'axios';
 import { Account, Transaction, Budget, Subscription, UserMemory } from '../database/schema';
 import { filterMemoriesForPrompt } from './memoryService';
+import { convertCurrency } from './currencyConversionService';
+import { getCurrencySymbol } from '../utils/currency';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
@@ -12,6 +14,59 @@ interface FinancialData {
   totalBalance: number;
   monthlyIncome: number;
   monthlyExpenses: number;
+}
+
+/** Convert financial data amounts to the app's display currency for AI context */
+async function convertFinancialDataToCurrency(
+  data: FinancialData,
+  targetCurrency: string
+): Promise<{
+  totalBalance: number;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  accountBalances: Map<string, number>;
+  transactionAmounts: Map<string, number>;
+  subscriptionAmounts: Map<string, number>;
+}> {
+  const accountBalances = new Map<string, number>();
+  const transactionAmounts = new Map<string, number>();
+  const subscriptionAmounts = new Map<string, number>();
+  const accountIdToCurrency = new Map<string, string>(data.accounts.map(a => [a.id, a.currency || 'USD']));
+
+  const [accountConverted, txConverted, subConverted] = await Promise.all([
+    Promise.all(data.accounts.map(async (acc) => {
+      const balance = acc.balance ?? 0;
+      const from = acc.currency || 'USD';
+      const converted = from === targetCurrency ? balance : await convertCurrency(balance, from, targetCurrency);
+      accountBalances.set(acc.id, converted);
+      return converted;
+    })),
+    Promise.all(data.transactions.map(async (t) => {
+      const from = accountIdToCurrency.get(t.accountId) || 'USD';
+      const converted = from === targetCurrency ? t.amount : await convertCurrency(t.amount, from, targetCurrency);
+      transactionAmounts.set(t.id, converted);
+      return { id: t.id, amount: converted, type: t.type };
+    })),
+    Promise.all(data.subscriptions.map(async (s) => {
+      const from = s.currency || 'USD';
+      const converted = from === targetCurrency ? s.amount : await convertCurrency(s.amount, from, targetCurrency);
+      subscriptionAmounts.set(s.id, converted);
+      return converted;
+    })),
+  ]);
+
+  const totalBalance = accountConverted.reduce((sum, n) => sum + n, 0);
+  const monthlyIncome = txConverted.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+  const monthlyExpenses = txConverted.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+
+  return {
+    totalBalance,
+    monthlyIncome,
+    monthlyExpenses,
+    accountBalances,
+    transactionAmounts,
+    subscriptionAmounts,
+  };
 }
 
 const getFinancialData = async (period: 'week' | 'month' | 'year' | 'all' = 'month'): Promise<FinancialData> => {
@@ -92,25 +147,29 @@ export const askAI = async (
 
   try {
     const financialData = await getFinancialData(period);
-    
-    // Get user settings to determine AI tone
-    let toneInstructions = '';
+
+    const { getSettings } = await import('./settingsService');
+    let settings: { defaultCurrency?: string; aiTone?: string };
     try {
-      const { getSettings } = await import('./settingsService');
-      const settings = await getSettings();
-      toneInstructions = getToneInstructions(settings.aiTone || 'professional');
+      settings = await getSettings();
     } catch (error) {
-      console.error('Error fetching settings for AI tone:', error);
-      // Default to professional if settings can't be loaded
-      toneInstructions = getToneInstructions('professional');
+      console.error('Error fetching settings for AI:', error);
+      settings = {};
     }
-    
+    const displayCurrency = settings.defaultCurrency || 'USD';
+    const toneInstructions = getToneInstructions((settings.aiTone as 'friendly' | 'professional' | 'direct' | 'harsh') || 'professional');
+
+    const converted = await convertFinancialDataToCurrency(financialData, displayCurrency);
+    const symbol = getCurrencySymbol(displayCurrency);
+
     const safeMemories = filterMemoriesForPrompt(memories);
     const memoryBlock = formatMemoryBlock(safeMemories);
-    
+
     const systemPrompt = `You are a financial planning assistant for the Penny app. Provide general informational guidance based on the user's data.
 Do not present yourself as a licensed advisor and do not provide legal, medical, or tax advice. Include a brief disclaimer when appropriate.
 Avoid asking for or inferring sensitive personal data beyond what is provided. If the user requests something that requires a professional, recommend consulting a qualified expert.
+
+CURRENCY: All amounts below are in ${displayCurrency} (${symbol}). Always use this currency and symbol when stating or discussing amounts in your answers.
 
 TONE AND COMMUNICATION STYLE:
 ${toneInstructions}
@@ -118,27 +177,28 @@ ${toneInstructions}
 ${memoryBlock ? `USER MEMORY (use only when relevant, do not mention it explicitly):\n${memoryBlock}\n` : ''}
 
 Financial Summary:
-- Total Balance: $${financialData.totalBalance.toFixed(2)}
-- Monthly Income: $${financialData.monthlyIncome.toFixed(2)}
-- Monthly Expenses: $${financialData.monthlyExpenses.toFixed(2)}
-- Available: $${(financialData.monthlyIncome - financialData.monthlyExpenses).toFixed(2)}
+- Total Balance: ${symbol}${converted.totalBalance.toFixed(2)}
+- Monthly Income: ${symbol}${converted.monthlyIncome.toFixed(2)}
+- Monthly Expenses: ${symbol}${converted.monthlyExpenses.toFixed(2)}
+- Available: ${symbol}${(converted.monthlyIncome - converted.monthlyExpenses).toFixed(2)}
 
 Accounts (${financialData.accounts.length}):
-${financialData.accounts.map(acc => `  - ${acc.name} (${acc.type}): $${(acc.balance ?? 0).toFixed(2)}`).join('\n')}
+${financialData.accounts.map(acc => `  - ${acc.name} (${acc.type}): ${symbol}${(converted.accountBalances.get(acc.id) ?? 0).toFixed(2)}`).join('\n')}
 
 Recent Transactions (last 10):
-${financialData.transactions.slice(0, 10).map(t => 
-  `  - ${t.type === 'income' ? '+' : '-'}$${t.amount.toFixed(2)} | ${t.category} | ${t.description || 'No description'}`
-).join('\n')}
+${financialData.transactions.slice(0, 10).map(t => {
+  const amount = converted.transactionAmounts.get(t.id) ?? t.amount;
+  return `  - ${t.type === 'income' ? '+' : '-'}${symbol}${amount.toFixed(2)} | ${t.category} | ${t.description || 'No description'}`;
+}).join('\n')}
 
-Budgets:
+Budgets (in ${displayCurrency}):
 ${financialData.budgets.map(b => 
-  `  - ${b.category}: $${b.currentSpent.toFixed(2)} / $${b.limit.toFixed(2)} (${((b.currentSpent / b.limit) * 100).toFixed(0)}%)`
+  `  - ${b.category}: ${symbol}${b.currentSpent.toFixed(2)} / ${symbol}${b.limit.toFixed(2)} (${((b.currentSpent / b.limit) * 100).toFixed(0)}%)`
 ).join('\n')}
 
 Active Subscriptions:
 ${financialData.subscriptions.map(s => 
-  `  - ${s.name}: $${s.amount.toFixed(2)}/${s.frequency}`
+  `  - ${s.name}: ${symbol}${(converted.subscriptionAmounts.get(s.id) ?? s.amount).toFixed(2)}/${s.frequency}`
 ).join('\n')}
 
 Provide a concise, helpful answer. If asked about purchasing something, analyze if they can afford it based on their current financial situation. You can reference previous conversation context when answering follow-up questions.`;
@@ -207,9 +267,12 @@ Provide a concise, helpful answer. If asked about purchasing something, analyze 
 };
 
 export const canAffordPurchase = async (amount: number, description?: string): Promise<string> => {
-  const question = description 
-    ? `Can I afford to buy ${description} for $${amount.toFixed(2)}?`
-    : `Can I afford a purchase of $${amount.toFixed(2)}?`;
-  
+  const { getSettings } = await import('./settingsService');
+  const settings = await getSettings().catch((): { defaultCurrency?: string } => ({}));
+  const displayCurrency = settings?.defaultCurrency || 'USD';
+  const symbol = getCurrencySymbol(displayCurrency);
+  const question = description
+    ? `Can I afford to buy ${description} for ${symbol}${amount.toFixed(2)}?`
+    : `Can I afford a purchase of ${symbol}${amount.toFixed(2)}?`;
   return askAI(question);
 };

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboa
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
-import { loginUser, resetPassword, initFirebase } from '../services/firebase';
+import { loginUser, requestBrandedPasswordReset, initFirebase } from '../services/firebase';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import {
@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [forgotPasswordLoading, setForgotPasswordLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showBiometricLogin, setShowBiometricLogin] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
@@ -138,26 +139,41 @@ export default function LoginScreen() {
   };
 
   const handleForgotPassword = async () => {
-    if (!email.trim()) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       dialog.alert('Error', 'Please enter your email address first');
+      return;
+    }
+    // Basic email format check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      dialog.alert('Error', 'Please enter a valid email address');
       return;
     }
 
     try {
+      setForgotPasswordLoading(true);
       await initFirebase();
-      await resetPassword(email.trim());
-      dialog.alert('Password Reset', 'Password reset email sent! Check your inbox.');
+      await requestBrandedPasswordReset(trimmedEmail);
+      dialog.alert('Password Reset', 'If an account exists for this email, you will receive a link to reset your password. Check your inbox (and spam folder).');
     } catch (error: any) {
       console.error('Password reset error:', error);
-      let errorMessage = 'Failed to send reset email.';
-      
+      let errorMessage = 'Failed to send reset email. Please try again.';
       if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.';
+        // Same message as success to avoid email enumeration
+        dialog.alert('Password Reset', 'If an account exists for this email, you will receive a link to reset your password. Check your inbox (and spam folder).');
+        return;
       }
-      
+      if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Invalid email address.';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Too many attempts. Please try again later.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
       dialog.alert('Error', errorMessage);
+    } finally {
+      setForgotPasswordLoading(false);
     }
   };
 
@@ -174,7 +190,7 @@ export default function LoginScreen() {
           {/* Logo/Icon */}
           <View style={styles.iconContainer}>
             <Image 
-              source={require('../../assets/Penny Logo RD.png')} 
+              source={require('../../assets/PennyLogoTransparent.png')} 
               style={styles.logo}
               resizeMode="contain"
             />
@@ -227,14 +243,19 @@ export default function LoginScreen() {
             <TouchableOpacity
               onPress={handleForgotPassword}
               style={styles.forgotPassword}
+              disabled={loading || forgotPasswordLoading}
+              accessibilityLabel="Forgot password"
+              accessibilityRole="button"
             >
-              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              <Text style={[styles.forgotPasswordText, forgotPasswordLoading && styles.forgotPasswordDisabled]}>
+                {forgotPasswordLoading ? 'Sending…' : 'Forgot Password?'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.loginButton, loading && styles.loginButtonDisabled]}
+              style={[styles.loginButton, (loading || forgotPasswordLoading) && styles.loginButtonDisabled]}
               onPress={handleLogin}
-              disabled={loading}
+              disabled={loading || forgotPasswordLoading}
             >
               <Text style={styles.loginButtonText}>
                 {loading ? 'Signing in...' : 'Sign In'}
@@ -244,9 +265,9 @@ export default function LoginScreen() {
             {/* Biometric Login Button - Show if credentials are saved */}
             {showBiometricLogin && (
               <TouchableOpacity
-                style={[styles.biometricButton, loading && styles.biometricButtonDisabled]}
+                style={[styles.biometricButton, (loading || forgotPasswordLoading) && styles.biometricButtonDisabled]}
                 onPress={handleBiometricLogin}
-                disabled={loading}
+                disabled={loading || forgotPasswordLoading}
               >
                 <Ionicons 
                   name={Platform.OS === 'ios' ? 'finger-print-outline' : 'finger-print'} 
@@ -343,6 +364,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+  },
+  forgotPasswordDisabled: {
+    opacity: 0.6,
   },
   loginButton: {
     backgroundColor: colors.primary,

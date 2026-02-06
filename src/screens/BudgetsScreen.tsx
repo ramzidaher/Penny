@@ -10,6 +10,7 @@ import { Budget, Transaction } from '../database/schema';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { SkeletonList } from '../components/SkeletonLoader';
+import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
@@ -104,6 +105,7 @@ export default function BudgetsScreen() {
 
   return (
     <View style={styles.container}>
+      <ScreenHeader title="Budgets" />
       <FlatList
         data={budgets}
         keyExtractor={(item) => item.id}
@@ -206,7 +208,6 @@ export default function BudgetsScreen() {
         contentContainerStyle={[
           styles.listContent,
           {
-            paddingTop: 12,
             paddingBottom: 24 + insets.bottom + 80,
             flexGrow: 1,
           },

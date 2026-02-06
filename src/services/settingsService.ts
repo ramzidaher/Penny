@@ -25,17 +25,32 @@ const isoToTimestamp = (iso: string): Timestamp => {
 
 let cachedSettings: AppSettings | null = null;
 
+// Default settings when not signed in (Firebase not available or no user)
+const getDefaultAppSettings = (): AppSettings => {
+  const now = new Date().toISOString();
+  return {
+    id: 'app',
+    userId: '',
+    ...defaultSettings,
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
 // Get user settings
 export const getSettings = async (): Promise<AppSettings> => {
   await waitForFirebase();
   
+  // When signed out or Firebase unavailable, return defaults instead of throwing
   if (!isFirebaseAvailable()) {
-    throw new Error('Firebase is not available');
+    cachedSettings = null;
+    return getDefaultAppSettings();
   }
   
   const db = getFirestoreDb();
   if (!db) {
-    throw new Error('Firestore database not initialized');
+    cachedSettings = null;
+    return getDefaultAppSettings();
   }
   
   // Return cached settings if available

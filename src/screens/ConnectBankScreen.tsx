@@ -23,6 +23,7 @@ import { isDemoUser } from '../services/demoUser';
 import {
   createPlaidHostedLinkToken,
   exchangePlaidPublicToken,
+  getPlaidCallableErrorMessage,
   listPlaidItems,
   plaidLinkTokenGet,
   removePlaidItem,
@@ -78,9 +79,9 @@ export default function ConnectBankScreen() {
       activeLinkTokenRef.current = link_token;
 
       const completionRedirectUri = 'penny://plaid-callback';
-      const result = await WebBrowser.openAuthSessionAsync(hosted_link_url, completionRedirectUri);
+      const authResult = await WebBrowser.openAuthSessionAsync(hosted_link_url, completionRedirectUri);
 
-      if (result.type !== 'success') {
+      if (authResult.type !== 'success') {
         // User cancelled or dismissed
         setConnecting(false);
         setOAuthFlowActive(false);
@@ -94,17 +95,24 @@ export default function ConnectBankScreen() {
         throw new Error('Unable to obtain public_token from link session.');
       }
 
-      await exchangePlaidPublicToken({
+      const exchangeResult = await exchangePlaidPublicToken({
         public_token: publicToken,
         environment,
         institution: publicTokenPayload?.institution || undefined,
       });
 
       await loadItems();
-      showSuccess('Bank connected successfully! Accounts have been added.');
+      if (exchangeResult.no_accounts_returned || (exchangeResult.accounts_upserted === 0)) {
+        showSuccess(
+          'Bank linked. No accounts were returned—this can happen in sandbox or with some institutions. Try reconnecting or a different bank.'
+        );
+      } else {
+        showSuccess('Bank connected successfully! Accounts have been added.');
+      }
     } catch (error: any) {
       console.error('Error connecting Plaid bank:', error);
-      showError(error.message || 'Failed to connect bank');
+      showError(getPlaidCallableErrorMessage(error) || 'Failed to connect bank');
+    } finally {
       setConnecting(false);
       setOAuthFlowActive(false);
     }
@@ -151,7 +159,7 @@ export default function ConnectBankScreen() {
       showSuccess('Bank disconnected');
     } catch (error: any) {
       console.error('Error disconnecting:', error);
-      showError(error.message || 'Failed to disconnect bank');
+      showError(getPlaidCallableErrorMessage(error) || 'Failed to disconnect bank');
     }
   };
 
@@ -177,7 +185,8 @@ export default function ConnectBankScreen() {
       await handleConnect();
     } catch (error: any) {
       console.error('Error reconnecting:', error);
-      showError(error.message || 'Failed to reconnect bank');
+      showError(getPlaidCallableErrorMessage(error) || 'Failed to reconnect bank');
+    } finally {
       setConnecting(false);
       setOAuthFlowActive(false);
     }

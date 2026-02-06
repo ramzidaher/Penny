@@ -3,6 +3,18 @@ import { getFirebaseFunctions, initFirebase } from './firebase';
 
 export type PlaidEnvironment = 'sandbox' | 'production';
 
+/** Extract a user-friendly message from Firebase callable errors (avoids generic "Internal error occurred"). */
+export function getPlaidCallableErrorMessage(error: unknown): string {
+  const e = error as { message?: string; details?: { userMessage?: string } };
+  if (e?.details?.userMessage && typeof e.details.userMessage === 'string') {
+    return e.details.userMessage;
+  }
+  if (e?.message && e.message !== 'Internal error occurred.') {
+    return e.message;
+  }
+  return 'Bank connection failed. Please try again.';
+}
+
 export interface PlaidItemSummary {
   item_id: string;
   environment: PlaidEnvironment;
@@ -48,7 +60,13 @@ export const exchangePlaidPublicToken = async (args: {
 
   const fn = httpsCallable(functions, 'exchangePlaidPublicToken');
   const res = await fn(args);
-  return res.data as { item_id: string; request_id: string; accounts_upserted?: number };
+  return res.data as {
+    item_id: string;
+    request_id: string;
+    accounts_upserted?: number;
+    transactions_upserted?: number;
+    no_accounts_returned?: boolean;
+  };
 };
 
 export const listPlaidItems = async (): Promise<PlaidItemSummary[]> => {

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback, useRef } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,7 +12,9 @@ import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import AIInsightCard from '../components/AIInsightCard';
+import FinancialHealthAlert from '../components/FinancialHealthAlert';
 import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
+import { getCurrentUserProfile } from '../services/firebase';
 import { updateTransaction, getBudgets } from '../database/db';
 import { Transaction } from '../database/schema';
 import CategoryPickerDialog from '../components/CategoryPickerDialog';
@@ -66,6 +68,25 @@ export default function HomeScreen() {
   const lastStableExpensesRef = useRef<number | null>(null);
   const [balanceAnimationTrigger, setBalanceAnimationTrigger] = useState(0);
   const prevRefreshingRef = useRef(refreshing);
+  const [profile, setProfile] = useState<{ avatarSeed?: string } | null>(null);
+
+  const refreshProfile = useCallback(() => {
+    getCurrentUserProfile().then(setProfile);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUserProfile().then((p) => {
+      if (!cancelled) setProfile(p);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [refreshProfile])
+  );
 
   // When pull-to-refresh completes, re-run the slot animation and vibration
   React.useEffect(() => {
@@ -364,10 +385,19 @@ export default function HomeScreen() {
         title="Welcome back"
         titleFontFamily="GulfsDisplay-Normal"
         titleLetterSpacing={0.5}
+        rightAvatarSeed={profile?.avatarSeed}
         rightAction={{
           icon: "person-outline",
           onPress: () => router.push('/profile' as any)
         }}
+      />
+
+      {/* Financial Health Alert */}
+      <FinancialHealthAlert
+        income={displayIncome}
+        expenses={displayExpenses}
+        currencyCode={currencyCode ?? 'USD'}
+        onReviewSpending={() => router.push('/(tabs)/finance/income-expense' as any)}
       />
 
       {/* Balance Card */}

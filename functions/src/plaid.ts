@@ -48,7 +48,8 @@ const getPlaidCredentials = (env: PlaidEnvironment): { clientId: string; secret:
   if (!clientId || !secret) {
     throw new HttpsError(
       'failed-precondition',
-      'Missing Plaid credentials. Set PLAID_CLIENT_ID and the correct PLAID_SECRET_* for the requested environment.'
+      'Bank linking is not configured. Please contact support.',
+      { userMessage: 'Bank linking is not configured. Please contact support.' }
     );
   }
   return { clientId, secret };
@@ -78,7 +79,18 @@ const plaidPost = async <TResponse>(
       json?.error_message ||
       json?.error_code ||
       `Plaid API request failed (${res.status})`;
-    throw new HttpsError('internal', errorMessage, { status: res.status, plaid: json });
+    // Pass a user-facing message so the client can show it instead of "Internal error occurred"
+    const userMessage =
+      typeof json?.error_message === 'string' && json.error_message.length < 200
+        ? json.error_message
+        : json?.error_code === 'INVALID_CREDENTIALS'
+          ? 'Plaid credentials are missing or invalid. Please contact support.'
+          : 'Bank connection failed. Please try again or use a different institution.';
+    throw new HttpsError('internal', errorMessage, {
+      status: res.status,
+      plaid: json,
+      userMessage,
+    });
   }
   return json as TResponse;
 };
@@ -447,6 +459,7 @@ export const exchangePlaidPublicToken = onCall(
     request_id: resp.request_id,
     accounts_upserted: upserted,
     transactions_upserted: txSync.upserted,
+    no_accounts_returned: upserted === 0,
   };
 });
 

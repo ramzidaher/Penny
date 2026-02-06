@@ -24,7 +24,7 @@ import {
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 import { ensureDemoSeeded } from '../services/demoSeed';
 import { isDemoUser } from '../services/demoUser';
-import { deleteAllMemories, recalculateBudgetsFromTransactions } from '../database/db';
+import { deleteAllMemories } from '../database/db';
 import {
   isBiometricAvailable,
   getBiometricType,
@@ -33,6 +33,10 @@ import {
   saveBiometricCredentials,
 } from '../services/biometricService';
 import { hasPIN, setPIN, deletePIN, validatePIN } from '../services/pinService';
+import SettingsSection from '../components/SettingsSection';
+import SettingsCard from '../components/SettingsCard';
+import SettingsRow from '../components/SettingsRow';
+import ProfileSettingsHeader from '../components/ProfileSettingsHeader';
 
 const currencies = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -71,7 +75,6 @@ export default function SettingsScreen() {
   const [showAccentModal, setShowAccentModal] = useState(false);
   const [accentHexInput, setAccentHexInput] = useState('');
   const [seedingDemo, setSeedingDemo] = useState(false);
-  const [recalculatingBudgets, setRecalculatingBudgets] = useState(false);
   const [accountDeletionStatus, setAccountDeletionStatus] = useState<AccountDeletionStatus>(
     getAccountDeletionStatus()
   );
@@ -347,16 +350,25 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleRecalculateBudgets = async () => {
-    if (recalculatingBudgets) return;
+  const handleSignOut = async () => {
+    const confirmSignOut = (): Promise<boolean> => {
+      if (Platform.OS === 'web') {
+        return Promise.resolve(
+          typeof window !== 'undefined' && window.confirm('Are you sure you want to sign out?')
+        );
+      }
+      return dialog.showDialog(
+        'Sign Out',
+        'Are you sure you want to sign out?',
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign Out', style: 'destructive' }]
+      ).then((buttonText) => buttonText === 'Sign Out');
+    };
+    const shouldSignOut = await confirmSignOut();
+    if (!shouldSignOut) return;
     try {
-      setRecalculatingBudgets(true);
-      await recalculateBudgetsFromTransactions();
-      dialog.alert('Done', 'Budget amounts have been recalculated from your transactions.');
+      await logoutUser();
     } catch (error: any) {
-      dialog.alert('Error', error?.message || 'Failed to recalculate budgets.');
-    } finally {
-      setRecalculatingBudgets(false);
+      dialog.alert('Error', error?.message || 'Failed to sign out. Please try again.');
     }
   };
 
@@ -395,614 +407,448 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Currency Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Currency</Text>
-        <View style={styles.sectionCard}>
-          <Text style={styles.settingLabel}>Default Currency</Text>
-          <TouchableOpacity
-            style={styles.currencyDropdown}
-            onPress={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.currencyDropdownText}>
-              {currencies.find(c => c.code === settings.defaultCurrency)?.symbol} {settings.defaultCurrency}
-            </Text>
-            <Ionicons 
-              name={showCurrencyDropdown ? 'chevron-up' : 'chevron-down'} 
-              size={20} 
-              color={colors.textSecondary} 
-            />
-          </TouchableOpacity>
-          {showCurrencyDropdown && (
-            <View style={styles.currencyDropdownList}>
-              {currencies.map((currency, index) => (
-                <TouchableOpacity
-                  key={currency.code}
-                  style={[
-                    styles.currencyDropdownItem,
-                    index === currencies.length - 1 && styles.currencyDropdownItemLast,
-                    settings.defaultCurrency === currency.code && styles.currencyDropdownItemActive,
-                  ]}
-                  onPress={() => {
-                    handleCurrencyChange(currency.code);
-                    setShowCurrencyDropdown(false);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.currencyDropdownItemText,
-                      settings.defaultCurrency === currency.code && styles.currencyDropdownItemTextActive,
-                    ]}
-                  >
-                    {currency.symbol} {currency.code} - {currency.name}
-                  </Text>
-                  {settings.defaultCurrency === currency.code && (
-                    <Ionicons name="checkmark" size={20} color={colors.primary} />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Appearance */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Appearance</Text>
-        <View style={styles.sectionCard}>
-          <Text style={styles.settingLabel}>Accent color</Text>
-          <Text style={styles.settingDescription}>
-            Used for buttons, highlights, and charts.
-          </Text>
-
-          <View style={styles.accentGrid}>
-            {accentPresets.map((preset) => {
-              const selected =
-                (settings.accentMode ?? 'preset') === 'preset' &&
-                (settings.accentPresetId ?? 'midnight') === preset.id;
-
-              return (
-                <TouchableOpacity
-                  key={preset.id}
-                  style={[styles.accentOption, selected && styles.accentOptionSelected]}
-                  activeOpacity={0.8}
-                  onPress={async () => {
-                    // Update UI immediately
-                    setAccentPreset(preset.id);
-                    setSettings(prev => (prev ? ({ ...prev, accentMode: 'preset', accentPresetId: preset.id } as any) : prev));
-                    // Persist
-                    await handleUpdate({ accentMode: 'preset', accentPresetId: preset.id });
-                  }}
-                >
-                  <View
-                    style={[
-                      styles.accentSwatch,
-                      { backgroundColor: preset.hex, borderColor: selected ? colors.primary : colors.border },
-                    ]}
-                  />
-                  <Text style={[styles.accentOptionLabel, selected && styles.accentOptionLabelSelected]}>
-                    {preset.name}
-                  </Text>
-                  {selected && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity
-            style={styles.settingRow}
-            activeOpacity={0.7}
-            onPress={() => {
-              setAccentHexInput(settings.accentCustomHex ?? '');
-              setShowAccentModal(true);
-            }}
-          >
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Custom color</Text>
-              <Text style={styles.settingDescription}>
-                {normalizeHex(settings.accentCustomHex ?? '') || 'Enter a hex color like #1D4ED8'}
+      <ProfileSettingsHeader
+        title="Settings"
+        leftButton={{ type: 'back', onPress: () => router.back() }}
+      />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+      >
+        {/* General */}
+        <SettingsSection title="General">
+          <SettingsCard>
+            <Text style={styles.settingLabel}>Default Currency</Text>
+            <TouchableOpacity
+              style={styles.currencyDropdown}
+              onPress={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.currencyDropdownText}>
+                {currencies.find(c => c.code === settings.defaultCurrency)?.symbol} {settings.defaultCurrency}
               </Text>
-            </View>
-            <View style={styles.accentPreview}>
-              <View
-                style={[
-                  styles.accentPreviewDot,
-                  {
-                    backgroundColor:
-                      (settings.accentMode ?? 'preset') === 'custom' && isValidHexColor(settings.accentCustomHex ?? '')
-                        ? normalizeHex(settings.accentCustomHex ?? '')
-                        : colors.primary,
-                  },
-                ]}
+              <Ionicons
+                name={showCurrencyDropdown ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={colors.textSecondary}
               />
-              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Transaction Preferences */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Transaction Preferences</Text>
-        <View style={styles.sectionCard}>
-          <View style={styles.settingInfo}>
-            <Text style={styles.settingLabel}>Swipe Direction</Text>
-            <Text style={styles.settingDescription}>
-              Choose how you want to swipe transactions
-            </Text>
-          </View>
-          <View style={styles.swipeDirectionContainer}>
-            <TouchableOpacity
-              style={[
-                styles.swipeDirectionOption,
-                settings.swipeDirection === 'right-income-left-expense' && styles.swipeDirectionOptionActive,
-              ]}
-              onPress={() => handleUpdate({ swipeDirection: 'right-income-left-expense' })}
-            >
-              <View style={styles.swipeDirectionVisual}>
-                <View style={styles.swipeDirectionArrow}>
-                  <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-                  <Text style={styles.swipeDirectionLabel}>Left</Text>
-                </View>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <Text style={styles.swipeDirectionType}>Expense</Text>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <Text style={styles.swipeDirectionType}>Income</Text>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <View style={styles.swipeDirectionArrow}>
-                  <Text style={styles.swipeDirectionLabel}>Right</Text>
-                  <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
-                </View>
-              </View>
             </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[
-                styles.swipeDirectionOption,
-                settings.swipeDirection === 'right-expense-left-income' && styles.swipeDirectionOptionActive,
-              ]}
-              onPress={() => handleUpdate({ swipeDirection: 'right-expense-left-income' })}
-            >
-              <View style={styles.swipeDirectionVisual}>
-                <View style={styles.swipeDirectionArrow}>
-                  <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
-                  <Text style={styles.swipeDirectionLabel}>Left</Text>
-                </View>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <Text style={styles.swipeDirectionType}>Income</Text>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <Text style={styles.swipeDirectionType}>Expense</Text>
-                <Text style={styles.swipeDirectionEquals}>=</Text>
-                <View style={styles.swipeDirectionArrow}>
-                  <Text style={styles.swipeDirectionLabel}>Right</Text>
-                  <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
-                </View>
-              </View>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {/* Reminder Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Reminders</Text>
-        
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Low Balances</Text>
-              <Text style={styles.settingDescription}>
-                Get notified when account balance is low
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableLowBalanceAlerts}
-              onValueChange={(value) => handleUpdate({ enableLowBalanceAlerts: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableLowBalanceAlerts ? '#FFFFFF' : '#000000'}
-            />
-          </View>
-
-          {settings.enableLowBalanceAlerts && (
-            <View style={styles.thresholdContainer}>
-              <Text style={styles.thresholdLabel}>
-                when balance is below: {settings.lowBalanceThreshold}
-              </Text>
-              <View style={styles.thresholdButtons}>
-                {[50, 100, 200, 500].map((amount) => (
+            {showCurrencyDropdown && (
+              <View style={styles.currencyDropdownList}>
+                {currencies.map((currency, index) => (
                   <TouchableOpacity
-                    key={amount}
+                    key={currency.code}
                     style={[
-                      styles.thresholdButton,
-                      settings.lowBalanceThreshold === amount && styles.thresholdButtonActive,
+                      styles.currencyDropdownItem,
+                      index === currencies.length - 1 && styles.currencyDropdownItemLast,
+                      settings.defaultCurrency === currency.code && styles.currencyDropdownItemActive,
                     ]}
-                    onPress={() => handleThresholdChange(amount)}
+                    onPress={() => {
+                      handleCurrencyChange(currency.code);
+                      setShowCurrencyDropdown(false);
+                    }}
                   >
                     <Text
                       style={[
-                        styles.thresholdButtonText,
-                        settings.lowBalanceThreshold === amount && styles.thresholdButtonTextActive,
+                        styles.currencyDropdownItemText,
+                        settings.defaultCurrency === currency.code && styles.currencyDropdownItemTextActive,
                       ]}
                     >
-                      {amount}
+                      {currency.symbol} {currency.code} - {currency.name}
                     </Text>
+                    {settings.defaultCurrency === currency.code && (
+                      <Ionicons name="checkmark" size={20} color={colors.primary} />
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
-          )}
-        </View>
+            )}
 
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Daily Account Update</Text>
-              <Text style={styles.settingDescription}>
-                Reminder to update your account balances
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableDailyReminders}
-              onValueChange={(value) => handleUpdate({ enableDailyReminders: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableDailyReminders ? '#FFFFFF' : '#000000'}
-            />
-          </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Subscription Reminders</Text>
-              <Text style={styles.settingDescription}>
-                Get notified before subscription renewals
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableSubscriptionReminders}
-              onValueChange={(value) => handleUpdate({ enableSubscriptionReminders: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableSubscriptionReminders ? '#FFFFFF' : '#000000'}
-            />
-          </View>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Budgets</Text>
-              <Text style={styles.settingDescription}>
-                Get notified when approaching budget limits
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableBudgetAlerts}
-              onValueChange={(value) => handleUpdate({ enableBudgetAlerts: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableBudgetAlerts ? '#FFFFFF' : '#000000'}
-            />
-          </View>
-        </View>
-      </View>
-
-      {/* Notification Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Enable Notifications</Text>
-              <Text style={styles.settingDescription}>
-                Allow the app to send notifications
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableNotifications}
-              onValueChange={(value) => handleUpdate({ enableNotifications: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableNotifications ? '#FFFFFF' : '#000000'}
-            />
-          </View>
-        </View>
-
-        {settings.enableNotifications && (
-          <>
-            <View style={styles.sectionCard}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Sound</Text>
-                  <Text style={styles.settingDescription}>
-                    Play sound for notifications
-                  </Text>
-                </View>
-                <Switch
-                  value={settings.enableSound}
-                  onValueChange={(value) => handleUpdate({ enableSound: value })}
-                  trackColor={{ false: '#E0E0E0', true: '#000000' }}
-                  thumbColor={settings.enableSound ? '#FFFFFF' : '#000000'}
-                />
-              </View>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <View style={styles.settingRow}>
-                <View style={styles.settingInfo}>
-                  <Text style={styles.settingLabel}>Badge</Text>
-                  <Text style={styles.settingDescription}>
-                    Show badge count on app icon
-                  </Text>
-                </View>
-                <Switch
-                  value={settings.enableBadge}
-                  onValueChange={(value) => handleUpdate({ enableBadge: value })}
-                  trackColor={{ false: '#E0E0E0', true: '#000000' }}
-                  thumbColor={settings.enableBadge ? '#FFFFFF' : '#000000'}
-                />
-              </View>
-            </View>
-          </>
-        )}
-      </View>
-
-      {/* Test Notifications */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Test Notifications</Text>
-        <View style={styles.sectionCard}>
-          <Text style={styles.settingDescription}>
-            Send a test notification to verify notifications are working correctly.
-          </Text>
-          <TouchableOpacity
-            style={styles.testButton}
-            onPress={async () => {
-              try {
-                const hasPermission = await requestPermissions();
-                if (!hasPermission) {
-                  dialog.alert('Permission Required', 'Please enable notification permissions in your device settings.');
-                  return;
-                }
-                await sendTestNotification('generic');
-                dialog.alert('Success', 'Test notification sent! Check your notification tray.');
-              } catch (error: any) {
-                dialog.alert('Error', error.message || 'Failed to send test notification');
-              }
-            }}
-          >
-            <Ionicons name="notifications-outline" size={20} color={colors.background} />
-            <Text style={styles.testButtonText}>Send Test Notification</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* AI Tone Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>AI Tone</Text>
-        <View style={styles.sectionCard}>
-          <Text style={styles.settingDescription}>
-            Choose how Penny's AI talks to you. You can change this anytime.
-          </Text>
-          <View style={styles.toneOptionsContainer}>
-            {[
-              { value: 'friendly' as const, label: 'Friendly & Supportive', description: 'Warm, encouraging, gentle guidance', icon: 'heart-outline' },
-              { value: 'professional' as const, label: 'Professional & Calm', description: 'Formal, measured, professional advice', icon: 'briefcase-outline' },
-              { value: 'direct' as const, label: 'Direct & No-Nonsense', description: 'Straightforward, no sugar-coating, casual language', icon: 'chatbubble-outline' },
-              { value: 'harsh' as const, label: 'Harsh & Brutally Honest', description: 'Uses strong language, very direct, tough love approach', icon: 'flame-outline' },
-            ].map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                style={[
-                  styles.toneOptionCard,
-                  settings.aiTone === option.value && styles.toneOptionCardSelected,
-                ]}
-                onPress={async () => {
-                  await handleUpdate({ aiTone: option.value });
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={styles.toneOptionHeader}>
-                  <Ionicons 
-                    name={option.icon as any} 
-                    size={20} 
-                    color={settings.aiTone === option.value ? colors.primary : colors.textSecondary} 
-                  />
-                  <View style={styles.toneOptionTextContainer}>
-                    <Text style={[
-                      styles.toneOptionLabel,
-                      settings.aiTone === option.value && styles.toneOptionLabelSelected,
-                    ]}>
-                      {option.label}
+            <View style={styles.divider} />
+            <Text style={styles.settingLabel}>Accent color</Text>
+            <Text style={styles.settingDescription}>
+              Used for buttons, highlights, and charts.
+            </Text>
+            <View style={styles.accentGrid}>
+              {accentPresets.map((preset) => {
+                const selected =
+                  (settings.accentMode ?? 'preset') === 'preset' &&
+                  (settings.accentPresetId ?? 'midnight') === preset.id;
+                return (
+                  <TouchableOpacity
+                    key={preset.id}
+                    style={[styles.accentOption, selected && styles.accentOptionSelected]}
+                    activeOpacity={0.8}
+                    onPress={async () => {
+                      setAccentPreset(preset.id);
+                      setSettings(prev => (prev ? ({ ...prev, accentMode: 'preset', accentPresetId: preset.id } as any) : prev));
+                      await handleUpdate({ accentMode: 'preset', accentPresetId: preset.id });
+                    }}
+                  >
+                    <View
+                      style={[
+                        styles.accentSwatch,
+                        { backgroundColor: preset.hex, borderColor: selected ? colors.primary : colors.border },
+                      ]}
+                    />
+                    <Text style={[styles.accentOptionLabel, selected && styles.accentOptionLabelSelected]}>
+                      {preset.name}
                     </Text>
-                    <Text style={styles.toneOptionDescription}>{option.description}</Text>
-                  </View>
-                  {settings.aiTone === option.value && (
-                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* AI Memory Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>AI Memory</Text>
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Enable AI memory</Text>
-              <Text style={styles.settingDescription}>
-                Let Penny remember context to personalize advice.
-              </Text>
+                    {selected && <Ionicons name="checkmark-circle" size={18} color={colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-            <Switch
-              value={settings.enableAiMemory}
-              onValueChange={(value) => handleUpdate({ enableAiMemory: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableAiMemory ? '#FFFFFF' : '#000000'}
-            />
-          </View>
 
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Auto-create memory</Text>
-              <Text style={styles.settingDescription}>
-                Allow Penny to create background memories from patterns.
-              </Text>
-            </View>
-            <Switch
-              value={settings.enableAutoMemories}
-              onValueChange={(value) => handleUpdate({ enableAutoMemories: value })}
-              trackColor={{ false: '#E0E0E0', true: '#000000' }}
-              thumbColor={settings.enableAutoMemories ? '#FFFFFF' : '#000000'}
-              disabled={!settings.enableAiMemory}
-            />
-          </View>
-
-          <TouchableOpacity style={styles.testButton} onPress={handleClearAiMemory}>
-            <Ionicons name="trash-outline" size={20} color={colors.background} />
-            <Text style={styles.testButtonText}>Clear AI memory</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Security Settings */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Security</Text>
-        
-        {biometricAvailable && (
-          <View style={styles.sectionCard}>
-            <View style={styles.settingRow}>
-              <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>{biometricType} Unlock</Text>
-                <Text style={styles.settingDescription}>
-                  Use {biometricType.toLowerCase()} to unlock the app
-                </Text>
-              </View>
-              <Switch
-                value={settings.enableBiometric}
-                onValueChange={async (value) => {
-                  await handleUpdate({ enableBiometric: value });
-                }}
-                trackColor={{ false: '#E0E0E0', true: '#000000' }}
-                thumbColor={settings.enableBiometric ? '#FFFFFF' : '#000000'}
-              />
-            </View>
-          </View>
-        )}
-        
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>PIN Code</Text>
-              <Text style={styles.settingDescription}>
-                {pinSet ? 'Change your PIN code' : 'Set a PIN code to unlock the app'}
-              </Text>
-            </View>
+            <View style={styles.divider} />
             <TouchableOpacity
-              style={styles.pinButton}
+              style={styles.settingRow}
+              activeOpacity={0.7}
               onPress={() => {
-                // Always show password modal first to verify identity
-                setShowPasswordModal(true);
+                setAccentHexInput(settings.accentCustomHex ?? '');
+                setShowAccentModal(true);
               }}
             >
-              <Text style={styles.pinButtonText}>
-                {pinSet ? 'Change PIN' : 'Set PIN'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-
-      {/* Data Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Data</Text>
-        <View style={styles.sectionCard}>
-          <TouchableOpacity
-            style={[styles.settingRow, recalculatingBudgets && styles.buttonDisabled]}
-            onPress={handleRecalculateBudgets}
-            disabled={recalculatingBudgets}
-          >
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Recalculate budgets</Text>
-              <Text style={styles.settingDescription}>
-                Recompute budget spent amounts from your transactions (fixes drift).
-              </Text>
-            </View>
-            <Ionicons name="calculator-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Account Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Account</Text>
-        <View style={styles.sectionCard}>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>Email</Text>
-              <Text style={styles.settingDescription}>
-                {getUserEmail() || 'Not signed in'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-          <TouchableOpacity
-            style={[styles.settingRow, requestingDeletion && styles.buttonDisabled]}
-            onPress={handleRequestAccountDeletion}
-            disabled={requestingDeletion}
-          >
-            <View style={styles.settingInfo}>
-              <Text style={[styles.settingLabel, styles.destructiveLabel]}>Delete account</Text>
-              <Text style={styles.settingDescription}>
-                {accountDeletionStatus.status === 'deletion_pending'
-                  ? `Scheduled for deletion on ${formatDeletionDate(accountDeletionStatus.scheduledDeletionAt)}.`
-                  : 'Schedule deletion and remove your data.'}
-              </Text>
-            </View>
-            <Ionicons name="warning-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-
-          {isDemoUser() && (
-            <>
-              <View style={styles.divider} />
               <View style={styles.settingInfo}>
-                <Text style={styles.settingLabel}>Demo data</Text>
+                <Text style={styles.settingLabel}>Custom color</Text>
                 <Text style={styles.settingDescription}>
-                  Create demo accounts and transactions for this user.
+                  {normalizeHex(settings.accentCustomHex ?? '') || 'Enter a hex color like #1D4ED8'}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={[styles.testButton, seedingDemo && styles.buttonDisabled]}
-                onPress={handleSeedDemoData}
-                disabled={seedingDemo}
-              >
-                <Ionicons name="sparkles-outline" size={20} color={colors.background} />
-                <Text style={styles.testButtonText}>
-                  {seedingDemo ? 'Seeding...' : 'Seed demo data'}
-                </Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </View>
+              <View style={styles.accentPreview}>
+                <View
+                  style={[
+                    styles.accentPreviewDot,
+                    {
+                      backgroundColor:
+                        (settings.accentMode ?? 'preset') === 'custom' && isValidHexColor(settings.accentCustomHex ?? '')
+                          ? normalizeHex(settings.accentCustomHex ?? '')
+                          : colors.primary,
+                    },
+                  ]}
+                />
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+              </View>
+            </TouchableOpacity>
 
-      <View style={styles.bottomPadding} />
+            <View style={styles.divider} />
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Swipe Direction</Text>
+              <Text style={styles.settingDescription}>
+                Choose how you want to swipe transactions
+              </Text>
+            </View>
+            <View style={styles.swipeDirectionContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.swipeDirectionOption,
+                  settings.swipeDirection === 'right-income-left-expense' && styles.swipeDirectionOptionActive,
+                ]}
+                onPress={() => handleUpdate({ swipeDirection: 'right-income-left-expense' })}
+              >
+                <View style={styles.swipeDirectionVisual}>
+                  <View style={styles.swipeDirectionArrow}>
+                    <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+                    <Text style={styles.swipeDirectionLabel}>Left</Text>
+                  </View>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <Text style={styles.swipeDirectionType}>Expense</Text>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <Text style={styles.swipeDirectionType}>Income</Text>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <View style={styles.swipeDirectionArrow}>
+                    <Text style={styles.swipeDirectionLabel}>Right</Text>
+                    <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.swipeDirectionOption,
+                  settings.swipeDirection === 'right-expense-left-income' && styles.swipeDirectionOptionActive,
+                ]}
+                onPress={() => handleUpdate({ swipeDirection: 'right-expense-left-income' })}
+              >
+                <View style={styles.swipeDirectionVisual}>
+                  <View style={styles.swipeDirectionArrow}>
+                    <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+                    <Text style={styles.swipeDirectionLabel}>Left</Text>
+                  </View>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <Text style={styles.swipeDirectionType}>Income</Text>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <Text style={styles.swipeDirectionType}>Expense</Text>
+                  <Text style={styles.swipeDirectionEquals}>=</Text>
+                  <View style={styles.swipeDirectionArrow}>
+                    <Text style={styles.swipeDirectionLabel}>Right</Text>
+                    <Ionicons name="arrow-forward" size={18} color={colors.textSecondary} />
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </View>
+          </SettingsCard>
+        </SettingsSection>
+
+        {/* Reminders */}
+        <SettingsSection title="Reminders">
+          <SettingsCard>
+            <SettingsRow
+              label="Low Balances"
+              subtitle="Get notified when account balance is low"
+              right={{ type: 'switch', value: settings.enableLowBalanceAlerts, onValueChange: (v) => handleUpdate({ enableLowBalanceAlerts: v }) }}
+            />
+            {settings.enableLowBalanceAlerts && (
+              <View style={styles.thresholdContainer}>
+                <Text style={styles.thresholdLabel}>
+                  when balance is below: {settings.lowBalanceThreshold}
+                </Text>
+                <View style={styles.thresholdButtons}>
+                  {[50, 100, 200, 500].map((amount) => (
+                    <TouchableOpacity
+                      key={amount}
+                      style={[
+                        styles.thresholdButton,
+                        settings.lowBalanceThreshold === amount && styles.thresholdButtonActive,
+                      ]}
+                      onPress={() => handleThresholdChange(amount)}
+                    >
+                      <Text
+                        style={[
+                          styles.thresholdButtonText,
+                          settings.lowBalanceThreshold === amount && styles.thresholdButtonTextActive,
+                        ]}
+                      >
+                        {amount}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+            <SettingsRow
+              label="Daily Account Update"
+              subtitle="Reminder to update your account balances"
+              right={{ type: 'switch', value: settings.enableDailyReminders, onValueChange: (v) => handleUpdate({ enableDailyReminders: v }) }}
+              showDivider
+            />
+            <SettingsRow
+              label="Subscription Reminders"
+              subtitle="Get notified before subscription renewals"
+              right={{ type: 'switch', value: settings.enableSubscriptionReminders, onValueChange: (v) => handleUpdate({ enableSubscriptionReminders: v }) }}
+              showDivider
+            />
+            <SettingsRow
+              label="Budgets"
+              subtitle="Get notified when approaching budget limits"
+              right={{ type: 'switch', value: settings.enableBudgetAlerts, onValueChange: (v) => handleUpdate({ enableBudgetAlerts: v }) }}
+              showDivider
+            />
+          </SettingsCard>
+        </SettingsSection>
+
+        {/* Notifications */}
+        <SettingsSection title="Notifications">
+          <SettingsCard>
+            <SettingsRow
+              label="Enable Notifications"
+              subtitle="Allow the app to send notifications"
+              right={{ type: 'switch', value: settings.enableNotifications, onValueChange: (v) => handleUpdate({ enableNotifications: v }) }}
+            />
+            {settings.enableNotifications && (
+              <>
+                <SettingsRow
+                  label="Sound"
+                  subtitle="Play sound for notifications"
+                  right={{ type: 'switch', value: settings.enableSound, onValueChange: (v) => handleUpdate({ enableSound: v }) }}
+                  showDivider
+                />
+                <SettingsRow
+                  label="Badge"
+                  subtitle="Show badge count on app icon"
+                  right={{ type: 'switch', value: settings.enableBadge, onValueChange: (v) => handleUpdate({ enableBadge: v }) }}
+                  showDivider
+                />
+                <View style={styles.divider} />
+                <Text style={styles.settingDescription}>
+                  Send a test notification to verify notifications are working correctly.
+                </Text>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={async () => {
+                    try {
+                      const hasPermission = await requestPermissions();
+                      if (!hasPermission) {
+                        dialog.alert('Permission Required', 'Please enable notification permissions in your device settings.');
+                        return;
+                      }
+                      await sendTestNotification('generic');
+                      dialog.alert('Success', 'Test notification sent! Check your notification tray.');
+                    } catch (error: any) {
+                      dialog.alert('Error', error.message || 'Failed to send test notification');
+                    }
+                  }}
+                >
+                  <Ionicons name="notifications-outline" size={20} color={colors.background} />
+                  <Text style={styles.testButtonText}>Send Test Notification</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </SettingsCard>
+        </SettingsSection>
+
+        {/* AI */}
+        <SettingsSection title="AI">
+          <SettingsCard>
+            <Text style={styles.settingDescription}>
+              Choose how Penny's AI talks to you. You can change this anytime.
+            </Text>
+            <View style={styles.toneOptionsContainer}>
+              {[
+                { value: 'friendly' as const, label: 'Friendly & Supportive', description: 'Warm, encouraging, gentle guidance', icon: 'heart-outline' },
+                { value: 'professional' as const, label: 'Professional & Calm', description: 'Formal, measured, professional advice', icon: 'briefcase-outline' },
+                { value: 'direct' as const, label: 'Direct & No-Nonsense', description: 'Straightforward, no sugar-coating, casual language', icon: 'chatbubble-outline' },
+                { value: 'harsh' as const, label: 'Harsh & Brutally Honest', description: 'Uses strong language, very direct, tough love approach', icon: 'flame-outline' },
+              ].map((option) => (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[
+                    styles.toneOptionCard,
+                    settings.aiTone === option.value && styles.toneOptionCardSelected,
+                  ]}
+                  onPress={async () => await handleUpdate({ aiTone: option.value })}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.toneOptionHeader}>
+                    <Ionicons
+                      name={option.icon as any}
+                      size={20}
+                      color={settings.aiTone === option.value ? colors.primary : colors.textSecondary}
+                    />
+                    <View style={styles.toneOptionTextContainer}>
+                      <Text style={[styles.toneOptionLabel, settings.aiTone === option.value && styles.toneOptionLabelSelected]}>
+                        {option.label}
+                      </Text>
+                      <Text style={styles.toneOptionDescription}>{option.description}</Text>
+                    </View>
+                    {settings.aiTone === option.value && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.divider} />
+            <SettingsRow
+              label="Enable AI memory"
+              subtitle="Let Penny remember context to personalize advice."
+              right={{ type: 'switch', value: settings.enableAiMemory, onValueChange: (v) => handleUpdate({ enableAiMemory: v }) }}
+            />
+            <SettingsRow
+              label="Auto-create memory"
+              subtitle="Allow Penny to create background memories from patterns."
+              right={{ type: 'switch', value: settings.enableAutoMemories, onValueChange: (v) => handleUpdate({ enableAutoMemories: v }), disabled: !settings.enableAiMemory }}
+              showDivider
+            />
+            <TouchableOpacity style={styles.testButton} onPress={handleClearAiMemory}>
+              <Ionicons name="trash-outline" size={20} color={colors.background} />
+              <Text style={styles.testButtonText}>Clear AI memory</Text>
+            </TouchableOpacity>
+          </SettingsCard>
+        </SettingsSection>
+
+        {/* Security */}
+        <SettingsSection title="Security">
+          <SettingsCard>
+            {biometricAvailable && (
+              <>
+                <SettingsRow
+                  label={`${biometricType} Unlock`}
+                  subtitle={`Use ${biometricType.toLowerCase()} to unlock the app`}
+                  right={{ type: 'switch', value: settings.enableBiometric, onValueChange: async (v) => await handleUpdate({ enableBiometric: v }) }}
+                />
+                <SettingsRow
+                  label="PIN Code"
+                  subtitle={pinSet ? 'Change your PIN code' : 'Set a PIN code to unlock the app'}
+                  right={{ type: 'custom', node: (
+                    <TouchableOpacity
+                      style={styles.pinButton}
+                      onPress={() => setShowPasswordModal(true)}
+                    >
+                      <Text style={styles.pinButtonText}>{pinSet ? 'Change PIN' : 'Set PIN'}</Text>
+                    </TouchableOpacity>
+                  ) }}
+                  showDivider
+                />
+              </>
+            )}
+            {!biometricAvailable && (
+              <SettingsRow
+                label="PIN Code"
+                subtitle={pinSet ? 'Change your PIN code' : 'Set a PIN code to unlock the app'}
+                right={{ type: 'custom', node: (
+                  <TouchableOpacity
+                    style={styles.pinButton}
+                    onPress={() => setShowPasswordModal(true)}
+                  >
+                    <Text style={styles.pinButtonText}>{pinSet ? 'Change PIN' : 'Set PIN'}</Text>
+                  </TouchableOpacity>
+                ) }}
+              />
+            )}
+          </SettingsCard>
+        </SettingsSection>
+
+        {/* Data & account */}
+        <SettingsSection title="Data & account">
+          <SettingsCard>
+            <SettingsRow
+              label="Email"
+              subtitle={getUserEmail() || 'Not signed in'}
+              right={{ type: 'none' }}
+            />
+            <SettingsRow
+              label="Delete account"
+              subtitle={accountDeletionStatus.status === 'deletion_pending'
+                ? `Scheduled for deletion on ${formatDeletionDate(accountDeletionStatus.scheduledDeletionAt)}.`
+                : 'Schedule deletion and remove your data.'}
+              right={{ type: 'custom', node: <Ionicons name="warning-outline" size={18} color={colors.textSecondary} /> }}
+              onPress={handleRequestAccountDeletion}
+              disabled={requestingDeletion}
+              destructive
+              showDivider
+            />
+            <SettingsRow
+              icon="log-out-outline"
+              label="Sign out"
+              right={{ type: 'none' }}
+              onPress={handleSignOut}
+              destructive
+              showDivider
+            />
+            {isDemoUser() && (
+              <>
+                <View style={styles.divider} />
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Demo data</Text>
+                  <Text style={styles.settingDescription}>
+                    Create demo accounts and transactions for this user.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.testButton, seedingDemo && styles.buttonDisabled]}
+                  onPress={handleSeedDemoData}
+                  disabled={seedingDemo}
+                >
+                  <Ionicons name="sparkles-outline" size={20} color={colors.background} />
+                  <Text style={styles.testButtonText}>
+                    {seedingDemo ? 'Seeding...' : 'Seed demo data'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </SettingsCard>
+        </SettingsSection>
       
       {/* Password Verification Modal */}
       <Modal
@@ -1211,26 +1057,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-    backgroundColor: colors.background,
-  },
-  backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  headerSpacer: {
-    width: 32,
   },
   loadingContainer: {
     flex: 1,

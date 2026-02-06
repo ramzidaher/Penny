@@ -280,5 +280,5 @@ export const deleteAllMemories = async (): Promise<void> => {
 };
 
 // Data export operations
-export { exportDataAsJSON, exportDataAsCSV, getExportStats } from '../services/dataExportService';
+// Export helpers are in dataExportService; import from '../services/dataExportService' to avoid require cycle.
 

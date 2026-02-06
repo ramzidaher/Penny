@@ -1,10 +1,15 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useTheme } from '../contexts/ThemeContext';
+import ProfileSettingsHeader from '../components/ProfileSettingsHeader';
 
 export default function AboutScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -19,7 +24,17 @@ export default function AboutScreen() {
   const buildNumber = Constants.expoConfig?.ios?.buildNumber || '2';
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+    <View style={styles.container}>
+      <ProfileSettingsHeader
+        title="About"
+        leftButton={{ type: 'back', onPress: () => router.back() }}
+      />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
+        contentInsetAdjustmentBehavior="never"
+      >
         {/* App Info Section */}
         <View style={styles.section}>
           <View style={styles.appInfoCard}>
@@ -78,7 +93,8 @@ export default function AboutScreen() {
         </View>
 
         <View style={styles.bottomPadding} />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -88,11 +104,14 @@ const createStyles = (colors: { background: string; surface: string; border: str
     flex: 1,
     backgroundColor: colors.background,
   },
+  scrollView: {
+    flex: 1,
+  },
   scrollContent: {
     paddingTop: 8,
   },
   section: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     marginBottom: 24,
   },
   sectionTitle: {

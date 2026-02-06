@@ -1,23 +1,51 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform, Share, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Share, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialog } from '../contexts/DialogContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getUserEmail, getCurrentUser, logoutUser } from '../services/firebase';
+import { getUserEmail, getCurrentUser, getCurrentUserProfile } from '../services/firebase';
+import Avatar from '../components/Avatar';
 import { exportDataAsJSON, exportDataAsCSV } from '../services/dataExportService';
+import SettingsSection from '../components/SettingsSection';
+import SettingsCard from '../components/SettingsCard';
+import ProfileListItem from '../components/ProfileListItem';
+import SettingsRow from '../components/SettingsRow';
+import ProfileSettingsHeader from '../components/ProfileSettingsHeader';
 
 export default function ProfileScreen() {
+  const { width } = useWindowDimensions();
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const isNarrow = width < 375;
+  const profileAvatarSize = isNarrow ? 56 : 64;
   const router = useRouter();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
   const userEmail = getUserEmail();
   const currentUser = getCurrentUser();
   const [exporting, setExporting] = useState(false);
-  
+  const [profile, setProfile] = useState<{ avatarSeed?: string } | null>(null);
+
+  const refreshProfile = useCallback(() => {
+    getCurrentUserProfile().then(setProfile);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUserProfile().then((p) => {
+      if (!cancelled) setProfile(p);
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [refreshProfile])
+  );
+
   // Get display name or email username
   const displayName = currentUser?.displayName || (userEmail ? userEmail.split('@')[0] : 'User');
 
@@ -134,203 +162,88 @@ export default function ProfileScreen() {
     }
   };
 
-  const handleSignOut = async () => {
-    // Use web-compatible confirmation
-    const confirmSignOut = (): Promise<boolean> => {
-      if (Platform.OS === 'web') {
-        return Promise.resolve(
-          typeof window !== 'undefined' && window.confirm('Are you sure you want to sign out?')
-        );
-      } else {
-        return dialog.showDialog(
-          'Sign Out',
-          'Are you sure you want to sign out?',
-          [
-            { 
-              text: 'Cancel', 
-              style: 'cancel',
-            },
-            {
-              text: 'Sign Out',
-              style: 'destructive',
-            },
-          ]
-        ).then((buttonText) => {
-          // Return true if "Sign Out" was pressed, false otherwise
-          return buttonText === 'Sign Out';
-        });
-      }
-    };
-
-    const shouldSignOut = await confirmSignOut();
-    
-    if (shouldSignOut) {
-      try {
-        console.log('Signing out...');
-        await logoutUser();
-        console.log('Sign out successful - App.tsx should handle navigation');
-        // Navigation will be handled by App.tsx auth state listener
-      } catch (error: any) {
-        console.error('Sign out error:', error);
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert(error.message || 'Failed to sign out. Please try again.');
-        } else {
-          dialog.alert('Error', error.message || 'Failed to sign out. Please try again.');
-        }
-      }
-    } else {
-      console.log('Sign out cancelled');
-    }
-  };
-
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={handleDone} style={styles.doneButton}>
-          <Text style={styles.doneText}>Done</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
-      <View style={styles.content}>
-        {/* User Info Section */}
-        <View style={styles.section}>
-          <View style={styles.userCard}>
-            <View style={styles.avatarContainer}>
-              <Ionicons name="person" size={32} color={colors.textSecondary} />
+      <ProfileSettingsHeader
+        title="Profile"
+        leftButton={{ type: 'text', label: 'Done', onPress: handleDone }}
+      />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile */}
+        <SettingsSection title="Profile">
+          <TouchableOpacity
+            style={styles.userCard}
+            onPress={() => router.push('/change-avatar' as any)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.avatarContainer, { width: profileAvatarSize, height: profileAvatarSize, borderRadius: profileAvatarSize / 2 }]}>
+              {profile?.avatarSeed ? (
+                <Avatar seed={profile.avatarSeed} size={profileAvatarSize} />
+              ) : (
+                <Ionicons name="person" size={profileAvatarSize * 0.5} color={colors.textSecondary} />
+              )}
             </View>
             <View style={styles.userInfo}>
-              <Text style={styles.userName}>{displayName}</Text>
+              <Text style={styles.userName} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
               {userEmail && (
-                <Text style={styles.userEmail}>{userEmail}</Text>
+                <Text style={styles.userEmail} numberOfLines={1} ellipsizeMode="tail">{userEmail}</Text>
               )}
+              <Text style={styles.changeAvatarHint}>Tap to change avatar</Text>
             </View>
-          </View>
-        </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </SettingsSection>
 
-        {/* Subscription Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Subscription</Text>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={() => {
-              // Handle upgrade to pro
-            }}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionCardContent}>
-              <View style={styles.actionCardLeft}>
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="star" size={20} color="#007AFF" />
-                </View>
-                <Text style={styles.actionCardTitle}>Upgrade to Pro</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-        </View>
+        {/* Subscription */}
+        <SettingsSection title="Subscription">
+          <SettingsCard>
+            <ProfileListItem
+              icon="star"
+              title="Upgrade to Pro"
+              onPress={() => {}}
+              iconColor={colors.primary}
+            />
+          </SettingsCard>
+        </SettingsSection>
 
-        {/* Account Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <TouchableOpacity
-            style={styles.actionCard}
-            onPress={handleSettings}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionCardContent}>
-              <View style={styles.actionCardLeft}>
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="settings-outline" size={20} color={colors.text} />
-                </View>
-                <View style={styles.actionCardTextContainer}>
-                  <Text style={styles.actionCardTitle}>Settings</Text>
-                  <Text style={styles.actionCardSubtitle}>Preferences, security, and more</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionCard, styles.actionCardWithMargin]}
-            onPress={handleHelp}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionCardContent}>
-              <View style={styles.actionCardLeft}>
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="help-circle-outline" size={20} color={colors.text} />
-                </View>
-                <Text style={styles.actionCardTitle}>Help & Support</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionCard, styles.actionCardWithMargin]}
-            onPress={handleAbout}
-            activeOpacity={0.7}
-          >
-            <View style={styles.actionCardContent}>
-              <View style={styles.actionCardLeft}>
-                <View style={styles.actionIconContainer}>
-                  <Ionicons name="information-circle-outline" size={20} color={colors.text} />
-                </View>
-                <View style={styles.actionCardTextContainer}>
-                  <Text style={styles.actionCardTitle}>About</Text>
-                  <Text style={styles.actionCardSubtitle}>Version, terms, privacy</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionCard, styles.actionCardWithMargin]}
-            onPress={handleExportData}
-            activeOpacity={0.7}
-            disabled={exporting}
-          >
-            <View style={styles.actionCardContent}>
-              <View style={styles.actionCardLeft}>
-                <View style={styles.actionIconContainer}>
-                  {exporting ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <Ionicons name="download-outline" size={20} color={colors.text} />
-                  )}
-                </View>
-                <View style={styles.actionCardTextContainer}>
-                  <Text style={styles.actionCardTitle}>
-                    {exporting ? 'Exporting...' : 'Export Data'}
-                  </Text>
-                  <Text style={styles.actionCardSubtitle}>
-                    {exporting ? 'Please wait' : 'Download your data (JSON or CSV)'}
-                  </Text>
-                </View>
-              </View>
-              {!exporting && (
-                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-              )}
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* Sign Out Section */}
-        <View style={[styles.section, styles.sectionLast]}>
-          <TouchableOpacity
-            style={styles.signOutCard}
-            onPress={handleSignOut}
-            activeOpacity={0.7}
-          >
-            <View style={styles.signOutContent}>
-              <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
-              <Text style={styles.signOutText}>Sign Out</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
+        {/* Preferences */}
+        <SettingsSection title="Preferences">
+          <SettingsCard>
+            <ProfileListItem
+              icon="settings-outline"
+              title="Settings"
+              subtitle="Preferences, security, and more"
+              onPress={handleSettings}
+            />
+            <ProfileListItem
+              icon="help-circle-outline"
+              title="Help & Support"
+              onPress={handleHelp}
+              showDivider
+            />
+            <ProfileListItem
+              icon="information-circle-outline"
+              title="About"
+              subtitle="Version, terms, privacy"
+              onPress={handleAbout}
+              showDivider
+            />
+            <ProfileListItem
+              icon="download-outline"
+              title={exporting ? 'Exporting...' : 'Export Data'}
+              subtitle={exporting ? 'Please wait' : 'Download your data (JSON or CSV)'}
+              onPress={handleExportData}
+              disabled={exporting}
+              right={exporting ? <ActivityIndicator size="small" color={colors.primary} /> : undefined}
+              showDivider
+            />
+          </SettingsCard>
+        </SettingsSection>
+      </ScrollView>
     </View>
   );
 }
@@ -340,68 +253,32 @@ const createStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 12,
-  },
-  doneButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  doneText: {
-    fontSize: 17,
-    color: colors.primary,
-    fontWeight: '400',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  headerSpacer: {
-    width: 60,
+  scrollView: {
+    flex: 1,
   },
   content: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 8,
-  },
-  section: {
-    marginBottom: 16,
-  },
-  sectionLast: {
-    marginBottom: 0,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
   },
   userCard: {
     backgroundColor: colors.surface,
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
+    marginBottom: 12,
   },
   avatarContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: colors.background,
+    flexShrink: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   userInfo: {
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     fontSize: 20,
@@ -414,62 +291,10 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '400',
   },
-  actionCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  actionCardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  actionCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  actionIconContainer: {
-    marginRight: 12,
-  },
-  actionCardTextContainer: {
-    flex: 1,
-  },
-  actionCardTitle: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: colors.text,
-  },
-  actionCardSubtitle: {
-    fontSize: 13,
+  changeAvatarHint: {
+    fontSize: 12,
     color: colors.textSecondary,
-    marginTop: 2,
-  },
-  actionCardWithMargin: {
-    marginTop: 12,
-  },
-  signOutCard: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  signOutContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    gap: 8,
-  },
-  signOutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF3B30',
+    marginTop: 4,
   },
 });
 

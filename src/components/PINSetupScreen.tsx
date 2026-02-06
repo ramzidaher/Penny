@@ -121,7 +121,7 @@ export default function PINSetupScreen({ onComplete }: PINSetupScreenProps) {
           {/* Logo */}
           <View style={styles.logoContainer}>
             <Image 
-              source={require('../../assets/Penny Logo RD.png')} 
+              source={require('../../assets/PennyLogoTransparent.png')} 
               style={styles.logo}
               resizeMode="contain"
             />
