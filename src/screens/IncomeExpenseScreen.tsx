@@ -24,6 +24,7 @@ import BudgetCreationDialog from '../components/BudgetCreationDialog';
 import DebtCreationDialog from '../components/DebtCreationDialog';
 import { suggestCategory, learnFromCategorization } from '../services/categoryService';
 import { useDialog } from '../contexts/DialogContext';
+import { scheduleAllNotifications } from '../services/notifications';
 
 type TabType = 'income' | 'expense' | 'all';
 type FilterType = 'all' | 'subscriptions' | 'debts' | 'untagged';
@@ -109,6 +110,7 @@ export default function IncomeExpenseScreen() {
             try {
               await deleteTransaction(id);
               await loadTransactions(false);
+              await scheduleAllNotifications();
             } catch (error) {
               dialog.alert('Error', 'Failed to delete transaction');
             }
@@ -122,6 +124,7 @@ export default function IncomeExpenseScreen() {
     try {
       await untagTransaction(id, type);
       await loadTransactions(false);
+      await scheduleAllNotifications();
     } catch (error) {
       dialog.alert('Error', `Failed to untag ${type}`);
     }
@@ -153,6 +156,7 @@ export default function IncomeExpenseScreen() {
               await Promise.all(Array.from(selectedIds).map(id => deleteTransaction(id)));
               setSelectedIds(new Set());
               await loadTransactions(false);
+              await scheduleAllNotifications();
             } catch (error) {
               dialog.alert('Error', 'Failed to delete some transactions');
             }
@@ -169,6 +173,7 @@ export default function IncomeExpenseScreen() {
       await Promise.all(Array.from(selectedIds).map(id => untagTransaction(id, type)));
       setSelectedIds(new Set());
       await loadTransactions(false);
+      await scheduleAllNotifications();
     } catch (error) {
       dialog.alert('Error', `Failed to untag ${type}s`);
     }
@@ -184,6 +189,7 @@ export default function IncomeExpenseScreen() {
         await updateTransaction(selectedTransaction.id, updateData);
         await learnFromCategorization(selectedTransaction.description || '', category, selectedType);
         await loadTransactions(false);
+        await scheduleAllNotifications();
       } catch (error) {
         console.error('[IncomeExpenseScreen] Error updating transaction', error);
         dialog.alert('Error', 'Failed to update transaction');
@@ -244,6 +250,7 @@ export default function IncomeExpenseScreen() {
   const handleDebtDialogComplete = useCallback(async () => {
     setDebtDialogVisible(false);
     await loadTransactions(false);
+    await scheduleAllNotifications();
     setSelectedTransaction(null);
     setPendingCategory(null);
   }, []);
