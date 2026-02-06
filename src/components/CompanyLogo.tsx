@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { getTransactionIcon, getSubscriptionIcon } from '../utils/icons';
 
 // Set EXPO_PUBLIC_LOGO_DEV_KEY in .env (publishable key - safe in client)
@@ -27,8 +27,10 @@ export default function CompanyLogo({
   size = 48,
   fallbackIcon 
 }: CompanyLogoProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [error, setError] = React.useState(false);
-  
+
   // Get fallback icon for when image fails or no URL
   const getFallbackIcon = () => {
     if (fallbackIcon) return fallbackIcon;
@@ -80,7 +82,8 @@ export default function CompanyLogo({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { surface: string; border: string; primary: string }) =>
+  StyleSheet.create({
   container: {
     overflow: 'hidden',
     backgroundColor: colors.surface,
@@ -97,5 +100,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-});
+  });
 

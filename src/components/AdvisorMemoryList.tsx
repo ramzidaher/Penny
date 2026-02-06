@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { typography } from '../theme/typography';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { UserMemory } from '../database/schema';
 import AdvisorMemoryCard from './AdvisorMemoryCard';
 
@@ -22,6 +22,8 @@ export default function AdvisorMemoryList({
   onTogglePause,
   onConfirm,
 }: AdvisorMemoryListProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   if (memories.length === 0) {
     return (
       <View style={styles.section}>
@@ -48,7 +50,8 @@ export default function AdvisorMemoryList({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { text: string; textSecondary: string }) =>
+  StyleSheet.create({
   section: {
     marginBottom: 16,
   },
@@ -63,4 +66,4 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: 8,
   },
-});
+  });

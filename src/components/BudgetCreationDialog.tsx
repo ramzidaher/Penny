@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, TextInput, Platform, Animated, Dimensions, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { Transaction } from '../database/schema';
 import { getTransactions, addBudget } from '../database/db';
@@ -32,6 +32,8 @@ export default function BudgetCreationDialog({
   onClose,
   onComplete,
 }: BudgetCreationDialogProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [limit, setLimit] = useState('');
   const [period, setPeriod] = useState<'weekly' | 'monthly' | 'yearly'>('monthly');
   const [suggestedLimit, setSuggestedLimit] = useState<number | null>(null);
@@ -326,7 +328,7 @@ export default function BudgetCreationDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   modalContainer: {
     flex: 1,
     justifyContent: 'center',

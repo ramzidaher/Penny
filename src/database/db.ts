@@ -123,6 +123,16 @@ export const deleteBudget = async (id: string): Promise<void> => {
   return await cloudDb.cloudDeleteBudget(id);
 };
 
+/**
+ * Recalculate all budgets' currentSpent from transactions (repair for drift).
+ */
+export const recalculateBudgetsFromTransactions = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
+  }
+  return await cloudDb.cloudRecalculateBudgetCurrentSpent();
+};
+
 // Subscription operations
 export const getSubscriptions = async (): Promise<Subscription[]> => {
   if (!isFirebaseAvailable()) {
@@ -159,11 +169,11 @@ export const markSubscriptionAsPaid = async (id: string): Promise<void> => {
   return await cloudDb.markSubscriptionAsPaid(id);
 };
 
-export const processDueSubscriptions = async (): Promise<number> => {
+export const processDueSubscriptions = async (): Promise<void> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
-  return await cloudDb.processDueSubscriptions();
+  await cloudDb.processDueSubscriptions();
 };
 
 // Debt operations

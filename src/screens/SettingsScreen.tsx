@@ -24,7 +24,7 @@ import {
 import { scheduleAllNotifications, sendTestNotification, requestPermissions } from '../services/notifications';
 import { ensureDemoSeeded } from '../services/demoSeed';
 import { isDemoUser } from '../services/demoUser';
-import { deleteAllMemories } from '../database/db';
+import { deleteAllMemories, recalculateBudgetsFromTransactions } from '../database/db';
 import {
   isBiometricAvailable,
   getBiometricType,
@@ -71,6 +71,7 @@ export default function SettingsScreen() {
   const [showAccentModal, setShowAccentModal] = useState(false);
   const [accentHexInput, setAccentHexInput] = useState('');
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [recalculatingBudgets, setRecalculatingBudgets] = useState(false);
   const [accountDeletionStatus, setAccountDeletionStatus] = useState<AccountDeletionStatus>(
     getAccountDeletionStatus()
   );
@@ -343,6 +344,19 @@ export default function SettingsScreen() {
       dialog.alert('Error', error.message || 'Failed to set PIN. Please try again.');
     } finally {
       setSettingPIN(false);
+    }
+  };
+
+  const handleRecalculateBudgets = async () => {
+    if (recalculatingBudgets) return;
+    try {
+      setRecalculatingBudgets(true);
+      await recalculateBudgetsFromTransactions();
+      dialog.alert('Done', 'Budget amounts have been recalculated from your transactions.');
+    } catch (error: any) {
+      dialog.alert('Error', error?.message || 'Failed to recalculate budgets.');
+    } finally {
+      setRecalculatingBudgets(false);
     }
   };
 
@@ -913,6 +927,26 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+
+      {/* Data Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Data</Text>
+        <View style={styles.sectionCard}>
+          <TouchableOpacity
+            style={[styles.settingRow, recalculatingBudgets && styles.buttonDisabled]}
+            onPress={handleRecalculateBudgets}
+            disabled={recalculatingBudgets}
+          >
+            <View style={styles.settingInfo}>
+              <Text style={styles.settingLabel}>Recalculate budgets</Text>
+              <Text style={styles.settingDescription}>
+                Recompute budget spent amounts from your transactions (fixes drift).
+              </Text>
+            </View>
+            <Ionicons name="calculator-outline" size={18} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Account Section */}
       <View style={styles.section}>

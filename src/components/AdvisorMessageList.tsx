@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 
 export interface AdvisorChatMessage {
@@ -20,6 +20,8 @@ function isErrorMessage(text: string) {
 }
 
 export default function AdvisorMessageList({ messages, loading, onRetryLastError }: AdvisorMessageListProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const renderTextWithBold = (text: string) => {
     const parts: Array<{ text: string; bold: boolean }> = [];
     let currentIndex = 0;
@@ -105,7 +107,7 @@ export default function AdvisorMessageList({ messages, loading, onRetryLastError
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   messagesContainer: {
     paddingHorizontal: 20,
     marginBottom: 24,

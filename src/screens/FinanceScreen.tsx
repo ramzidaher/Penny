@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useNavigation } from '../utils/navigation';
@@ -14,73 +14,44 @@ import AddDebtScreen from './AddDebtScreen';
 import ConnectBankScreen from './ConnectBankScreen';
 import SubscriptionsScreen from './SubscriptionsScreen';
 import AddSubscriptionScreen from './AddSubscriptionScreen';
-import { colors } from '../theme/colors';
-import { typography } from '../theme/typography';
+import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
-import { getAccounts, getTransactions, getBudgets, getSubscriptions } from '../database/db';
-import { Account, Transaction, Budget, Subscription } from '../database/schema';
+import { Budget } from '../database/schema';
 import { startOfMonth, endOfMonth } from 'date-fns';
 import { SkeletonList, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
-import { waitForFirebase } from '../services/firebase';
 import SettingsScreen from './SettingsScreen';
-import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
+import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
 
 const Stack = createStackNavigator();
 
 function FinanceHomeScreen({ navigation }: any) {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [budgets, setBudgets] = useState<Budget[]>([]);
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [currencyCode, setCurrencyCode] = useState<string>('USD');
-  const hasLoadedRef = useRef(false);
-
-  const loadData = async (showLoading = false) => {
-    try {
-      if (showLoading) {
-        setLoading(true);
-      }
-      await waitForFirebase();
-      const [accs, trans, buds, subs, settings] = await Promise.all([
-        getAccounts(),
-        getTransactions(),
-        getBudgets(),
-        getSubscriptions(),
-        getSettings(),
-      ]);
-      setAccounts(accs);
-      setTransactions(trans);
-      setBudgets(buds);
-      setSubscriptions(subs);
-      setCurrencyCode(settings.defaultCurrency);
-      hasLoadedRef.current = true;
-    } catch (error) {
-      console.error('Error loading data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const hasFocusedRef = useRef(false);
+  const {
+    accounts,
+    transactions,
+    budgets,
+    subscriptions,
+    currencyCode,
+    loading,
+    refreshing,
+    loadData,
+    onRefresh,
+  } = useFinanceOverviewData({ enrichBalances: false });
 
   useFocusEffect(
     useCallback(() => {
-      // Only show loading on initial load, refresh silently on subsequent focuses
-      const isInitialLoad = !hasLoadedRef.current;
+      const isFirstFocus = !hasFocusedRef.current;
       const timer = setTimeout(() => {
-        loadData(isInitialLoad);
+        loadData(isFirstFocus);
+        hasFocusedRef.current = true;
       }, 100);
       return () => clearTimeout(timer);
-    }, [])
+    }, [loadData])
   );
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  };
 
   const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   const now = new Date();
@@ -123,7 +94,7 @@ function FinanceHomeScreen({ navigation }: any) {
   };
 
   const getProgressColor = (percentage: number) => {
-    if (percentage >= 100) return colors.error;
+    if (percentage >= 100) return colors.warning;
     if (percentage >= 80) return colors.textSecondary;
     return colors.primary;
   };
@@ -440,6 +411,7 @@ function FinanceHomeScreen({ navigation }: any) {
 }
 
 export default function FinanceStack() {
+  const { colors } = useTheme();
   return (
     <Stack.Navigator
       screenOptions={{
@@ -470,7 +442,8 @@ export default function FinanceStack() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { background: string; surface: string; border: string; text: string; textSecondary: string; primary: string; warning: string }) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -776,4 +749,4 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontWeight: '500',
   },
-});
+  });

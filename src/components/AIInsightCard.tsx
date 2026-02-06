@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { askAI } from '../services/aiService';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { Account, Transaction, Budget, Subscription } from '../database/schema';
 import { filterTransactionsByPeriod, FilterPeriod } from '../utils/transactionFilters';
@@ -35,6 +35,8 @@ export default function AIInsightCard({
   filterPeriod,
   currencyCode,
 }: AIInsightCardProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [insight, setInsight] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -182,7 +184,8 @@ export default function AIInsightCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { surface: string; border: string; text: string; textSecondary: string; primary: string }) =>
+  StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     marginHorizontal: 20,

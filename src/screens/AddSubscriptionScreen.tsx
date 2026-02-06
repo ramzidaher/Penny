@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
 import { addSubscription, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format, addMonths, addWeeks, addYears } from 'date-fns';
@@ -17,6 +17,8 @@ const frequencies = [
 ];
 
 export default function AddSubscriptionScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const dialog = useDialog();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -163,7 +165,7 @@ export default function AddSubscriptionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

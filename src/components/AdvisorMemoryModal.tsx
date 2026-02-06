@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { addDays, differenceInDays } from 'date-fns';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { MemoryCategory, MemoryTier, UserMemory } from '../database/schema';
 import AdvisorMemoryList from './AdvisorMemoryList';
@@ -82,6 +82,8 @@ export default function AdvisorMemoryModal({
   onConfirm,
   onForgetAll,
 }: AdvisorMemoryModalProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<MemoryDraft>(emptyDraft);
   const [expiresInDays, setExpiresInDays] = useState('30');
@@ -332,7 +334,7 @@ export default function AdvisorMemoryModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',

@@ -1,14 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Platform, Share, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useDialog } from '../contexts/DialogContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { getUserEmail, getCurrentUser, logoutUser } from '../services/firebase';
 import { exportDataAsJSON, exportDataAsCSV } from '../services/dataExportService';
 
 export default function ProfileScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
@@ -333,7 +335,7 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -7,6 +7,9 @@ import { format, addDays, differenceInDays, startOfMonth, endOfMonth, startOfDay
 let Notifications: typeof import('expo-notifications') | null = null;
 let notificationsAvailable = false;
 
+// Android 8+ requires a notification channel; use a single channel for all reminders
+export const ANDROID_CHANNEL_ID = 'penny-reminders';
+
 // Try to load notifications module
 const loadNotifications = async (): Promise<boolean> => {
   if (Platform.OS === 'web') {
@@ -63,6 +66,23 @@ updateNotificationHandler().catch(() => {
   // Silently fail if notifications aren't available
 });
 
+// Create Android notification channel (required for Android 8+; needed before permission prompt on Android 13+)
+const ensureAndroidNotificationChannel = async () => {
+  if (Platform.OS !== 'android') return;
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
+  try {
+    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: 'Reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      enableVibrate: true,
+    });
+  } catch (error) {
+    console.warn('Failed to create Android notification channel:', error);
+  }
+};
+
 export const requestPermissions = async () => {
   // Notifications API is not available on web
   if (Platform.OS === 'web') {
@@ -73,6 +93,8 @@ export const requestPermissions = async () => {
   if (!isAvailable || !Notifications) {
     return false;
   }
+
+  await ensureAndroidNotificationChannel();
   
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -146,7 +168,7 @@ export const checkLowBalanceAlerts = async () => {
             body: `${account.name} balance is low: ${currencySymbol}${account.balance.toFixed(2)}. Consider adding funds.`,
             data: { type: 'low_balance', accountId: account.id },
           },
-          trigger: null, // Immediate
+          trigger: Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : null,
         });
       } else if (account.balance < 0) {
         await Notifications.scheduleNotificationAsync({
@@ -155,7 +177,7 @@ export const checkLowBalanceAlerts = async () => {
             body: `${account.name} has a negative balance: ${currencySymbol}${account.balance.toFixed(2)}. Please add funds immediately.`,
             data: { type: 'negative_balance', accountId: account.id },
           },
-          trigger: null, // Immediate
+          trigger: Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : null,
         });
       }
     }
@@ -192,6 +214,7 @@ export const scheduleDailyAccountUpdateReminder = async () => {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour: targetHour,
         minute: targetMinute,
+        ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
       },
     });
   } catch (error) {
@@ -255,6 +278,7 @@ export const scheduleSubscriptionReminders = async () => {
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: reminderDate,
+              ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
             },
           });
         }
@@ -275,6 +299,7 @@ export const scheduleSubscriptionReminders = async () => {
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: reminderDate,
+              ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
             },
           });
         }
@@ -340,7 +365,7 @@ export const checkBudgetAlerts = async () => {
               body,
               data: { type: 'budget', id: budget.id },
             },
-            trigger: null, // Immediate
+            trigger: Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : null,
           });
           break; // Only send one alert per budget
         }
@@ -399,6 +424,7 @@ export const scheduleDebtReminders = async () => {
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: reminderDate,
+            ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
           },
         });
       }
@@ -417,6 +443,7 @@ export const scheduleDebtReminders = async () => {
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: reminderDate,
+            ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
           },
         });
       }
@@ -436,6 +463,7 @@ export const scheduleDebtReminders = async () => {
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: reminderDate,
+              ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
             },
           });
         }
@@ -449,7 +477,7 @@ export const scheduleDebtReminders = async () => {
             body: `${debt.name} payment is ${Math.abs(daysUntil)} day${Math.abs(daysUntil) !== 1 ? 's' : ''} overdue!`,
             data: { type: 'debt', id: debt.id, overdue: true },
           },
-          trigger: null, // Immediate
+          trigger: Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : null,
         });
       }
     }
@@ -461,35 +489,43 @@ export const scheduleDebtReminders = async () => {
 // Payment reminders (for transactions with due dates - if you add this feature)
 export const schedulePaymentReminders = async () => {
   if (Platform.OS === 'web') return;
+
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return;
   
-  // This can be extended if you add due dates to transactions
-  // For now, we'll check for upcoming subscription payments
-  const subscriptions = await getSubscriptions();
-  const now = new Date();
-  
-  for (const subscription of subscriptions) {
-    const nextBilling = new Date(subscription.nextBillingDate);
+  try {
+    // This can be extended if you add due dates to transactions
+    // For now, we'll check for upcoming subscription payments
+    const subscriptions = await getSubscriptions();
+    const now = new Date();
     
-    // If payment is due today, send a reminder
-    if (isToday(nextBilling)) {
-      const reminderDate = new Date(nextBilling);
-      reminderDate.setHours(8, 0, 0, 0);
+    for (const subscription of subscriptions) {
+      const nextBilling = new Date(subscription.nextBillingDate);
       
-      // Only schedule if the time hasn't passed yet
-      if (reminderDate > now) {
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Payment Reminder',
-            body: `Don't forget: ${subscription.name} payment of $${subscription.amount.toFixed(2)} is due today.`,
-            data: { type: 'payment_reminder', id: subscription.id },
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: reminderDate,
-          },
-        });
+      // If payment is due today, send a reminder
+      if (isToday(nextBilling)) {
+        const reminderDate = new Date(nextBilling);
+        reminderDate.setHours(8, 0, 0, 0);
+        
+        // Only schedule if the time hasn't passed yet
+        if (reminderDate > now) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Payment Reminder',
+              body: `Don't forget: ${subscription.name} payment of $${subscription.amount.toFixed(2)} is due today.`,
+              data: { type: 'payment_reminder', id: subscription.id },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: reminderDate,
+              ...(Platform.OS === 'android' && { channelId: ANDROID_CHANNEL_ID }),
+            },
+          });
+        }
       }
     }
+  } catch (error) {
+    console.warn('Failed to schedule payment reminders:', error);
   }
 };
 
@@ -541,6 +577,7 @@ export const scheduleDailyCheck = async () => {
 
 // Initialize notifications on app start
 export const initializeNotifications = async () => {
+  await ensureAndroidNotificationChannel();
   const hasPermission = await requestPermissions();
   if (hasPermission) {
     await scheduleAllNotifications();
@@ -607,7 +644,7 @@ export const sendTestNotification = async (type: 'low_balance' | 'subscription' 
         data: { type: 'test', testType: type },
         sound: true,
       },
-      trigger: null, // Immediate
+      trigger: Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : null,
     });
 
     return true;

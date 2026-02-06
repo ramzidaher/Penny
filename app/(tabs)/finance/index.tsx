@@ -224,7 +224,6 @@ export default function FinanceHomeScreen() {
       {/* Combined Overview Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Overview</Text>
           <View style={styles.sectionControls}>
             <View style={styles.periodChips}>
               {(['all', 'month', 'week', 'year'] as const).map((period) => (

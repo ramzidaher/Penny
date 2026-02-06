@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Platform, Animated, Dimensions, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { Transaction, Account, Subscription } from '../database/schema';
 import { getAccounts, getSubscriptions, addSubscription, updateTransaction } from '../database/db';
@@ -30,6 +30,8 @@ export default function SubscriptionCreationDialog({
   onClose,
   onComplete,
 }: SubscriptionCreationDialogProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [existingSubscriptions, setExistingSubscriptions] = useState<Subscription[]>([]);
   const [name, setName] = useState('');
@@ -174,9 +176,11 @@ export default function SubscriptionCreationDialog({
 
     try {
       if (mode === 'link' && selectedExistingSubscription) {
-        // Link to existing subscription
+        // Link to existing subscription (type + category so backend never stores income+subscriptionId)
         await updateTransaction(transaction.id, {
           subscriptionId: selectedExistingSubscription,
+          type: 'expense',
+          category: 'Subscription',
         });
         onComplete(selectedExistingSubscription);
       } else {
@@ -190,9 +194,11 @@ export default function SubscriptionCreationDialog({
           accountId,
         });
 
-        // Link transaction to subscription
+        // Link transaction to subscription (type + category so backend never stores income+subscriptionId)
         await updateTransaction(transaction.id, {
           subscriptionId,
+          type: 'expense',
+          category: 'Subscription',
         });
 
         await scheduleAllNotifications();
@@ -427,7 +433,7 @@ export default function SubscriptionCreationDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   modalContainer: {
     flex: 1,
     justifyContent: 'center',

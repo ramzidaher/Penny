@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   TouchableWithoutFeedback,
   Platform,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -34,6 +34,8 @@ interface DialogProps {
 }
 
 export default function Dialog({ dialog, onDismiss }: DialogProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -174,7 +176,8 @@ export default function Dialog({ dialog, onDismiss }: DialogProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { background: string; primary: string; border: string; text: string; textSecondary: string; error: string }) =>
+  StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -201,7 +204,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     ...(Platform.OS === 'android' && {
-      // Android-specific styling
       overflow: 'hidden',
     }),
   },
@@ -235,7 +237,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...(Platform.OS === 'android' && {
-      // Android ripple effect
       overflow: 'hidden',
     }),
   },
@@ -265,5 +266,5 @@ const styles = StyleSheet.create({
   buttonTextDestructive: {
     color: colors.background,
   },
-});
+  });
 

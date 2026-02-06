@@ -29,7 +29,7 @@ import {
 import { TrueLayerAccount, TrueLayerTransaction } from '../types/truelayer';
 import { clearTransactionCache } from './transactionCache';
 import { clearBalanceCache } from './balanceCache';
-import { normalizeTransactionUpdate, validateNewTransaction, normalizeNewTransaction } from '../utils/transactionEdgeCases';
+import { normalizeTransactionUpdate, validateNewTransaction, validateTransactionUpdate, normalizeNewTransaction } from '../utils/transactionEdgeCases';
 
 // Helper to convert Firestore timestamp to ISO string
 const timestampToISO = (timestamp: any): string => {
@@ -609,6 +609,31 @@ export const cloudAddTransaction = async (transaction: Omit<Transaction, 'id' | 
         console.log(`[cloudAddTransaction] Updated budget currentSpent for budget: ${budgetDocRef.id}`);
       }
     }
+
+    // Update debt remainingAmount when transaction is linked to a debt (payment or repayment)
+    if (normalized.debtId && (normalized.type === 'expense' || normalized.type === 'income')) {
+      try {
+        const debtsRef = collection(db, `users/${userId}/debts`);
+        const debtRef = doc(debtsRef, normalized.debtId);
+        const debtSnap = await getDoc(debtRef);
+        if (debtSnap.exists()) {
+          const debtData = debtSnap.data() as Debt;
+          const currentRemaining = debtData.remainingAmount ?? 0;
+          const newRemaining = Math.max(0, currentRemaining - normalized.amount);
+          const updates: { remainingAmount: number; updatedAt: ReturnType<typeof isoToTimestamp>; status?: Debt['status'] } = {
+            remainingAmount: newRemaining,
+            updatedAt: isoToTimestamp(now),
+          };
+          if (newRemaining === 0) {
+            updates.status = 'paid_off';
+          }
+          await setDoc(debtRef, updates, { merge: true });
+          console.log(`[cloudAddTransaction] Updated debt remainingAmount for debt: ${normalized.debtId}`);
+        }
+      } catch (error) {
+        console.error('[cloudAddTransaction] Error updating debt remainingAmount:', error);
+      }
+    }
     
     return id;
   } catch (error) {
@@ -946,6 +971,12 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     }
     // SECURITY: Transaction ownership verified by Firestore rules (path-based) and explicit account check
 
+    // Validate update (income no tags, category for type) before any write
+    const validation = validateTransactionUpdate(updates, existingTransaction);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
+
     // Edge cases: income must have no tags; subscription and debt are mutually exclusive
     const normalizedUpdates = normalizeTransactionUpdate(updates, existingTransaction);
 
@@ -953,7 +984,10 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     const updateData: any = {
       updatedAt: isoToTimestamp(now),
     };
-    
+
+    // Effective type: updates override existing so we never persist income + tags
+    const effectiveType = normalizedUpdates.type !== undefined ? normalizedUpdates.type : existingTransaction.type;
+
     // Only update provided fields
     if (normalizedUpdates.type !== undefined) {
       updateData.type = normalizedUpdates.type;
@@ -979,8 +1013,8 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     if (normalizedUpdates.accountId !== undefined) {
       updateData.accountId = normalizedUpdates.accountId;
     }
-    // Handle subscriptionId, debtId, budgetId: income must have all null; otherwise apply normalized values
-    if (normalizedUpdates.type === 'income') {
+    // Handle subscriptionId, debtId, budgetId: income must have all null (use effective type so we never persist income+tags)
+    if (effectiveType === 'income') {
       updateData.subscriptionId = null;
       updateData.debtId = null;
       updateData.budgetId = null;
@@ -1000,7 +1034,71 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     // This ensures user trust and control over their data
     
     await setDoc(transactionRef, updateData, { merge: true });
+
+    // Shared vars for debt and budget updates
+    const oldType = existingTransaction.type;
+    const newType = normalizedUpdates.type !== undefined ? normalizedUpdates.type : existingTransaction.type;
+    const oldAmount = existingTransaction.amount;
+    const newAmount = normalizedUpdates.amount !== undefined ? normalizedUpdates.amount : existingTransaction.amount;
     
+    // Update debts when debtId, type, or amount changes
+    const debtsRef = collection(db, `users/${userId}/debts`);
+    const oldDebtId = existingTransaction.debtId;
+    const newDebtId = normalizedUpdates.debtId !== undefined ? (normalizedUpdates.debtId || null) : existingTransaction.debtId;
+    const debtIdChanged = oldDebtId !== newDebtId;
+
+    if (oldType === 'expense' || oldType === 'income') {
+      // Remove payment from old debt if debtId changed or was removed
+      if (oldDebtId && debtIdChanged) {
+        try {
+          const oldDebtRef = doc(debtsRef, oldDebtId);
+          const oldDebtSnap = await getDoc(oldDebtRef);
+          if (oldDebtSnap.exists()) {
+            const oldDebtData = oldDebtSnap.data() as Debt;
+            const newRemaining = Math.max(0, (oldDebtData.remainingAmount ?? 0) + oldAmount);
+            await setDoc(oldDebtRef, {
+              remainingAmount: newRemaining,
+              updatedAt: isoToTimestamp(now),
+              ...(newRemaining > 0 && oldDebtData.status === 'paid_off' ? { status: 'active' as const } : {}),
+            }, { merge: true });
+            console.log(`[cloudUpdateTransaction] Restored ${oldAmount} to old debt ${oldDebtId}`);
+          }
+        } catch (error) {
+          console.error('[cloudUpdateTransaction] Error restoring old debt remainingAmount:', error);
+        }
+      }
+    }
+
+    if (newType === 'expense' || newType === 'income') {
+      // Add payment to new debt (new link or amount change on same debt)
+      if (newDebtId) {
+        try {
+          const newDebtRef = doc(debtsRef, newDebtId);
+          const newDebtSnap = await getDoc(newDebtRef);
+          if (newDebtSnap.exists()) {
+            const newDebtData = newDebtSnap.data() as Debt;
+            const currentRemaining = newDebtData.remainingAmount ?? 0;
+            let delta = newAmount;
+            if (!debtIdChanged && oldDebtId === newDebtId) {
+              delta = newAmount - oldAmount; // only amount changed
+            }
+            const newRemaining = Math.max(0, currentRemaining - delta);
+            const updates: { remainingAmount: number; updatedAt: ReturnType<typeof isoToTimestamp>; status?: Debt['status'] } = {
+              remainingAmount: newRemaining,
+              updatedAt: isoToTimestamp(now),
+            };
+            if (newRemaining === 0) {
+              updates.status = 'paid_off';
+            }
+            await setDoc(newDebtRef, updates, { merge: true });
+            console.log(`[cloudUpdateTransaction] Updated debt remainingAmount for debt: ${newDebtId}`);
+          }
+        } catch (error) {
+          console.error('[cloudUpdateTransaction] Error updating debt remainingAmount:', error);
+        }
+      }
+    }
+
     // Update budgets when budgetId, category, type, or amount changes
     // Priority: budgetId (explicit link) > category matching (backward compatible)
     const budgetsRef = collection(db, `users/${userId}/budgets`);
@@ -1008,10 +1106,6 @@ export const cloudUpdateTransaction = async (id: string, updates: Partial<Transa
     const newBudgetId = normalizedUpdates.budgetId !== undefined ? (normalizedUpdates.budgetId || null) : existingTransaction.budgetId;
     const oldCategory = existingTransaction.category || '';
     const newCategory = normalizedUpdates.category !== undefined ? normalizedUpdates.category : existingTransaction.category || '';
-    const oldType = existingTransaction.type;
-    const newType = normalizedUpdates.type !== undefined ? normalizedUpdates.type : existingTransaction.type;
-    const oldAmount = existingTransaction.amount;
-    const newAmount = normalizedUpdates.amount !== undefined ? normalizedUpdates.amount : existingTransaction.amount;
     const budgetIdChanged = oldBudgetId !== newBudgetId;
     const categoryChanged = oldCategory !== newCategory;
     const typeChanged = oldType !== newType;
@@ -1244,6 +1338,27 @@ export const cloudDeleteTransaction = async (id: string): Promise<void> => {
           }, { merge: true });
         }
       }
+
+      // Revert debt remainingAmount if transaction was linked to a debt (payment/repayment)
+      if (transaction.debtId && (transaction.type === 'expense' || transaction.type === 'income')) {
+        try {
+          const debtsRef = collection(db, `users/${userId}/debts`);
+          const debtRef = doc(debtsRef, transaction.debtId);
+          const debtSnap = await getDoc(debtRef);
+          if (debtSnap.exists()) {
+            const debtData = debtSnap.data() as Debt;
+            const newRemaining = (debtData.remainingAmount ?? 0) + transaction.amount;
+            await setDoc(debtRef, {
+              remainingAmount: newRemaining,
+              updatedAt: isoToTimestamp(new Date().toISOString()),
+              ...(debtData.status === 'paid_off' ? { status: 'active' as const } : {}),
+            }, { merge: true });
+            console.log(`[cloudDeleteTransaction] Restored ${transaction.amount} to debt ${transaction.debtId}`);
+          }
+        } catch (error) {
+          console.error('[cloudDeleteTransaction] Error restoring debt remainingAmount:', error);
+        }
+      }
       
       // Clear transaction cache if this is a TrueLayer transaction
       if (transaction.truelayerTransactionId) {
@@ -1366,6 +1481,27 @@ export const cloudUntagTransaction = async (
     if (untagType === 'debt' || untagType === 'all') {
       updateData.debtId = null; // Always set to null, even if it was already null
       console.log('[cloudUntagTransaction] Setting debtId to null for transaction:', id);
+
+      // Restore debt remainingAmount when untagging (reverse the payment)
+      if (transaction.debtId && (transaction.type === 'expense' || transaction.type === 'income')) {
+        try {
+          const debtsRef = collection(db, `users/${userId}/debts`);
+          const debtRef = doc(debtsRef, transaction.debtId);
+          const debtSnap = await getDoc(debtRef);
+          if (debtSnap.exists()) {
+            const debtData = debtSnap.data() as Debt;
+            const newRemaining = (debtData.remainingAmount ?? 0) + transaction.amount;
+            await setDoc(debtRef, {
+              remainingAmount: newRemaining,
+              updatedAt: isoToTimestamp(new Date().toISOString()),
+              ...(debtData.status === 'paid_off' ? { status: 'active' as const } : {}),
+            }, { merge: true });
+            console.log('[cloudUntagTransaction] Restored debt remainingAmount after untagging');
+          }
+        } catch (error) {
+          console.error('[cloudUntagTransaction] Error restoring debt remainingAmount after untagging:', error);
+        }
+      }
     }
     
     // Remove budget link
@@ -1489,6 +1625,37 @@ export const cloudUpdateBudget = async (id: string, updates: Partial<Budget>): P
   } catch (error) {
     console.error('Error updating budget in cloud:', error);
     throw error;
+  }
+};
+
+/**
+ * Recalculate budget currentSpent from transactions (repair for drift).
+ * For each budget: sum expense transactions linked by budgetId or category, then set currentSpent.
+ */
+export const cloudRecalculateBudgetCurrentSpent = async (): Promise<void> => {
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase not available');
+  }
+  const db = getFirestoreDb();
+  if (!db) throw new Error('Firestore not initialized');
+  const userId = getUserId();
+  const [budgets, transactions] = await Promise.all([
+    cloudGetBudgets(),
+    cloudGetTransactions(),
+  ]);
+  const expenseTransactions = transactions.filter(t => t.type === 'expense');
+  const now = new Date().toISOString();
+  for (const budget of budgets) {
+    const sum = expenseTransactions.reduce((acc, t) => {
+      if (t.budgetId === budget.id) return acc + t.amount;
+      if (!t.budgetId && t.category && t.category === budget.category) return acc + t.amount;
+      return acc;
+    }, 0);
+    const budgetRef = doc(db, `users/${userId}/budgets`, budget.id);
+    await setDoc(budgetRef, {
+      currentSpent: sum,
+      updatedAt: isoToTimestamp(now),
+    }, { merge: true });
   }
 };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { useToast } from '../contexts/ToastContext';
 import { setOAuthFlowActive } from '../services/oAuthFlowService';
@@ -31,6 +31,8 @@ import {
 } from '../services/plaidService';
 
 export default function ConnectBankScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const dialog = useDialog();
   const router = useRouter();
@@ -261,7 +263,7 @@ export default function ConnectBankScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

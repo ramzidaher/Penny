@@ -13,9 +13,6 @@ export default function NotFound() {
   const hasRedirected = useRef(false);
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'+not-found.tsx:effect',message:'NotFound mounted',data:{hasParamsCode:!!params.code,hasParamsError:!!params.error},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'G'})}).catch(()=>{});
-    // #endregion
     // Prevent multiple redirects
     if (hasRedirected.current) return;
     hasRedirected.current = true;

@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 
 export default function AboutScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   const handleLink = (url: string) => {
     Linking.openURL(url).catch((err) => {
@@ -80,7 +82,8 @@ export default function AboutScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { background: string; surface: string; border: string; text: string; textSecondary: string }) =>
+  StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -178,5 +181,5 @@ const styles = StyleSheet.create({
   bottomPadding: {
     height: 40,
   },
-});
+  });
 

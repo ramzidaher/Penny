@@ -11,9 +11,6 @@ export default function Index() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/aceffbfb-b340-43b7-8241-940342337900',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.tsx:mount',message:'Index mounted',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run3',hypothesisId:'H'})}).catch(()=>{});
-    // #endregion
     // Get current user to determine redirect
     const checkUser = () => {
       const currentUser = getCurrentUser();

@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { setPIN } from '../services/pinService';
 import { markPINSetupComplete } from '../services/pinEnforcement';
 
@@ -11,6 +11,8 @@ interface PINSetupScreenProps {
 }
 
 export default function PINSetupScreen({ onComplete }: PINSetupScreenProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const dialog = useDialog();
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -189,7 +191,7 @@ export default function PINSetupScreen({ onComplete }: PINSetupScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   modalWrapper: {
     flex: 1,
     backgroundColor: colors.background,

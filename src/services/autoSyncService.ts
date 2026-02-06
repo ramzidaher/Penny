@@ -13,7 +13,7 @@
 
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { getAllConnections } from './truelayerService';
-import { syncTrueLayerAccounts } from './cloudDb';
+import { syncTrueLayerAccounts, syncTrueLayerTransactions } from './cloudDb';
 import { refreshTransactions, getTransactions } from './transactionService';
 import { refreshAccountBalances } from './accountBalanceService';
 import { getAccounts } from '../database/db';
@@ -66,7 +66,10 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
         // Small delay to ensure accounts are persisted
         await new Promise(resolve => setTimeout(resolve, 300));
         
-        // Sync transactions
+        // Sync transactions to Firestore so UI (db.getTransactions) sees them
+        await syncTrueLayerTransactions(connection.id);
+        
+        // Warm local cache for any code using transactionService.getTransactions
         await refreshTransactions();
         
         // Refresh balances

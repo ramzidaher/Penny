@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,7 @@ import { isBiometricAvailable, getBiometricType, saveBiometricCredentials } from
 import { setPIN } from '../services/pinService';
 import { markPINSetupComplete } from '../services/pinEnforcement';
 import { useDialog } from '../contexts/DialogContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 
@@ -40,6 +40,8 @@ interface SignupData {
 }
 
 export default function SignupOnboarding() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const dialog = useDialog();
@@ -1557,7 +1559,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const isSmallScreen = SCREEN_WIDTH < 375;
 const isLargeScreen = SCREEN_WIDTH > 414;
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   wrapper: {
     flex: 1,
     backgroundColor: colors.background,

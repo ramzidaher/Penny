@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { UserMemory } from '../database/schema';
 
@@ -21,6 +21,8 @@ export default function AdvisorMemoryCard({
   onTogglePause,
   onConfirm,
 }: AdvisorMemoryCardProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const metaPieces = [
     memory.category,
     memory.source,
@@ -78,7 +80,7 @@ export default function AdvisorMemoryCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   card: {
     borderRadius: 16,
     borderWidth: 1,

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { View, Text, StyleSheet, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { askAI } from '../services/aiService';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   getChatThreads,
   getChatThread,
@@ -46,6 +46,8 @@ import {
 import { getSettings } from '../services/settingsService';
 
 export default function AIScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const router = useRouter();
@@ -661,7 +663,7 @@ export default function AIScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -1,21 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactions, getAccounts, getSubscriptions, getDebts, getBudgets, untagTransaction } from '../database/db';
+import { getTransactions, getAccounts, getSubscriptions, getDebts, getBudgets, untagTransaction, updateTransaction } from '../database/db';
 import { Transaction, Account, Subscription, Debt, Budget } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 import { getTransactionIcon } from '../utils/icons';
 import CompanyLogo from '../components/CompanyLogo';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper from '../components/ScreenWrapper';
+import DebtCreationDialog from '../components/DebtCreationDialog';
+import SubscriptionCreationDialog from '../components/SubscriptionCreationDialog';
+import BudgetCreationDialog from '../components/BudgetCreationDialog';
 import { formatCurrencySync } from '../utils/currency';
 import { getSettings } from '../services/settingsService';
 import { useDialog } from '../contexts/DialogContext';
 
 export default function TransactionDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const dialog = useDialog();
@@ -26,12 +31,11 @@ export default function TransactionDetailScreen() {
   const [budget, setBudget] = useState<Budget | null>(null);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
+  const [showDebtDialog, setShowDebtDialog] = useState(false);
+  const [showBudgetDialog, setShowBudgetDialog] = useState(false);
 
-  useEffect(() => {
-    loadTransaction();
-  }, [params.id]);
-
-  const loadTransaction = async () => {
+  const loadTransaction = useCallback(async () => {
     try {
       setLoading(true);
       const [transactions, accounts, subscriptions, debts, budgets, settings] = await Promise.all([
@@ -49,19 +53,31 @@ export default function TransactionDetailScreen() {
         const foundAccount = accounts.find(a => a.id === foundTransaction.accountId);
         setAccount(foundAccount || null);
         
-        // Load linked subscription and debt
+        // Load linked subscription, debt, budget (refetched so remainingAmount/currentSpent are up to date)
         if (foundTransaction.subscriptionId) {
           const foundSubscription = subscriptions.find(s => s.id === foundTransaction.subscriptionId);
           setSubscription(foundSubscription || null);
+        } else {
+          setSubscription(null);
         }
         if (foundTransaction.debtId) {
           const foundDebt = debts.find(d => d.id === foundTransaction.debtId);
           setDebt(foundDebt || null);
+        } else {
+          setDebt(null);
         }
         if (foundTransaction.budgetId) {
           const foundBudget = budgets.find(b => b.id === foundTransaction.budgetId);
           setBudget(foundBudget || null);
+        } else {
+          setBudget(null);
         }
+      } else {
+        setTransaction(null);
+        setAccount(null);
+        setSubscription(null);
+        setDebt(null);
+        setBudget(null);
       }
       setCurrencyCode(settings.defaultCurrency);
     } catch (error) {
@@ -69,7 +85,20 @@ export default function TransactionDetailScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    loadTransaction();
+  }, [loadTransaction]);
+
+  // Refetch when screen gains focus so debt remainingAmount / budget currentSpent stay in sync after backend updates
+  useFocusEffect(
+    useCallback(() => {
+      if (params.id) {
+        loadTransaction();
+      }
+    }, [params.id, loadTransaction])
+  );
 
   const handleUntagSubscription = async () => {
     if (!transaction) return;
@@ -416,6 +445,44 @@ export default function TransactionDetailScreen() {
             </View>
           )}
 
+          {/* Link to subscription / debt / budget - only for expenses when at least one link is missing */}
+          {transaction.type === 'expense' && (!subscription || !debt || !budget) && (
+            <View style={styles.detailRow}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Link to</Text>
+                <View style={styles.linkButtonsRow}>
+                  {!subscription && (
+                    <TouchableOpacity
+                      style={styles.linkButton}
+                      onPress={() => setShowSubscriptionDialog(true)}
+                    >
+                      <Ionicons name="repeat-outline" size={18} color={colors.primary} />
+                      <Text style={styles.linkButtonText}>Subscription</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!debt && (
+                    <TouchableOpacity
+                      style={styles.linkButton}
+                      onPress={() => setShowDebtDialog(true)}
+                    >
+                      <Ionicons name="card-outline" size={18} color={colors.primary} />
+                      <Text style={styles.linkButtonText}>Debt</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!budget && (
+                    <TouchableOpacity
+                      style={styles.linkButton}
+                      onPress={() => setShowBudgetDialog(true)}
+                    >
+                      <Ionicons name="pie-chart-outline" size={18} color={colors.primary} />
+                      <Text style={styles.linkButtonText}>Budget</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+
           <View style={styles.detailRow}>
             <View style={styles.detailItem}>
               <Text style={styles.detailLabel}>Created</Text>
@@ -426,11 +493,57 @@ export default function TransactionDetailScreen() {
           </View>
         </View>
       </ScrollView>
+
+      <SubscriptionCreationDialog
+        visible={showSubscriptionDialog}
+        transaction={transaction}
+        onClose={() => setShowSubscriptionDialog(false)}
+        onComplete={() => {
+          setShowSubscriptionDialog(false);
+          loadTransaction();
+        }}
+      />
+      <DebtCreationDialog
+        visible={showDebtDialog}
+        transaction={transaction}
+        category={transaction?.category || 'Debt'}
+        onClose={() => setShowDebtDialog(false)}
+        onComplete={() => {
+          setShowDebtDialog(false);
+          loadTransaction();
+        }}
+        onNavigateToDebts={() => {
+          setShowDebtDialog(false);
+          loadTransaction();
+          router.push('/(tabs)/finance/debts' as any);
+        }}
+      />
+      <BudgetCreationDialog
+        visible={showBudgetDialog}
+        transaction={transaction}
+        category={transaction?.category || 'Other'}
+        onClose={() => setShowBudgetDialog(false)}
+        onComplete={async (budgetId) => {
+          setShowBudgetDialog(false);
+          if (transaction && budgetId) {
+            try {
+              await updateTransaction(transaction.id, {
+                budgetId,
+                type: 'expense',
+                category: transaction.category || 'Other',
+              });
+            } catch (e) {
+              dialog.alert('Error', e instanceof Error ? e.message : 'Failed to link budget');
+            }
+          }
+          loadTransaction();
+        }}
+      />
     </ScreenWrapper>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -619,6 +732,28 @@ const styles = StyleSheet.create({
   uncategorizeButtonText: {
     fontSize: 14,
     color: colors.error,
+    fontWeight: '600',
+  },
+  linkButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 8,
+  },
+  linkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  linkButtonText: {
+    fontSize: 14,
+    color: colors.primary,
     fontWeight: '600',
   },
 });

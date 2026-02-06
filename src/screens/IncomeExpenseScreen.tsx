@@ -1,13 +1,13 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, TextInput, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactions, deleteTransaction, untagTransaction } from '../database/db';
+import { getTransactions, deleteTransaction, untagTransaction, updateTransaction } from '../database/db';
 import { Transaction } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
@@ -16,6 +16,7 @@ import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
+import { getDefaultCategory } from '../utils/categories';
 import { useDialog } from '../contexts/DialogContext';
 import ScreenHeader from '../components/ScreenHeader';
 
@@ -23,6 +24,8 @@ type TabType = 'income' | 'expense' | 'all';
 type FilterType = 'all' | 'subscriptions' | 'debts' | 'untagged';
 
 export default function IncomeExpenseScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const router = useRouter();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
@@ -149,6 +152,33 @@ export default function IncomeExpenseScreen() {
       await loadTransactions(false);
     } catch (error) {
       dialog.alert('Error', `Failed to untag ${type}s`);
+    }
+  };
+
+  const getSwipeType = (direction: 'right' | 'left') => {
+    if (swipeDirection === 'right-income-left-expense') {
+      return direction === 'right' ? 'income' : 'expense';
+    }
+    return direction === 'right' ? 'expense' : 'income';
+  };
+
+  const handleSwipeRight = async (item: Transaction) => {
+    const newType = getSwipeType('right');
+    try {
+      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
+      await loadTransactions(false);
+    } catch (e) {
+      dialog.alert('Error', 'Failed to update transaction');
+    }
+  };
+
+  const handleSwipeLeft = async (item: Transaction) => {
+    const newType = getSwipeType('left');
+    try {
+      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
+      await loadTransactions(false);
+    } catch (e) {
+      dialog.alert('Error', 'Failed to update transaction');
     }
   };
 
@@ -373,6 +403,8 @@ export default function IncomeExpenseScreen() {
               transaction={item}
               currencyCode={currencyCode}
               onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: item.id } })}
+              onSwipeRight={() => handleSwipeRight(item)}
+              onSwipeLeft={() => handleSwipeLeft(item)}
               onDelete={() => handleDelete(item.id)}
               showTagBadges={true}
               swipeDirection={swipeDirection}
@@ -385,7 +417,7 @@ export default function IncomeExpenseScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

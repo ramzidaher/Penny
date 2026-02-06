@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, Image, Platform, Modal, KeyboardAvoidingView, TextInput, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDialog } from '../contexts/DialogContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import {
   isBiometricAvailable,
@@ -18,6 +18,8 @@ interface AppLockScreenProps {
 }
 
 export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const dialog = useDialog();
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
@@ -321,7 +323,8 @@ export default function AppLockScreen({ onUnlock }: AppLockScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { background: string; text: string; textSecondary: string; surface: string; primary: string; textLight: string; border: string }) =>
+  StyleSheet.create({
   modalWrapper: {
     flex: 1,
     backgroundColor: colors.background,
@@ -473,8 +476,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '500',
   },
-});
-
-
-// Optimized for smooth performance with consistent typography
-// Shows Face ID icon on iOS and fingerprint icon on Android
+  });

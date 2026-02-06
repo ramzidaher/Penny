@@ -1,9 +1,9 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { Transaction } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 import { getTransactionIcon } from '../utils/icons';
@@ -34,6 +34,8 @@ export default function SwipeableTransactionCard({
   showTagBadges = false,
   swipeDirection: swipeDirectionProp,
 }: SwipeableTransactionCardProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const swipeableRef = useRef<Swipeable>(null);
   const [internalSwipeDirection, setInternalSwipeDirection] = useState<
     'right-income-left-expense' | 'right-expense-left-income'
@@ -126,18 +128,17 @@ export default function SwipeableTransactionCard({
   };
   
   return (
-    <GestureHandlerRootView>
-      <Swipeable
-        ref={swipeableRef}
-        renderRightActions={onSwipeRight ? renderRightAction : undefined}
-        renderLeftActions={onSwipeLeft ? renderLeftAction : undefined}
-        onSwipeableRightOpen={handleSwipeRight}
-        onSwipeableLeftOpen={handleSwipeLeft}
-        rightThreshold={100}
-        leftThreshold={100}
-        friction={2}
-      >
-        <TouchableOpacity 
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={onSwipeRight ? renderRightAction : undefined}
+      renderLeftActions={onSwipeLeft ? renderLeftAction : undefined}
+      onSwipeableRightOpen={handleSwipeRight}
+      onSwipeableLeftOpen={handleSwipeLeft}
+      rightThreshold={100}
+      leftThreshold={100}
+      friction={2}
+    >
+      <TouchableOpacity 
           style={styles.transactionCard}
           activeOpacity={0.7}
           onPress={onPress}
@@ -225,12 +226,12 @@ export default function SwipeableTransactionCard({
             </View>
           </View>
         </TouchableOpacity>
-      </Swipeable>
-    </GestureHandlerRootView>
+    </Swipeable>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { surface: string; border: string; text: string; textSecondary: string; textLight: string; primary: string; background: string; error: string; successGreen?: string }) =>
+  StyleSheet.create({
   transactionCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -318,7 +319,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   incomeAmount: {
-    color: colors.primary,
+    color: colors.successGreen ?? colors.primary,
   },
   expenseAmount: {
     color: colors.text,
@@ -364,5 +365,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.background,
   },
-});
+  });
 

@@ -6,19 +6,22 @@ import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { getTransactionsPage, deleteTransaction } from '../database/db';
-import { refreshTransactions } from '../services/transactionService';
+import { getTransactionsPage, deleteTransaction, updateTransaction } from '../database/db';
+import { forceSync } from '../services/autoSyncService';
 import { Transaction } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
 import { SkeletonList } from '../components/SkeletonLoader';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 import { filterTransactionsByPeriod, getPeriodLabel, FilterPeriod } from '../utils/transactionFilters';
+import { getDefaultCategory } from '../utils/categories';
 import { useToast } from '../contexts/ToastContext';
 
 export default function TransactionsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -81,7 +84,8 @@ export default function TransactionsScreen() {
     setRefreshing(true);
     try {
       console.log('[TransactionsScreen] Starting refresh...');
-      await refreshTransactions();
+      // Full sync (accounts + TrueLayer transactions to Firestore + cache) so list shows new bank data
+      await forceSync();
       console.log('[TransactionsScreen] Refresh complete, reloading transactions');
     } catch (error: any) {
       console.error('[TransactionsScreen] Error refreshing transactions:', error?.message || error);
@@ -112,6 +116,33 @@ export default function TransactionsScreen() {
   const handleDelete = async (id: string) => {
     await deleteTransaction(id);
     await loadTransactions(false);
+  };
+
+  const getSwipeType = (direction: 'right' | 'left') => {
+    if (swipeDirection === 'right-income-left-expense') {
+      return direction === 'right' ? 'income' : 'expense';
+    }
+    return direction === 'right' ? 'expense' : 'income';
+  };
+
+  const handleSwipeRight = async (item: Transaction) => {
+    const newType = getSwipeType('right');
+    try {
+      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
+      await loadTransactions(false);
+    } catch (e) {
+      showError('Failed to update transaction');
+    }
+  };
+
+  const handleSwipeLeft = async (item: Transaction) => {
+    const newType = getSwipeType('left');
+    try {
+      await updateTransaction(item.id, { type: newType, category: getDefaultCategory(newType) });
+      await loadTransactions(false);
+    } catch (e) {
+      showError('Failed to update transaction');
+    }
   };
 
   const filteredTransactions = useMemo(() => {
@@ -345,6 +376,8 @@ export default function TransactionsScreen() {
               transaction={item}
               currencyCode={currencyCode}
               onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: item.id } })}
+              onSwipeRight={() => handleSwipeRight(item)}
+              onSwipeLeft={() => handleSwipeLeft(item)}
               onDelete={() => handleDelete(item.id)}
               showTagBadges={true}
               swipeDirection={swipeDirection}
@@ -364,7 +397,7 @@ export default function TransactionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getAccounts, deleteAccount } from '../database/db';
 import { Account } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { SkeletonCard, SkeletonList } from '../components/SkeletonLoader';
 import { waitForFirebase } from '../services/firebase';
@@ -47,6 +47,8 @@ const formatAccountType = (accountType?: string): string => {
 };
 
 export default function AccountsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const dialog = useDialog();
   const insets = useSafeAreaInsets();
@@ -385,7 +387,7 @@ export default function AccountsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

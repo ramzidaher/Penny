@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Platform, Animated, Dimensions, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { Transaction, Account, Budget, Debt } from '../database/schema';
 import { getAccounts, getBudgets, addDebt, updateTransaction } from '../database/db';
@@ -36,6 +36,8 @@ export default function DebtCreationDialog({
   onComplete,
   onNavigateToDebts,
 }: DebtCreationDialogProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [name, setName] = useState('');
@@ -208,15 +210,7 @@ export default function DebtCreationDialog({
       });
 
       await scheduleAllNotifications();
-      
-      // Navigate to debt screen after successful creation
-      if (onNavigateToDebts) {
-        // Small delay to ensure dialog closes smoothly
-        setTimeout(() => {
-          onNavigateToDebts();
-        }, 300);
-      }
-      
+
       onComplete(debtId);
     } catch (error) {
       console.error('Error creating debt:', error);
@@ -505,7 +499,7 @@ export default function DebtCreationDialog({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   modalContainer: {
     flex: 1,
     justifyContent: 'center',

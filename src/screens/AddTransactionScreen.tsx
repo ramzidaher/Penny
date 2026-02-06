@@ -5,7 +5,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { addTransaction, getAccounts } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Account } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
@@ -13,6 +13,8 @@ import { getCategoriesByType, getDefaultCategory, canCategoryBeType } from '../u
 import { validateNewTransaction } from '../utils/transactionEdgeCases';
 
 export default function AddTransactionScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const dialog = useDialog();
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -202,7 +204,7 @@ export default function AddTransactionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 
 interface AdvisorChatComposerProps {
@@ -27,6 +27,8 @@ export default function AdvisorChatComposer({
   tabBarOffset = 0,
   focusRequestId = 0,
 }: AdvisorChatComposerProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isIOS = Platform.OS === 'ios';
   const canSend = !!value.trim() && !loading;
   const [contentHeight, setContentHeight] = useState(0);
@@ -105,7 +107,7 @@ export default function AdvisorChatComposer({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',

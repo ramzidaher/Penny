@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 
@@ -10,17 +10,19 @@ import { Ionicons } from '@expo/vector-icons';
 import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions, getTransactions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Subscription, Transaction } from '../database/schema';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { format, differenceInDays } from 'date-fns';
 import CompanyLogo from '../components/CompanyLogo';
-import { SkeletonList, SkeletonStatCard } from '../components/SkeletonLoader';
+import { SkeletonList, SkeletonStatStrip } from '../components/SkeletonLoader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
 
 export default function SubscriptionsScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
   const router = useRouter();
   const dialog = useDialog();
@@ -71,10 +73,8 @@ export default function SubscriptionsScreen() {
 
       // Process due subscriptions (creates transactions automatically)
       try {
-        const processedCount = await processDueSubscriptions();
-        if (processedCount > 0) {
-          shouldReload = true;
-        }
+        await processDueSubscriptions();
+        shouldReload = true;
       } catch (error) {
         console.error('Error processing due subscriptions:', error);
       }
@@ -253,11 +253,7 @@ export default function SubscriptionsScreen() {
 
   const loadingComponent = (
     <>
-      <View style={styles.skeletonStatsContainer}>
-        <SkeletonStatCard />
-        <SkeletonStatCard />
-        <SkeletonStatCard />
-      </View>
+      <SkeletonStatStrip />
       <View style={styles.skeletonContainer}>
         <SkeletonList count={3} />
       </View>
@@ -275,30 +271,27 @@ export default function SubscriptionsScreen() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="repeat" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.statValue}>{activeCount}</Text>
-            <Text style={styles.statLabel}>Active</Text>
+        {/* Stats strip */}
+        <View style={styles.statsStrip}>
+          <View style={styles.statsSegment}>
+            <Text style={styles.statsSegmentLabel}>Active</Text>
+            <Text style={styles.statsSegmentValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {activeCount}
+            </Text>
           </View>
-          <View style={styles.statCard}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="calendar" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.statValue}>{upcomingSubscriptions.length}</Text>
-            <Text style={styles.statLabel}>Upcoming</Text>
+          <View style={styles.statsDivider} />
+          <View style={styles.statsSegment}>
+            <Text style={styles.statsSegmentLabel}>Upcoming</Text>
+            <Text style={styles.statsSegmentValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {upcomingSubscriptions.length}
+            </Text>
           </View>
-          <View style={styles.statCard}>
-            <View style={styles.statIconContainer}>
-              <Ionicons name="cash" size={24} color={colors.primary} />
-            </View>
-            <Text style={styles.statValue}>
+          <View style={styles.statsDivider} />
+          <View style={styles.statsSegment}>
+            <Text style={styles.statsSegmentLabel}>Monthly</Text>
+            <Text style={styles.statsSegmentValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
               {formatCurrencySync(totalMonthlyCostWithTransactions, currencyCode)}
             </Text>
-            <Text style={styles.statLabel}>Monthly</Text>
           </View>
         </View>
 
@@ -575,51 +568,47 @@ export default function SubscriptionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  statsContainer: {
+  statsStrip: {
     flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    marginBottom: 24,
-    gap: 12,
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  statsSegment: {
+    flex: 1,
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  statsSegmentLabel: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  statsSegmentValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  statsDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: colors.border,
+    marginHorizontal: 4,
   },
   contentContainer: {
     paddingTop: 8,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 20,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    fontWeight: '500',
   },
   section: {
     paddingHorizontal: 20,
@@ -916,12 +905,6 @@ const styles = StyleSheet.create({
         boxShadow: '0px 4px 8px rgba(26, 26, 26, 0.3)',
       },
     }),
-  },
-  skeletonStatsContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    marginBottom: 24,
-    gap: 12,
   },
   skeletonContainer: {
     paddingHorizontal: 20,

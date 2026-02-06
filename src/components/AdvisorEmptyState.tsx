@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 
 interface AdvisorEmptyStateProps {
@@ -9,6 +9,8 @@ interface AdvisorEmptyStateProps {
 }
 
 export default function AdvisorEmptyState({ title = 'Ask me anything about your finances' }: AdvisorEmptyStateProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.emptyState}>
       <Ionicons name="chatbubbles-outline" size={64} color={colors.textLight} />
@@ -17,7 +19,8 @@ export default function AdvisorEmptyState({ title = 'Ask me anything about your 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: { textLight: string }) =>
+  StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -30,5 +33,5 @@ const styles = StyleSheet.create({
     marginTop: 16,
     textAlign: 'center',
   },
-});
+  });
 
