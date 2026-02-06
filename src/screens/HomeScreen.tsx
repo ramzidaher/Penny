@@ -14,6 +14,7 @@ import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import AIInsightCard from '../components/AIInsightCard';
 import FinancialHealthAlert from '../components/FinancialHealthAlert';
 import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
+import { useFinancialSummary } from '../hooks/useFinancialSummary';
 import { getCurrentUserProfile } from '../services/firebase';
 import { updateTransaction, getBudgets } from '../database/db';
 import { Transaction } from '../database/schema';
@@ -49,6 +50,13 @@ export default function HomeScreen() {
     onRefresh,
   } = useFinanceOverviewData({ enrichBalances: true });
 
+  const {
+    displayNetWorth,
+    accountCount,
+    currencyCode: summaryCurrencyCode,
+    loadData: loadSummary,
+  } = useFinancialSummary({ enrichBalances: true });
+
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -58,12 +66,8 @@ export default function HomeScreen() {
   const [budgetDialogVisible, setBudgetDialogVisible] = useState(false);
   const [debtDialogVisible, setDebtDialogVisible] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
-  const [convertedTotalBalance, setConvertedTotalBalance] = useState<number | null>(null);
   const [convertedPeriodIncome, setConvertedPeriodIncome] = useState<number | null>(null);
   const [convertedPeriodExpenses, setConvertedPeriodExpenses] = useState<number | null>(null);
-  // Keep last displayed converted values to avoid balance/income/expense flicker when
-  // switching to Home or when conversion runs async (show previous value until new one is ready).
-  const lastStableBalanceRef = useRef<number | null>(null);
   const lastStableIncomeRef = useRef<number | null>(null);
   const lastStableExpensesRef = useRef<number | null>(null);
   const [balanceAnimationTrigger, setBalanceAnimationTrigger] = useState(0);
@@ -105,9 +109,10 @@ export default function HomeScreen() {
       });
       const isFirstFocus = !hasFocusedRef.current;
       loadData(isFirstFocus);
+      loadSummary(isFirstFocus);
       hasFocusedRef.current = true;
       return () => cancelAnimationFrame(rafId);
-    }, [loadData])
+    }, [loadData, loadSummary])
   );
 
   const handleSwipeRight = useCallback(
@@ -144,6 +149,7 @@ export default function HomeScreen() {
         await updateTransaction(selectedTransaction.id, updateData);
         await learnFromCategorization(selectedTransaction.description || '', category, selectedType);
         await loadData();
+        await loadSummary();
       } catch (error) {
         console.error('[HomeScreen] Error updating transaction', error);
       } finally {
@@ -152,7 +158,7 @@ export default function HomeScreen() {
         setSuggestedCategory(undefined);
       }
     },
-    [selectedTransaction, selectedType, loadData]
+    [selectedTransaction, selectedType, loadData, loadSummary]
   );
 
   const handleCategorySelect = useCallback(
@@ -203,23 +209,16 @@ export default function HomeScreen() {
   const handleDebtDialogComplete = useCallback(async () => {
     setDebtDialogVisible(false);
     await loadData();
+    await loadSummary();
     setSelectedTransaction(null);
     setPendingCategory(null);
-  }, [loadData]);
+  }, [loadData, loadSummary]);
 
-  // Calculate totals with currency conversion
-  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
-  
   // Filter transactions by selected period
   const filteredData = filterTransactionsByPeriod(transactions, filterPeriod);
   const periodIncome = filteredData.income;
   const periodExpenses = filteredData.expenses;
 
-  // When all accounts use the same currency as default, no conversion needed — use raw totals
-  // so the balance doesn't flicker (async conversion would show totalBalance then convertedTotalBalance).
-  const balanceNeedsConversion = accounts.some(
-    (acc) => (acc.currency || currencyCode || 'USD') !== (currencyCode || 'USD')
-  );
   const incomeTransactions = filteredData.transactions.filter((t) => t.type === 'income');
   const expenseTransactions = filteredData.transactions.filter((t) => t.type === 'expense');
   const incomeNeedsConversion = incomeTransactions.some((t) => {
@@ -231,11 +230,6 @@ export default function HomeScreen() {
     return (account?.currency || currencyCode || 'USD') !== (currencyCode || 'USD');
   });
 
-  // Stable display values: avoid flicker by using previous converted value until new one is ready.
-  const displayBalance =
-    !balanceNeedsConversion
-      ? totalBalance
-      : (convertedTotalBalance ?? lastStableBalanceRef.current ?? totalBalance);
   const displayIncome =
     !incomeNeedsConversion
       ? periodIncome
@@ -245,7 +239,7 @@ export default function HomeScreen() {
       ? periodExpenses
       : (convertedPeriodExpenses ?? lastStableExpensesRef.current ?? periodExpenses);
 
-  // Convert balances and transactions to default currency (only when needed)
+  // Convert income/expense to default currency when needed (balance/net worth from useFinancialSummary)
   React.useEffect(() => {
     if (!currencyCode) {
       console.warn('[HomeScreen] Currency code not set, skipping conversion');
@@ -254,12 +248,9 @@ export default function HomeScreen() {
 
     const targetCurrency = currencyCode || 'USD';
 
-    // No conversion needed: set state and refs so next time we have stable values.
-    if (!balanceNeedsConversion && !incomeNeedsConversion && !expenseNeedsConversion) {
-      setConvertedTotalBalance(totalBalance);
+    if (!incomeNeedsConversion && !expenseNeedsConversion) {
       setConvertedPeriodIncome(periodIncome);
       setConvertedPeriodExpenses(periodExpenses);
-      lastStableBalanceRef.current = totalBalance;
       lastStableIncomeRef.current = periodIncome;
       lastStableExpensesRef.current = periodExpenses;
       return;
@@ -267,19 +258,6 @@ export default function HomeScreen() {
 
     const convertTotals = async () => {
       try {
-        if (balanceNeedsConversion) {
-          const accountAmounts = accounts.map((acc) => ({
-            amount: acc.balance ?? 0,
-            currency: acc.currency || targetCurrency,
-          }));
-          const convertedBalance = await convertAmountsToCurrency(accountAmounts, targetCurrency);
-          setConvertedTotalBalance(convertedBalance);
-          lastStableBalanceRef.current = convertedBalance;
-        } else {
-          setConvertedTotalBalance(totalBalance);
-          lastStableBalanceRef.current = totalBalance;
-        }
-
         if (incomeNeedsConversion || expenseNeedsConversion) {
           const incomeAmounts = incomeTransactions.map((t) => {
             const account = accounts.find((a) => a.id === t.accountId);
@@ -320,10 +298,8 @@ export default function HomeScreen() {
         }
       } catch (error) {
         console.error('[HomeScreen] Error converting currencies:', error);
-        setConvertedTotalBalance(null);
         setConvertedPeriodIncome(null);
         setConvertedPeriodExpenses(null);
-        // Refs keep previous values so we don't flash wrong numbers
       }
     };
 
@@ -372,7 +348,10 @@ export default function HomeScreen() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ScreenWrapper
         ref={scrollRef}
-        onRefresh={onRefresh}
+        onRefresh={async () => {
+          await onRefresh();
+          await loadSummary();
+        }}
         refreshing={refreshing}
         loading={loading && !refreshing}
         loadingComponent={loadingComponent}
@@ -403,7 +382,7 @@ export default function HomeScreen() {
       {/* Balance Card */}
       <View style={styles.balanceCard}>
         <View style={styles.balanceHeader}>
-          <Text style={styles.balanceLabel}>Total Balance</Text>
+          <Text style={styles.balanceLabel}>Net Worth</Text>
           <View style={styles.filterContainer}>
             {(['week', 'month', 'year', 'all'] as FilterPeriod[]).map((period) => (
               <TouchableOpacity
@@ -427,12 +406,15 @@ export default function HomeScreen() {
           </View>
         </View>
         <SlotMachineBalance
-          value={displayBalance}
-          currencyCode={currencyCode}
+          value={displayNetWorth}
+          currencyCode={summaryCurrencyCode}
           style={styles.balanceAmount}
           animate={true}
           animationTrigger={balanceAnimationTrigger}
         />
+        <Text style={styles.balanceAcrossAccounts}>
+          Across {accountCount} account{accountCount !== 1 ? 's' : ''}
+        </Text>
         <View style={styles.balanceFooter}>
           <View style={styles.balanceStat}>
             <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Income</Text>
@@ -638,7 +620,13 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '700',
     color: colors.background,
     letterSpacing: -1,
-    marginBottom: 24,
+    marginBottom: 4,
+  },
+  balanceAcrossAccounts: {
+    fontSize: 13,
+    color: colors.background,
+    opacity: 0.7,
+    marginBottom: 20,
   },
   balanceFooter: {
     flexDirection: 'row',

@@ -1,8 +1,9 @@
 import axios from 'axios';
-import { Account, Transaction, Budget, Subscription, UserMemory } from '../database/schema';
+import { Account, Transaction, Budget, Subscription, Debt, UserMemory } from '../database/schema';
 import { filterMemoriesForPrompt } from './memoryService';
 import { convertCurrency } from './currencyConversionService';
 import { getCurrencySymbol } from '../utils/currency';
+import { computeFinancialSummary } from '../utils/financialSummary';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
@@ -11,12 +12,14 @@ interface FinancialData {
   transactions: Transaction[];
   budgets: Budget[];
   subscriptions: Subscription[];
-  totalBalance: number;
+  totalAssets: number;
+  totalDebts: number;
+  netWorth: number;
   monthlyIncome: number;
   monthlyExpenses: number;
 }
 
-/** Convert financial data amounts to the app's display currency for AI context */
+/** Convert financial data amounts to the app's display currency for AI context. Uses same asset logic as computeFinancialSummary (no double-count for card+linked). */
 async function convertFinancialDataToCurrency(
   data: FinancialData,
   targetCurrency: string
@@ -32,6 +35,8 @@ async function convertFinancialDataToCurrency(
   const transactionAmounts = new Map<string, number>();
   const subscriptionAmounts = new Map<string, number>();
   const accountIdToCurrency = new Map<string, string>(data.accounts.map(a => [a.id, a.currency || 'USD']));
+
+  const accountsToSum = data.accounts.filter((acc) => !(acc.type === 'card' && acc.linkedAccountId));
 
   const [accountConverted, txConverted, subConverted] = await Promise.all([
     Promise.all(data.accounts.map(async (acc) => {
@@ -55,7 +60,11 @@ async function convertFinancialDataToCurrency(
     })),
   ]);
 
-  const totalBalance = accountConverted.reduce((sum, n) => sum + n, 0);
+  const convertedTotalAssets = accountsToSum.reduce(
+    (sum, acc) => sum + (accountBalances.get(acc.id) ?? 0),
+    0
+  );
+  const totalBalance = convertedTotalAssets - data.totalDebts;
   const monthlyIncome = txConverted.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
   const monthlyExpenses = txConverted.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
 
@@ -70,17 +79,18 @@ async function convertFinancialDataToCurrency(
 }
 
 const getFinancialData = async (period: 'week' | 'month' | 'year' | 'all' = 'month'): Promise<FinancialData> => {
-  const { getAccounts, getTransactions, getBudgets, getSubscriptions } = await import('../database/db');
+  const { getAccounts, getTransactions, getBudgets, getSubscriptions, getDebts } = await import('../database/db');
   const { filterTransactionsByPeriod } = await import('../utils/transactionFilters');
-  
-  const accounts = await getAccounts();
-  const allTransactions = await getTransactions();
-  const budgets = await getBudgets();
-  const subscriptions = await getSubscriptions();
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
-  
-  // Filter transactions by period (default to monthly for AI context)
+  const [accounts, allTransactions, budgets, subscriptions, debts] = await Promise.all([
+    getAccounts(),
+    getTransactions(),
+    getBudgets(),
+    getSubscriptions(),
+    getDebts(),
+  ]);
+
+  const { totalAssets, totalDebts, netWorth } = computeFinancialSummary(accounts, debts);
   const filteredData = filterTransactionsByPeriod(allTransactions, period);
 
   return {
@@ -88,7 +98,9 @@ const getFinancialData = async (period: 'week' | 'month' | 'year' | 'all' = 'mon
     transactions: filteredData.transactions,
     budgets,
     subscriptions,
-    totalBalance,
+    totalAssets,
+    totalDebts,
+    netWorth,
     monthlyIncome: filteredData.income,
     monthlyExpenses: filteredData.expenses,
   };
@@ -177,7 +189,7 @@ ${toneInstructions}
 ${memoryBlock ? `USER MEMORY (use only when relevant, do not mention it explicitly):\n${memoryBlock}\n` : ''}
 
 Financial Summary:
-- Total Balance: ${symbol}${converted.totalBalance.toFixed(2)}
+- Net Worth: ${symbol}${converted.totalBalance.toFixed(2)}
 - Monthly Income: ${symbol}${converted.monthlyIncome.toFixed(2)}
 - Monthly Expenses: ${symbol}${converted.monthlyExpenses.toFixed(2)}
 - Available: ${symbol}${(converted.monthlyIncome - converted.monthlyExpenses).toFixed(2)}

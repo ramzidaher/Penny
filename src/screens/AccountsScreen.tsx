@@ -15,6 +15,7 @@ import { formatCurrencySync } from '../utils/currency';
 import CompanyLogo from '../components/CompanyLogo';
 import { formatDistanceToNow } from 'date-fns';
 import { convertCurrency } from '../services/currencyConversionService';
+import { useFinancialSummary } from '../hooks/useFinancialSummary';
 
 // Helper function to format account types for display
 const formatAccountType = (accountType?: string): string => {
@@ -59,6 +60,14 @@ export default function AccountsScreen() {
   const [showConvertedAmounts, setShowConvertedAmounts] = useState<boolean>(false);
   const [convertedBalances, setConvertedBalances] = useState<Map<string, number>>(new Map());
   const hasLoadedRef = useRef(false);
+
+  const {
+    displayTotalAssets,
+    displayTotalDebts,
+    displayNetWorth,
+    currencyCode: summaryCurrencyCode,
+    loadData: loadSummary,
+  } = useFinancialSummary({ enrichBalances: false });
 
   useEffect(() => {
     console.log('[AccountsScreen] 🟢 SCREEN MOUNTED - AccountsScreen');
@@ -127,11 +136,12 @@ export default function AccountsScreen() {
   useEffect(() => {
     const timer = setTimeout(() => {
       loadAccounts(true);
+      loadSummary(true);
     }, 100);
-    // Use focus listener to reload accounts when screen comes into focus (background refresh, no loading UI)
     const focusListener = navigation.addListener('focus', () => {
       console.log('[AccountsScreen] Focus detected, reloading accounts...');
       loadAccounts(false);
+      loadSummary();
     });
     return () => {
       clearTimeout(timer);
@@ -144,23 +154,14 @@ export default function AccountsScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadAccounts(false);
+    await loadSummary();
     setRefreshing(false);
   };
 
   const handleDelete = async (id: string) => {
     await deleteAccount(id);
     await loadAccounts(false);
-  };
-
-  const calculateTotalBalance = () => {
-    return accounts.reduce((total, account) => {
-      // For card accounts with linked accounts, use the linked account balance
-      if (account.type === 'card' && account.linkedAccountId) {
-        const linkedAccount = accounts.find(acc => acc.id === account.linkedAccountId);
-        return total + (linkedAccount?.balance ?? account.balance ?? 0);
-      }
-      return total + (account.balance ?? 0);
-    }, 0);
+    await loadSummary();
   };
 
   const getAccountIcon = (type: string) => {
@@ -257,14 +258,28 @@ export default function AccountsScreen() {
                 </View>
                 <View style={styles.summarySection}>
                   <View style={styles.summaryCard}>
-                  <Text style={styles.summaryLabel}>Total Balance</Text>
-                  <Text style={styles.summaryAmount}>
-                    {formatCurrencySync(calculateTotalBalance(), currencyCode)}
-                  </Text>
-                  <Text style={styles.summaryCount}>
-                    {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
-                  </Text>
-                </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Total Assets</Text>
+                      <Text style={styles.summaryAmount}>
+                        {formatCurrencySync(displayTotalAssets, summaryCurrencyCode)}
+                      </Text>
+                    </View>
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Total Debts</Text>
+                      <Text style={[styles.summaryAmount, styles.summaryDebts]}>
+                        {formatCurrencySync(-displayTotalDebts, summaryCurrencyCode)}
+                      </Text>
+                    </View>
+                    <View style={[styles.summaryRow, styles.summaryRowNet]}>
+                      <Text style={styles.summaryLabel}>Net Worth</Text>
+                      <Text style={styles.summaryAmount}>
+                        {formatCurrencySync(displayNetWorth, summaryCurrencyCode)}
+                      </Text>
+                    </View>
+                    <Text style={styles.summaryCount}>
+                      {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+                    </Text>
+                  </View>
               </View>
               </>
             )}
@@ -457,12 +472,23 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  summaryRowNet: {
+    marginTop: 4,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.25)',
+  },
   summaryLabel: {
     ...typography.caption,
     color: colors.background,
     fontSize: 13,
     fontWeight: '500',
-    marginBottom: 8,
     opacity: 0.8,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -470,16 +496,19 @@ const createStyles = (colors: any) => StyleSheet.create({
   summaryAmount: {
     ...typography.h2,
     color: colors.background,
-    fontSize: 32,
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: 4,
     letterSpacing: -0.5,
+  },
+  summaryDebts: {
+    opacity: 0.9,
   },
   summaryCount: {
     ...typography.caption,
     color: colors.background,
     fontSize: 13,
     opacity: 0.7,
+    marginTop: 8,
   },
   accountsSection: {
     marginBottom: 12,

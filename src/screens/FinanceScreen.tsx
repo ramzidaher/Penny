@@ -23,6 +23,7 @@ import ScreenHeader from '../components/ScreenHeader';
 import SettingsScreen from './SettingsScreen';
 import { formatCurrencySync } from '../utils/currency';
 import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
+import { useFinancialSummary } from '../hooks/useFinancialSummary';
 
 const Stack = createStackNavigator();
 
@@ -42,18 +43,20 @@ function FinanceHomeScreen({ navigation }: any) {
     onRefresh,
   } = useFinanceOverviewData({ enrichBalances: false });
 
+  const { loadData: loadSummary } = useFinancialSummary({ enrichBalances: false });
+
   useFocusEffect(
     useCallback(() => {
       const isFirstFocus = !hasFocusedRef.current;
       const timer = setTimeout(() => {
         loadData(isFirstFocus);
+        loadSummary(isFirstFocus);
         hasFocusedRef.current = true;
       }, 100);
       return () => clearTimeout(timer);
-    }, [loadData])
+    }, [loadData, loadSummary])
   );
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   const now = new Date();
   const startOfCurrentMonth = startOfMonth(now);
   const endOfCurrentMonth = endOfMonth(now);

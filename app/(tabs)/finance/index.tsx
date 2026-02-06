@@ -24,6 +24,7 @@ import { getSettings } from '../../../src/services/settingsService';
 import { formatCurrencySync } from '../../../src/utils/currency';
 import { filterTransactionsByPeriod, getPeriodLabel, type FilterPeriod } from '../../../src/utils/transactionFilters';
 import { convertAmountsToCurrency } from '../../../src/services/currencyConversionService';
+import { useFinancialSummary } from '../../../src/hooks/useFinancialSummary';
 
 type ViewStyle = 'cards' | 'bars' | 'compact';
 
@@ -44,6 +45,8 @@ export default function FinanceHomeScreen() {
   const [moreAnchor, setMoreAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const moreButtonRef = useRef<View | null>(null);
   const hasLoadedRef = useRef(false);
+
+  const { loadData: loadSummary } = useFinancialSummary({ enrichBalances: false });
 
   const openMoreActions = () => {
     // Anchor the popover to the "More" button location
@@ -124,23 +127,19 @@ export default function FinanceHomeScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
-      // Only show loading on initial load, refresh silently on subsequent focuses
       const isInitialLoad = !hasLoadedRef.current;
-      // Remove delay for faster loading
       loadData(isInitialLoad);
-    }, [])
+      loadSummary(isInitialLoad);
+    }, [loadData, loadSummary])
   );
-
-  // Removed route checking logic - it was causing unnecessary re-renders and delays
-  // Native tabs handle navigation correctly, no need for manual checks
 
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData();
+    await loadSummary();
     setRefreshing(false);
   };
 
-  const totalBalance = accounts.reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
   const now = new Date();
   const startOfCurrentMonth = startOfMonth(now);
   const endOfCurrentMonth = endOfMonth(now);

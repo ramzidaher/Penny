@@ -17,7 +17,8 @@
     "submit:ios": "eas submit --platform ios --profile production",
     "submit:ios:latest": "eas submit --platform ios --latest",
     "build:dev": "eas build --profile development --platform all",
-    "verify-env": "node scripts/verify-env.js"
+    "verify-env": "node scripts/verify-env.js",
+    "test": "jest"
   },
   "dependencies": {
     "@dicebear/collection": "^9.3.1",
@@ -65,7 +66,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
-    "react-refresh": "^0.18.0"
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "react-refresh": "^0.18.0",
+    "ts-jest": "^29.4.6"
   },
   "private": true
 }
