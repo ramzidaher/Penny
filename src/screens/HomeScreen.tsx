@@ -5,17 +5,18 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
-import { format } from 'date-fns';
+import { addDays } from 'date-fns';
 import SwipeableTransactionCard from '../components/SwipeableTransactionCard';
-import CompanyLogo from '../components/CompanyLogo';
 import { SkeletonLoader, SkeletonCard, SkeletonStatCard, SkeletonHeader } from '../components/SkeletonLoader';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
-import AIInsightCard from '../components/AIInsightCard';
 import FinancialHealthAlert from '../components/FinancialHealthAlert';
+import AIInsightCard from '../components/AIInsightCard';
+import { getInsights, computeDataHash } from '../services/aiInsightService';
+import type { Insight } from '../types/insight';
 import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
 import { useFinancialSummary } from '../hooks/useFinancialSummary';
-import { getCurrentUserProfile } from '../services/firebase';
+import { getCurrentUser, getCurrentUserProfile, getUserEmail } from '../services/firebase';
 import { updateTransaction, getBudgets } from '../database/db';
 import { Transaction } from '../database/schema';
 import CategoryPickerDialog from '../components/CategoryPickerDialog';
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollRef = useRef<ScreenWrapperRef>(null);
   const hasFocusedRef = useRef(false);
+  const [userFirstName, setUserFirstName] = useState('Home');
 
   const {
     accounts,
@@ -50,14 +52,18 @@ export default function HomeScreen() {
     onRefresh,
   } = useFinanceOverviewData({ enrichBalances: true });
 
+  const displayCurrency = currencyCode || 'USD';
+
   const {
     displayNetWorth,
     accountCount,
     currencyCode: summaryCurrencyCode,
+    loading: summaryLoading,
     loadData: loadSummary,
   } = useFinancialSummary({ enrichBalances: true });
 
-  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('all');
+  const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('month');
+  const [balanceExpanded, setBalanceExpanded] = useState(false);
   const [categoryPickerVisible, setCategoryPickerVisible] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [selectedType, setSelectedType] = useState<TransactionType>('expense');
@@ -73,6 +79,36 @@ export default function HomeScreen() {
   const [balanceAnimationTrigger, setBalanceAnimationTrigger] = useState(0);
   const prevRefreshingRef = useRef(refreshing);
   const [profile, setProfile] = useState<{ avatarSeed?: string } | null>(null);
+
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [insightLoading, setInsightLoading] = useState(false);
+  const [insightAccessDenied, setInsightAccessDenied] = useState(false);
+  const [insightAccessDeniedReason, setInsightAccessDeniedReason] = useState<'upgrade' | 'limit' | 'demo_paywall' | undefined>();
+
+  const loadInsights = useCallback(
+    async (forceRefresh = false) => {
+      setInsightLoading(true);
+      try {
+        const filtered = filterTransactionsByPeriod(transactions, filterPeriod);
+        const dataHash = computeDataHash(filtered.transactions, budgets);
+        const result = await getInsights({
+          period: filterPeriod,
+          forceRefresh,
+          dataHash,
+        });
+        setInsights(result.insights ?? []);
+        setInsightAccessDenied(result.accessDenied ?? false);
+        setInsightAccessDeniedReason(result.accessDeniedReason);
+      } finally {
+        setInsightLoading(false);
+      }
+    },
+    [filterPeriod, transactions, budgets]
+  );
+
+  const refreshInsights = useCallback(() => {
+    loadInsights(true);
+  }, [loadInsights]);
 
   const refreshProfile = useCallback(() => {
     getCurrentUserProfile().then(setProfile);
@@ -107,12 +143,18 @@ export default function HomeScreen() {
       const rafId = requestAnimationFrame(() => {
         scrollRef.current?.scrollTo({ y: 0, animated: false });
       });
+      return () => cancelAnimationFrame(rafId);
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       const isFirstFocus = !hasFocusedRef.current;
       loadData(isFirstFocus);
       loadSummary(isFirstFocus);
+      loadInsights(false);
       hasFocusedRef.current = true;
-      return () => cancelAnimationFrame(rafId);
-    }, [loadData, loadSummary])
+    }, [loadData, loadSummary, loadInsights])
   );
 
   const handleSwipeRight = useCallback(
@@ -310,9 +352,186 @@ export default function HomeScreen() {
   
   const recentTransactions = filteredData.transactions.slice(0, 4);
   const now = new Date();
-  const upcomingSubscriptions = subscriptions
-    .filter(s => new Date(s.nextBillingDate) >= now)
-    .slice(0, 3);
+  const endOfWeek = addDays(now, 7);
+  const upcomingSubscriptionsThisWeek = subscriptions.filter((s) => {
+    const nextBillingDate = new Date(s.nextBillingDate);
+    return nextBillingDate >= now && nextBillingDate <= endOfWeek;
+  });
+
+  const [convertedWeeklyBillsTotal, setConvertedWeeklyBillsTotal] = useState<number | null>(null);
+  const lastStableWeeklyBillsTotalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!currencyCode) return;
+    const targetCurrency = currencyCode || 'USD';
+    const needsConversion = upcomingSubscriptionsThisWeek.some(
+      (subscription) => (subscription.currency || targetCurrency) !== targetCurrency
+    );
+    const rawTotal = upcomingSubscriptionsThisWeek.reduce((sum, s) => sum + s.amount, 0);
+
+    if (!needsConversion) {
+      setConvertedWeeklyBillsTotal(rawTotal);
+      lastStableWeeklyBillsTotalRef.current = rawTotal;
+      return;
+    }
+
+    const convertTotals = async () => {
+      try {
+        const amounts = upcomingSubscriptionsThisWeek.map((s) => ({
+          amount: s.amount,
+          currency: s.currency || targetCurrency,
+        }));
+        const converted = await convertAmountsToCurrency(amounts, targetCurrency);
+        setConvertedWeeklyBillsTotal(converted);
+        lastStableWeeklyBillsTotalRef.current = converted;
+      } catch (error) {
+        console.error('[HomeScreen] Error converting weekly bills:', error);
+        setConvertedWeeklyBillsTotal(null);
+      }
+    };
+
+    if (upcomingSubscriptionsThisWeek.length > 0) {
+      convertTotals();
+    } else {
+      setConvertedWeeklyBillsTotal(0);
+      lastStableWeeklyBillsTotalRef.current = 0;
+    }
+  }, [currencyCode, upcomingSubscriptionsThisWeek]);
+
+  const weeklyBillsTotal =
+    convertedWeeklyBillsTotal ?? lastStableWeeklyBillsTotalRef.current ?? upcomingSubscriptionsThisWeek.reduce((sum, s) => sum + s.amount, 0);
+
+  const budgetAlertsCount = useMemo(
+    () => budgets.filter((b) => b.currentSpent >= b.limit).length,
+    [budgets]
+  );
+  const budgetRemaining = useMemo(
+    () => budgets.reduce((sum, b) => sum + Math.max(0, b.limit - b.currentSpent), 0),
+    [budgets]
+  );
+
+  const monthlyData = useMemo(
+    () => filterTransactionsByPeriod(transactions, 'month'),
+    [transactions]
+  );
+  const [convertedMonthlyIncome, setConvertedMonthlyIncome] = useState<number | null>(null);
+  const [convertedMonthlyExpenses, setConvertedMonthlyExpenses] = useState<number | null>(null);
+  const lastStableMonthlyIncomeRef = useRef<number | null>(null);
+  const lastStableMonthlyExpensesRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!currencyCode) return;
+    const targetCurrency = currencyCode || 'USD';
+    const monthIncomeTransactions = monthlyData.transactions.filter((t) => t.type === 'income');
+    const monthExpenseTransactions = monthlyData.transactions.filter((t) => t.type === 'expense');
+    const incomeNeedsConversion = monthIncomeTransactions.some((t) => {
+      const account = accounts.find((a) => a.id === t.accountId);
+      return (account?.currency || targetCurrency) !== targetCurrency;
+    });
+    const expenseNeedsConversion = monthExpenseTransactions.some((t) => {
+      const account = accounts.find((a) => a.id === t.accountId);
+      return (account?.currency || targetCurrency) !== targetCurrency;
+    });
+
+    const convertTotals = async () => {
+      try {
+        if (!incomeNeedsConversion && !expenseNeedsConversion) {
+          setConvertedMonthlyIncome(monthlyData.income);
+          setConvertedMonthlyExpenses(monthlyData.expenses);
+          lastStableMonthlyIncomeRef.current = monthlyData.income;
+          lastStableMonthlyExpensesRef.current = monthlyData.expenses;
+          return;
+        }
+
+        if (incomeNeedsConversion) {
+          const incomeAmounts = monthIncomeTransactions.map((t) => {
+            const account = accounts.find((a) => a.id === t.accountId);
+            return {
+              amount: t.amount,
+              currency: account?.currency || targetCurrency,
+            };
+          });
+          const convertedIncome = await convertAmountsToCurrency(incomeAmounts, targetCurrency);
+          setConvertedMonthlyIncome(convertedIncome);
+          lastStableMonthlyIncomeRef.current = convertedIncome;
+        } else {
+          setConvertedMonthlyIncome(monthlyData.income);
+          lastStableMonthlyIncomeRef.current = monthlyData.income;
+        }
+
+        if (expenseNeedsConversion) {
+          const expenseAmounts = monthExpenseTransactions.map((t) => {
+            const account = accounts.find((a) => a.id === t.accountId);
+            return {
+              amount: t.amount,
+              currency: account?.currency || targetCurrency,
+            };
+          });
+          const convertedExpenses = await convertAmountsToCurrency(expenseAmounts, targetCurrency);
+          setConvertedMonthlyExpenses(convertedExpenses);
+          lastStableMonthlyExpensesRef.current = convertedExpenses;
+        } else {
+          setConvertedMonthlyExpenses(monthlyData.expenses);
+          lastStableMonthlyExpensesRef.current = monthlyData.expenses;
+        }
+      } catch (error) {
+        console.error('[HomeScreen] Error converting monthly totals:', error);
+        setConvertedMonthlyIncome(null);
+        setConvertedMonthlyExpenses(null);
+      }
+    };
+
+    if (accounts.length > 0 || monthlyData.transactions.length > 0) {
+      convertTotals();
+    }
+  }, [accounts, currencyCode, monthlyData]);
+
+  const fallbackMonthlyIncome =
+    convertedMonthlyIncome ?? lastStableMonthlyIncomeRef.current ?? monthlyData.income;
+  const fallbackMonthlyExpenses =
+    convertedMonthlyExpenses ?? lastStableMonthlyExpensesRef.current ?? monthlyData.expenses;
+
+  const safeToSpend =
+    budgets.length > 0 ? budgetRemaining : Math.max(0, fallbackMonthlyIncome - fallbackMonthlyExpenses);
+
+  const getDaysUntilNextPayday = useCallback(() => {
+    const incomeTransactions = [...transactions]
+      .filter((t) => t.type === 'income')
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (incomeTransactions.length < 2) return null;
+
+    const recent = incomeTransactions.slice(0, 4);
+    const intervals: number[] = [];
+    for (let i = 0; i < recent.length - 1; i += 1) {
+      const current = new Date(recent[i].date);
+      const prev = new Date(recent[i + 1].date);
+      const diffDays = Math.round((current.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays > 0) intervals.push(diffDays);
+    }
+    if (intervals.length === 0) return null;
+
+    const sortedIntervals = [...intervals].sort((a, b) => a - b);
+    const medianInterval = sortedIntervals[Math.floor(sortedIntervals.length / 2)];
+    const commonIntervals = [7, 14, 15, 30];
+    const normalizedInterval = commonIntervals.reduce((closest, value) =>
+      Math.abs(value - medianInterval) < Math.abs(closest - medianInterval) ? value : closest
+    , commonIntervals[0]);
+
+    const lastIncomeDate = new Date(recent[0].date);
+    let nextPayday = new Date(lastIncomeDate);
+    nextPayday.setDate(nextPayday.getDate() + normalizedInterval);
+    let guard = 0;
+    while (nextPayday < new Date() && guard < 4) {
+      nextPayday = new Date(nextPayday);
+      nextPayday.setDate(nextPayday.getDate() + normalizedInterval);
+      guard += 1;
+    }
+    const daysUntil = Math.ceil((nextPayday.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (daysUntil < 0) return null;
+    return daysUntil;
+  }, [transactions]);
+
+  const daysUntilPayday = getDaysUntilNextPayday();
   
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -320,6 +539,17 @@ export default function HomeScreen() {
     if (hour < 18) return 'Good Afternoon';
     return 'Good Evening';
   };
+
+  const displayName = (() => {
+    const user = getCurrentUser();
+    const email = getUserEmail();
+    return user?.displayName || (email ? email.split('@')[0] : '');
+  })();
+
+  useEffect(() => {
+    const name = displayName.trim().split(' ')[0] || 'Home';
+    setUserFirstName(name);
+  }, [displayName]);
 
   const loadingComponent = (
     <>
@@ -353,15 +583,15 @@ export default function HomeScreen() {
           await loadSummary();
         }}
         refreshing={refreshing}
-        loading={loading && !refreshing}
+        loading={(loading || summaryLoading) && !refreshing}
         loadingComponent={loadingComponent}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 + insets.bottom + 80 }}
       >
       {/* Header Section */}
       <ScreenHeader
+        title={userFirstName}
         subtitle={getGreeting()}
-        title="Welcome back"
         titleFontFamily="GulfsDisplay-Normal"
         titleLetterSpacing={0.5}
         rightAvatarSeed={profile?.avatarSeed}
@@ -375,72 +605,132 @@ export default function HomeScreen() {
       <FinancialHealthAlert
         income={displayIncome}
         expenses={displayExpenses}
-        currencyCode={currencyCode ?? 'USD'}
+        currencyCode={displayCurrency}
         onReviewSpending={() => router.push('/(tabs)/finance/income-expense' as any)}
       />
 
-      {/* Balance Card */}
-      <View style={styles.balanceCard}>
-        <View style={styles.balanceHeader}>
-          <Text style={styles.balanceLabel}>Net Worth</Text>
-          <View style={styles.filterContainer}>
-            {(['week', 'month', 'year', 'all'] as FilterPeriod[]).map((period) => (
-              <TouchableOpacity
-                key={period}
-                style={[
-                  styles.filterButton,
-                  filterPeriod === period && styles.filterButtonActive,
-                ]}
-                onPress={() => setFilterPeriod(period)}
-              >
-                <Text
-                  style={[
-                    styles.filterButtonText,
-                    filterPeriod === period && styles.filterButtonTextActive,
-                  ]}
-                >
-                  {period === 'week' ? 'W' : period === 'month' ? 'M' : period === 'year' ? 'Y' : 'All'}
-                </Text>
-              </TouchableOpacity>
-            ))}
+      {/* AI Insights */}
+      <AIInsightCard
+        insights={insights}
+        loading={insightLoading}
+        accessDenied={insightAccessDenied}
+        accessDeniedReason={insightAccessDeniedReason}
+        onRefresh={refreshInsights}
+      />
+
+      {/* Quick Stats */}
+      <View style={styles.quickStatsCard}>
+        <View style={styles.quickStat}>
+          <View style={styles.quickStatIcon}>
+            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
           </View>
+          <Text style={styles.quickStatLabel}>Next payday</Text>
+          <Text style={styles.quickStatValue}>
+            {daysUntilPayday === null ? '0' : `${daysUntilPayday}`}
+          </Text>
         </View>
-        <SlotMachineBalance
-          value={displayNetWorth}
-          currencyCode={summaryCurrencyCode}
-          style={styles.balanceAmount}
-          animate={true}
-          animationTrigger={balanceAnimationTrigger}
-        />
-        <Text style={styles.balanceAcrossAccounts}>
-          Across {accountCount} account{accountCount !== 1 ? 's' : ''}
-        </Text>
-        <View style={styles.balanceFooter}>
-          <View style={styles.balanceStat}>
-            <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Income</Text>
-            <Text style={styles.balanceStatValue}>
-              {formatCurrencySync(displayIncome, currencyCode)}
-            </Text>
+        <View style={styles.quickStatDivider} />
+        <View style={styles.quickStat}>
+          <View style={styles.quickStatIcon}>
+            <Ionicons name="wallet-outline" size={16} color={colors.textSecondary} />
           </View>
-          <View style={styles.balanceDivider} />
-          <View style={styles.balanceStat}>
-            <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Expenses</Text>
-            <Text style={styles.balanceStatValue}>
-              {formatCurrencySync(displayExpenses, currencyCode)}
-            </Text>
+          <Text style={styles.quickStatLabel}>Safe to spend</Text>
+          <Text style={styles.quickStatValue}>
+            {formatCurrencySync(safeToSpend, displayCurrency)}
+          </Text>
+        </View>
+        <View style={styles.quickStatDivider} />
+        <View style={styles.quickStat}>
+          <View style={styles.quickStatIcon}>
+            <Ionicons name="receipt-outline" size={16} color={colors.textSecondary} />
           </View>
+          <Text style={styles.quickStatLabel}>Bills this week</Text>
+          <Text style={styles.quickStatValue}>
+            {formatCurrencySync(weeklyBillsTotal, displayCurrency)}
+          </Text>
         </View>
       </View>
 
-      {/* AI Insight Card */}
-      <AIInsightCard
-        accounts={accounts}
-        transactions={transactions}
-        budgets={budgets}
-        subscriptions={subscriptions}
-        filterPeriod={filterPeriod}
-        currencyCode={currencyCode}
-      />
+      {/* Balance Card */}
+      <View style={[styles.balanceCard, balanceExpanded ? styles.balanceCardExpanded : styles.balanceCardCompact]}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setBalanceExpanded((prev) => !prev)}
+          style={styles.balanceTouchable}
+        >
+          <Text style={styles.balanceLabel}>Net Worth</Text>
+          <View style={styles.balanceAmountRow}>
+            <View style={styles.balanceAmountLeft}>
+              <SlotMachineBalance
+                value={displayNetWorth}
+                currencyCode={summaryCurrencyCode}
+                style={balanceExpanded ? styles.balanceAmount : styles.balanceAmountCompact}
+                animate={true}
+                animationTrigger={balanceAnimationTrigger}
+              />
+            </View>
+            <View style={styles.balanceHeaderRight}>
+              {!balanceExpanded && (displayIncome === 0 && displayExpenses === 0 ? (
+                <Text style={styles.balanceHeaderDash}>—</Text>
+              ) : !balanceExpanded ? (
+                <Ionicons
+                  name={displayIncome - displayExpenses >= 0 ? 'trending-up' : 'trending-down'}
+                  size={18}
+                  color={colors.background}
+                />
+              ) : null)}
+              <Ionicons
+                name={balanceExpanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.background}
+              />
+            </View>
+          </View>
+        </TouchableOpacity>
+        {balanceExpanded && (
+          <>
+            <Text style={styles.balanceAcrossAccounts}>
+              Across {accountCount} account{accountCount !== 1 ? 's' : ''}
+            </Text>
+            <View style={styles.filterContainer}>
+              {(['week', 'month', 'year'] as FilterPeriod[]).map((period) => (
+                <TouchableOpacity
+                  key={period}
+                  style={[
+                    styles.filterButton,
+                    filterPeriod === period && styles.filterButtonActive,
+                  ]}
+                  onPress={() => setFilterPeriod(period)}
+                >
+                  <Text
+                    style={[
+                      styles.filterButtonText,
+                      filterPeriod === period && styles.filterButtonTextActive,
+                    ]}
+                  >
+                    {period === 'week' ? 'W' : period === 'month' ? 'M' : 'Y'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.balanceFooter}>
+              <View style={styles.balanceStat}>
+                <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Income</Text>
+                <Text style={styles.balanceStatValue}>
+                  {formatCurrencySync(displayIncome, displayCurrency)}
+                </Text>
+              </View>
+              <View style={styles.balanceDivider} />
+              <View style={styles.balanceStat}>
+                <Text style={styles.balanceStatLabel}>{getPeriodLabel(filterPeriod)} Expenses</Text>
+                <Text style={styles.balanceStatValue}>
+                  {formatCurrencySync(displayExpenses, displayCurrency)}
+                </Text>
+              </View>
+            </View>
+          </>
+        )}
+      </View>
 
       {/* Recent Transactions */}
       <View style={styles.section}>
@@ -461,7 +751,7 @@ export default function HomeScreen() {
                 <SwipeableTransactionCard
                   key={uniqueKey}
                   transaction={transaction}
-                  currencyCode={currencyCode}
+                  currencyCode={displayCurrency}
                   onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
                   onSwipeRight={() => handleSwipeRight(transaction)}
                   onSwipeLeft={() => handleSwipeLeft(transaction)}
@@ -478,46 +768,6 @@ export default function HomeScreen() {
           </View>
         )}
       </View>
-
-      {/* Upcoming Subscriptions */}
-      {upcomingSubscriptions.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Upcoming Subscriptions</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/finance/subscriptions')}>
-              <Text style={styles.seeAll}>View All</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.subscriptionsList}>
-            {upcomingSubscriptions.map((subscription, index) => {
-              return (
-              <View 
-                key={subscription.id} 
-                style={[
-                  styles.subscriptionCard,
-                  index === upcomingSubscriptions.length - 1 && styles.subscriptionCardLast
-                ]}
-              >
-                <View style={styles.subscriptionLeft}>
-                  <CompanyLogo
-                    name={subscription.name}
-                    type="subscription"
-                    size={48}
-                  />
-                  <View>
-                    <Text style={styles.subscriptionName}>{subscription.name}</Text>
-                    <Text style={styles.subscriptionDate}>
-                      {format(new Date(subscription.nextBillingDate), 'MMM dd, yyyy')}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.subscriptionAmount}>{formatCurrencySync(subscription.amount, currencyCode)}</Text>
-              </View>
-            );
-            })}
-          </View>
-        </View>
-      )}
 
       </ScreenWrapper>
 
@@ -576,26 +826,53 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.primary,
     marginHorizontal: 20,
     marginBottom: 24,
-    padding: 24,
-    borderRadius: 24,
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 0,
+  },
+  balanceCardCompact: {
+    minHeight: 72,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  balanceCardExpanded: {
     minHeight: 200,
-    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
-  balanceHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
+  balanceTouchable: {},
   balanceLabel: {
-    fontSize: 14,
+    fontSize: 13,
+    color: colors.background,
+    fontWeight: '500',
+    opacity: 0.8,
+    marginBottom: 2,
+  },
+  balanceAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  balanceAmountLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  balanceHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  balanceHeaderDash: {
+    fontSize: 18,
+    fontWeight: '600',
     color: colors.background,
     opacity: 0.8,
-    fontWeight: '500',
   },
   filterContainer: {
     flexDirection: 'row',
     gap: 6,
+    marginTop: 4,
+    marginBottom: 12,
   },
   filterButton: {
     paddingHorizontal: 10,
@@ -613,20 +890,28 @@ const createStyles = (colors: any) => StyleSheet.create({
     opacity: 0.7,
   },
   filterButtonTextActive: {
+    color: colors.background,
     opacity: 1,
   },
   balanceAmount: {
-    fontSize: 40,
+    fontSize: 22,
     fontWeight: '700',
     color: colors.background,
-    letterSpacing: -1,
-    marginBottom: 4,
+    letterSpacing: -0.3,
+    marginBottom: 6,
+  },
+  balanceAmountCompact: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.background,
+    letterSpacing: -0.3,
+    marginBottom: 0,
   },
   balanceAcrossAccounts: {
     fontSize: 13,
     color: colors.background,
-    opacity: 0.7,
     marginBottom: 20,
+    opacity: 0.7,
   },
   balanceFooter: {
     flexDirection: 'row',
@@ -641,8 +926,8 @@ const createStyles = (colors: any) => StyleSheet.create({
   balanceStatLabel: {
     fontSize: 12,
     color: colors.background,
-    opacity: 0.7,
     marginBottom: 4,
+    opacity: 0.7,
   },
   balanceStatValue: {
     fontSize: 18,
@@ -654,6 +939,83 @@ const createStyles = (colors: any) => StyleSheet.create({
     height: 40,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     marginHorizontal: 16,
+  },
+  actionableCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionableHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  actionableTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  actionableCta: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  actionableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  actionableText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  quickStatsCard: {
+    backgroundColor: colors.surface,
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  quickStat: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  quickStatLabel: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  quickStatValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  quickStatIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  quickStatDivider: {
+    width: 1,
+    backgroundColor: colors.border,
   },
   section: {
     paddingHorizontal: 20,
@@ -678,7 +1040,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   transactionsList: {
     borderRadius: 20,
-    overflow: 'hidden',
   },
   viewAllText: {
     fontSize: 14,
@@ -747,45 +1108,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   expenseAmount: {
     color: colors.primary,
-  },
-  subscriptionsList: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  subscriptionCard: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  subscriptionCardLast: {
-    borderBottomWidth: 0,
-  },
-  subscriptionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 16,
-  },
-  subscriptionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  subscriptionDate: {
-    fontSize: 13,
-    color: colors.textSecondary,
-  },
-  subscriptionAmount: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
   },
   emptyCard: {
     backgroundColor: colors.surface,

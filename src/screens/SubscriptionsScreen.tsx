@@ -7,7 +7,7 @@ import { useDialog } from '../contexts/DialogContext';
 import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getSubscriptions, deleteSubscription, markSubscriptionAsPaid, processDueSubscriptions, getTransactions } from '../database/db';
+import { getSubscriptions, deleteSubscription, updateSubscription, markSubscriptionAsPaid, processDueSubscriptions, getTransactions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
 import { Subscription, Transaction } from '../database/schema';
 import { useTheme } from '../contexts/ThemeContext';
@@ -19,6 +19,8 @@ import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
+import { getDuplicateGroups, isInDuplicateGroup, normalizeMerchantName } from '../utils/subscriptionDeduplication';
+import DuplicateSubscriptionAlert from '../components/DuplicateSubscriptionAlert';
 
 export default function SubscriptionsScreen() {
   const { colors } = useTheme();
@@ -33,6 +35,7 @@ export default function SubscriptionsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
   const maintenanceInFlight = useRef<Promise<boolean> | null>(null);
   const scrollRef = useRef<ScreenWrapperRef>(null);
   const hasLoadedRef = useRef(false);
@@ -251,6 +254,42 @@ export default function SubscriptionsScreen() {
     })
     .sort((a, b) => getDaysUntil(a.nextBillingDate) - getDaysUntil(b.nextBillingDate));
 
+  const duplicateGroups = useMemo(() => getDuplicateGroups(subscriptions), [subscriptions]);
+
+  const subscriptionsByMerchant = useMemo(() => {
+    const m = new Map<string, { displayName: string; subscriptions: Subscription[] }>();
+    for (const s of subscriptions) {
+      const key = normalizeMerchantName(s.name);
+      if (!key) continue;
+      if (!m.has(key)) m.set(key, { displayName: s.name.trim() || s.name, subscriptions: [] });
+      m.get(key)!.subscriptions.push(s);
+    }
+    return Array.from(m.entries()).map(([merchantKey, v]) => ({ merchantKey, ...v }));
+  }, [subscriptions]);
+
+  const handleMarkAsDifferentServices = useCallback(async (ids: string[]) => {
+    try {
+      await Promise.all(ids.map(id => updateSubscription(id, { isDifferentService: true })));
+      await loadSubscriptions();
+    } catch (error) {
+      console.error('Error marking as different services:', error);
+      dialog.alert('Error', 'Failed to update subscriptions');
+    }
+  }, [loadSubscriptions, dialog]);
+
+  const handleRemoveDuplicates = useCallback(async (idsToRemove: string[]) => {
+    try {
+      for (const id of idsToRemove) {
+        await deleteSubscription(id);
+      }
+      await scheduleAllNotifications();
+      await loadSubscriptions();
+    } catch (error) {
+      console.error('Error removing duplicates:', error);
+      dialog.alert('Error', 'Failed to remove subscriptions');
+    }
+  }, [loadSubscriptions, dialog]);
+
   const loadingComponent = (
     <>
       <SkeletonStatStrip />
@@ -294,6 +333,15 @@ export default function SubscriptionsScreen() {
             </Text>
           </View>
         </View>
+
+        {duplicateGroups.length > 0 && (
+          <DuplicateSubscriptionAlert
+            duplicateGroups={duplicateGroups}
+            currencyCode={currencyCode}
+            onMarkAsDifferentServices={handleMarkAsDifferentServices}
+            onRemoveDuplicates={handleRemoveDuplicates}
+          />
+        )}
 
         {/* Upcoming Subscriptions */}
         {upcomingSubscriptions.length > 0 && (
@@ -407,23 +455,40 @@ export default function SubscriptionsScreen() {
               <Text style={styles.sectionSubtitle}>{subscriptions.length} total</Text>
             )}
           </View>
+          {subscriptions.length > 0 && (
+            <View style={styles.viewToggle}>
+              <TouchableOpacity
+                style={[styles.viewToggleButton, viewMode === 'list' && styles.viewToggleButtonActive]}
+                onPress={() => setViewMode('list')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.viewToggleText, viewMode === 'list' && styles.viewToggleTextActive]}>List</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.viewToggleButton, viewMode === 'grouped' && styles.viewToggleButtonActive]}
+                onPress={() => setViewMode('grouped')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.viewToggleText, viewMode === 'grouped' && styles.viewToggleTextActive]}>Group by merchant</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           {subscriptions.length === 0 ? (
             <View style={styles.emptyCard}>
               <Ionicons name="repeat-outline" size={64} color={colors.textLight} />
               <Text style={styles.emptyText}>No subscriptions yet</Text>
               <Text style={styles.emptySubtext}>Add your subscriptions to track them</Text>
             </View>
-          ) : (
+          ) : viewMode === 'list' ? (
             <View style={styles.subscriptionsList}>
               {subscriptions.map((subscription, index) => {
                 const daysUntil = getDaysUntil(subscription.nextBillingDate);
                 const isUpcoming = daysUntil <= 7 && daysUntil >= 0;
                 const isDueToday = daysUntil === 0;
                 const isOverdue = daysUntil < 0;
-                
                 const subscriptionTransactions = getSubscriptionTransactions(subscription);
                 const isExpanded = expandedSubscriptionId === subscription.id;
-                
+                const showDuplicateWarning = isInDuplicateGroup(subscription, duplicateGroups);
                 return (
                   <View
                     key={subscription.id}
@@ -447,7 +512,15 @@ export default function SubscriptionsScreen() {
                             size={44}
                           />
                           <View style={styles.subscriptionInfo}>
-                            <Text style={styles.subscriptionName}>{subscription.name}</Text>
+                            <View style={styles.subscriptionNameRow}>
+                              <Text style={styles.subscriptionName}>{subscription.name}</Text>
+                              {showDuplicateWarning && (
+                                <Ionicons name="warning" size={18} color={colors.warning} style={styles.duplicateIcon} />
+                              )}
+                            </View>
+                            {subscription.label ? (
+                              <Text style={styles.subscriptionLabel}>{subscription.label}</Text>
+                            ) : null}
                             <View style={styles.subscriptionMeta}>
                               <Text style={styles.subscriptionFrequency}>
                                 {subscription.frequency.charAt(0).toUpperCase() + subscription.frequency.slice(1)}
@@ -515,7 +588,6 @@ export default function SubscriptionsScreen() {
                         </View>
                       </View>
                     </TouchableOpacity>
-                    
                     {isExpanded && (
                       <View style={styles.transactionsContainer}>
                         {subscriptionTransactions.length === 0 ? (
@@ -551,6 +623,162 @@ export default function SubscriptionsScreen() {
                   </View>
                 );
               })}
+            </View>
+          ) : (
+            <View style={styles.groupedList}>
+              {subscriptionsByMerchant.map(({ merchantKey, displayName, subscriptions: groupSubs }) => (
+                <View key={merchantKey} style={styles.merchantSection}>
+                  <View style={styles.merchantSectionHeader}>
+                    <Text style={styles.merchantSectionTitle}>{displayName}</Text>
+                    <View style={styles.merchantCountBadge}>
+                      <Text style={styles.merchantCountText}>{groupSubs.length}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.subscriptionsList}>
+                    {groupSubs.map((subscription, index) => {
+                      const daysUntil = getDaysUntil(subscription.nextBillingDate);
+                      const isUpcoming = daysUntil <= 7 && daysUntil >= 0;
+                      const isDueToday = daysUntil === 0;
+                      const isOverdue = daysUntil < 0;
+                      const subscriptionTransactions = getSubscriptionTransactions(subscription);
+                      const isExpanded = expandedSubscriptionId === subscription.id;
+                      const isLastInGroup = index === groupSubs.length - 1;
+                      return (
+                        <View
+                          key={subscription.id}
+                          style={[
+                            styles.subscriptionCard,
+                            isLastInGroup && styles.subscriptionCardLast,
+                            isUpcoming && styles.subscriptionCardUpcoming,
+                            isDueToday && styles.subscriptionCardDue,
+                            isOverdue && styles.subscriptionCardOverdue,
+                          ]}
+                        >
+                          <TouchableOpacity
+                            onPress={() => toggleExpand(subscription.id)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={styles.subscriptionContent}>
+                              <View style={styles.subscriptionLeft}>
+                                <CompanyLogo name={subscription.name} type="subscription" size={44} />
+                                <View style={styles.subscriptionInfo}>
+                                  <View style={styles.subscriptionNameRow}>
+                                    <Text style={styles.subscriptionName}>{subscription.name}</Text>
+                                  </View>
+                                  {(subscription.label || subscription.isDifferentService) && (
+                                    <View style={styles.subscriptionMeta}>
+                                      {subscription.label ? (
+                                        <Text style={styles.subscriptionLabel}>{subscription.label}</Text>
+                                      ) : null}
+                                      {subscription.isDifferentService && (
+                                        <View style={styles.differentServiceChip}>
+                                          <Text style={styles.differentServiceChipText}>Different service</Text>
+                                        </View>
+                                      )}
+                                    </View>
+                                  )}
+                                  <View style={styles.subscriptionMeta}>
+                                    <Text style={styles.subscriptionFrequency}>
+                                      {subscription.frequency.charAt(0).toUpperCase() + subscription.frequency.slice(1)}
+                                    </Text>
+                                    {isDueToday && (
+                                      <View style={styles.dueTodayBadge}>
+                                        <Text style={styles.dueTodayText}>Due Today</Text>
+                                      </View>
+                                    )}
+                                    <Text style={styles.transactionCount}>
+                                      {subscriptionTransactions.length} payment{subscriptionTransactions.length !== 1 ? 's' : ''}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                              <View style={styles.subscriptionRight}>
+                                <View style={styles.subscriptionTopRow}>
+                                  <Ionicons
+                                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                    size={18}
+                                    color={colors.textSecondary}
+                                  />
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleDelete(subscription.id);
+                                    }}
+                                    style={styles.deleteButtonInline}
+                                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                  >
+                                    <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
+                                  </TouchableOpacity>
+                                </View>
+                                <Text style={styles.subscriptionAmount}>
+                                  {formatCurrencySync(subscription.amount, currencyCode)}
+                                </Text>
+                                <Text style={[styles.subscriptionDate, isOverdue && styles.subscriptionDateOverdue]}>
+                                  {format(new Date(subscription.nextBillingDate), 'MMM dd, yyyy')}
+                                </Text>
+                                {isOverdue && (
+                                  <Text style={styles.subscriptionOverdueText}>
+                                    {Math.abs(daysUntil)} day{Math.abs(daysUntil) !== 1 ? 's' : ''} overdue
+                                  </Text>
+                                )}
+                                {daysUntil >= 0 && daysUntil <= 7 && !isOverdue && (
+                                  <Text style={[styles.subscriptionDays, isDueToday && styles.subscriptionDaysDue]}>
+                                    {isDueToday ? 'Due today' : `${daysUntil} day${daysUntil !== 1 ? 's' : ''} left`}
+                                  </Text>
+                                )}
+                                {(isDueToday || daysUntil < 0) && (
+                                  <TouchableOpacity
+                                    onPress={(e) => {
+                                      e.stopPropagation();
+                                      handleMarkAsPaid(subscription.id);
+                                    }}
+                                    style={styles.markPaidButton}
+                                  >
+                                    <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                                    <Text style={styles.markPaidText}>Mark as Paid</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                          {isExpanded && (
+                            <View style={styles.transactionsContainer}>
+                              {subscriptionTransactions.length === 0 ? (
+                                <Text style={styles.noTransactionsText}>No payments yet</Text>
+                              ) : (
+                                subscriptionTransactions.slice(0, 5).map((transaction) => (
+                                  <TouchableOpacity
+                                    key={transaction.id}
+                                    style={styles.transactionRow}
+                                    onPress={() => router.push({ pathname: '/(tabs)/finance/transaction-detail' as any, params: { id: transaction.id } })}
+                                  >
+                                    <View style={styles.transactionLeft}>
+                                      <Text style={styles.transactionDescription} numberOfLines={1}>
+                                        {transaction.description || 'Payment'}
+                                      </Text>
+                                      <Text style={styles.transactionDate}>
+                                        {format(new Date(transaction.date), 'MMM dd, yyyy')}
+                                      </Text>
+                                    </View>
+                                    <Text style={styles.transactionAmount}>
+                                      {formatCurrencySync(transaction.amount, currencyCode)}
+                                    </Text>
+                                  </TouchableOpacity>
+                                ))
+                              )}
+                              {subscriptionTransactions.length > 5 && (
+                                <Text style={styles.moreTransactionsText}>
+                                  +{subscriptionTransactions.length - 5} more payments
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -632,6 +860,32 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
+  viewToggle: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  viewToggleButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  viewToggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  viewToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  viewToggleTextActive: {
+    color: colors.background,
+  },
   upcomingList: {
     gap: 16,
   },
@@ -683,6 +937,47 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
+  groupedList: {
+    gap: 24,
+  },
+  merchantSection: {
+    marginBottom: 8,
+  },
+  merchantSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  merchantSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  merchantCountBadge: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  merchantCountText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.background,
+  },
+  differentServiceChip: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.border,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginTop: 2,
+  },
+  differentServiceChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
   subscriptionCard: {
     paddingVertical: 14,
     paddingHorizontal: 16,
@@ -721,11 +1016,25 @@ const createStyles = (colors: any) => StyleSheet.create({
   subscriptionInfo: {
     flex: 1,
   },
+  subscriptionNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   subscriptionName: {
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
+    flex: 1,
+  },
+  duplicateIcon: {
+    marginLeft: 4,
+  },
+  subscriptionLabel: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
   subscriptionMeta: {
     flexDirection: 'row',

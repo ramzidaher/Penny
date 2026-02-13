@@ -17,6 +17,11 @@ import BudgetCreationDialog from '../components/BudgetCreationDialog';
 import { formatCurrencySync } from '../utils/currency';
 import { getSettings } from '../services/settingsService';
 import { useDialog } from '../contexts/DialogContext';
+import {
+  findMatchesForTransaction,
+  applyMatch,
+  dismissMatch,
+} from '../services/debtReconciliationService';
 
 export default function TransactionDetailScreen() {
   const { colors } = useTheme();
@@ -34,6 +39,12 @@ export default function TransactionDetailScreen() {
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [showDebtDialog, setShowDebtDialog] = useState(false);
   const [showBudgetDialog, setShowBudgetDialog] = useState(false);
+  const [suggestedDebtMatch, setSuggestedDebtMatch] = useState<{
+    transactionId: string;
+    debtId: string;
+    transaction: Transaction;
+    debt: Debt;
+  } | null>(null);
 
   const loadTransaction = useCallback(async () => {
     try {
@@ -72,12 +83,23 @@ export default function TransactionDetailScreen() {
         } else {
           setBudget(null);
         }
+        if (
+          foundTransaction.type === 'expense' &&
+          !foundTransaction.debtId &&
+          !foundTransaction.subscriptionId
+        ) {
+          const matches = await findMatchesForTransaction(foundTransaction, debts);
+          setSuggestedDebtMatch(matches.length === 1 ? matches[0] : null);
+        } else {
+          setSuggestedDebtMatch(null);
+        }
       } else {
         setTransaction(null);
         setAccount(null);
         setSubscription(null);
         setDebt(null);
         setBudget(null);
+        setSuggestedDebtMatch(null);
       }
       setCurrencyCode(settings.defaultCurrency);
     } catch (error) {
@@ -126,10 +148,10 @@ export default function TransactionDetailScreen() {
 
   const handleUntagDebt = async () => {
     if (!transaction) return;
-    
+    const debtIdToDismiss = transaction.debtId;
     await dialog.showDialog(
       'Untag Debt',
-      'Are you sure you want to remove the debt link from this transaction?',
+      'Are you sure you want to remove the debt link from this transaction? This payment will no longer count toward the debt.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -138,6 +160,9 @@ export default function TransactionDetailScreen() {
           onPress: async () => {
             try {
               await untagTransaction(transaction.id, 'debt');
+              if (debtIdToDismiss) {
+                await dismissMatch(transaction.id, debtIdToDismiss);
+              }
               await loadTransaction();
             } catch (error) {
               dialog.alert('Error', 'Failed to untag debt');
@@ -147,6 +172,28 @@ export default function TransactionDetailScreen() {
       ]
     );
   };
+
+  const handleApplyToDebt = useCallback(async () => {
+    if (!suggestedDebtMatch) return;
+    try {
+      await applyMatch(suggestedDebtMatch.transactionId, suggestedDebtMatch.debtId);
+      setSuggestedDebtMatch(null);
+      await loadTransaction();
+    } catch (error) {
+      dialog.alert('Error', 'Failed to apply payment to debt');
+    }
+  }, [suggestedDebtMatch, loadTransaction, dialog]);
+
+  const handleDismissDebtSuggestion = useCallback(async () => {
+    if (!suggestedDebtMatch) return;
+    try {
+      await dismissMatch(suggestedDebtMatch.transactionId, suggestedDebtMatch.debtId);
+      setSuggestedDebtMatch(null);
+      await loadTransaction();
+    } catch (error) {
+      dialog.alert('Error', 'Failed to dismiss suggestion');
+    }
+  }, [suggestedDebtMatch, loadTransaction, dialog]);
 
   const handleUntagBudget = async () => {
     if (!transaction) return;
@@ -357,6 +404,31 @@ export default function TransactionDetailScreen() {
               <View style={styles.detailItem}>
                 <Text style={styles.detailLabel}>Transaction ID</Text>
                 <Text style={styles.detailValueSmall}>{transaction.truelayerTransactionId}</Text>
+              </View>
+            </View>
+          )}
+
+          {/* Apply to debt suggestion - unlinked expense with one matching debt */}
+          {suggestedDebtMatch && (
+            <View style={styles.debtSuggestionBanner}>
+              <Text style={styles.debtSuggestionText}>
+                Apply this {formatCurrencySync(transaction.amount, currencyCode)} to your {suggestedDebtMatch.debt.name} debt?
+              </Text>
+              <View style={styles.debtSuggestionButtons}>
+                <TouchableOpacity
+                  style={styles.debtSuggestionApplyButton}
+                  onPress={handleApplyToDebt}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.debtSuggestionApplyText}>Apply</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.debtSuggestionDismissButton}
+                  onPress={handleDismissDebtSuggestion}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.debtSuggestionDismissText}>No, don't count toward debt</Text>
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -698,6 +770,43 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
+  },
+  debtSuggestionBanner: {
+    marginBottom: 20,
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  debtSuggestionText: {
+    ...typography.body,
+    color: colors.text,
+    marginBottom: 12,
+  },
+  debtSuggestionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+  },
+  debtSuggestionApplyButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  debtSuggestionApplyText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  debtSuggestionDismissButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  debtSuggestionDismissText: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   linkedItemHeader: {
     flexDirection: 'row',

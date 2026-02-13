@@ -1,9 +1,10 @@
 import { Stack, useRouter, useSegments, usePathname, useRootNavigationState } from 'expo-router';
-import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
+import { TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import { shouldBlockRendering } from '../../../src/services/oAuthFlowService';
 import { useTheme } from '../../../src/contexts/ThemeContext';
+import LoadingScreen from '../../../src/components/LoadingScreen';
 
 function CustomBackButton({ fromProfile }: { fromProfile?: boolean }) {
   const router = useRouter();
@@ -44,6 +45,7 @@ export default function FinanceLayout() {
   // Initialize canRender - start as false if OAuth might have been active
   // This ensures we wait after OAuth completes
   const [canRender, setCanRender] = useState(false);
+  const [splashDone, setSplashDone] = useState(false);
 
   // Monitor OAuth flow and router readiness
   useEffect(() => {
@@ -206,33 +208,23 @@ export default function FinanceLayout() {
   // Guard: Don't render Stack if router state isn't ready
   // This prevents the "Cannot read property 'filter' of undefined" error
   // CRITICAL: If OAuth flow is active OR navigation is transitioning, don't render
-  const shouldBlock = shouldBlockRendering();
   const rootRoutesLen = Array.isArray(rootState?.routes) ? rootState.routes.length : -1;
   const isRootNavReady = rootRoutesLen > 0;
-  const Loading = ({ message }: { message: string }) => (
-    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-      <ActivityIndicator color={colors.primary} />
-      <Text style={{ marginTop: 12, color: colors.textSecondary, fontSize: 14 }}>{message}</Text>
-    </View>
-  );
-  // Only show "Preparing/Finalizing" loaders BEFORE the finance Stack has ever mounted.
-  // After it has mounted once, unmounting/remounting during OAuth/transition is what triggers
-  // React Navigation's internal `state.routes` undefined crash on some devices.
-  if (!isRootNavReady && !hasMountedStackRef.current) {
-    return <Loading message="Preparing Finance…" />;
-  }
-  if (!canRender && !hasMountedStackRef.current) {
-    // Startup/initial routing only: still block until our layout has safely initialized.
-    return <Loading message="Loading…" />;
-  }
+  const layoutReady =
+    isRootNavReady &&
+    canRender &&
+    Array.isArray(segments) &&
+    !!router &&
+    !!pathname;
 
-  // NOTE: We intentionally keep the Stack mounted during OAuth/transition.
-  // Unmounting/remounting here can crash StackRouter on some devices.
-
-  // Check if segments is available, router is ready
-  if ((!Array.isArray(segments) || !router || !pathname) && !hasMountedStackRef.current) {
-    // Return null to prevent rendering until router is ready
-    return <Loading message="Loading…" />;
+  // Show Penny loading until layout is ready, then 3s and dismiss.
+  if (!layoutReady || !splashDone) {
+    return (
+      <LoadingScreen
+        readyToDismiss={layoutReady}
+        onFinish={() => setSplashDone(true)}
+      />
+    );
   }
 
   hasMountedStackRef.current = true;

@@ -98,18 +98,9 @@ export const cloudGetAccounts = async (): Promise<Account[]> => {
       createdAt: timestampToISO(doc.data().createdAt),
       updatedAt: timestampToISO(doc.data().updatedAt),
     })) as Account[];
-    
-    // Log all accounts retrieved from Firestore for debugging
-    console.log(`[cloudGetAccounts] Retrieved ${accounts.length} account(s) from Firestore`);
-    accounts.forEach(acc => {
-      if (acc.truelayerConnectionId) {
-        console.log(`[cloudGetAccounts] Account: ${acc.name} (ID: ${acc.id}, Connection: ${acc.truelayerConnectionId}, TL Account: ${acc.truelayerAccountId || 'none'})`);
-      }
-    });
-    
+
     return accounts;
   } catch (error) {
-    console.error('Error fetching accounts from cloud:', error);
     throw error;
   }
 };
@@ -410,12 +401,8 @@ export const cloudGetTransactions = async (): Promise<Transaction[]> => {
     let snapshot;
     try {
       snapshot = await getDocs(query(transactionsRef, orderBy('createdAt', 'desc')));
-      console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions with ordered query`);
-    } catch (queryError: unknown) {
-      const errorMessage = queryError instanceof Error ? queryError.message : 'Unknown query error';
-      console.warn('Error with ordered query, trying without order:', errorMessage);
+    } catch {
       snapshot = await getDocs(transactionsRef);
-      console.log(`[cloudGetTransactions] Fetched ${snapshot.docs.length} transactions without order`);
     }
     
     const transactions = snapshot.docs.map(doc => {
@@ -1693,13 +1680,18 @@ export const cloudGetSubscriptions = async (): Promise<Subscription[]> => {
     const subscriptionsRef = collection(db, `users/${userId}/subscriptions`);
     const snapshot = await getDocs(query(subscriptionsRef, orderBy('createdAt', 'desc')));
     
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      nextBillingDate: timestampToISO(doc.data().nextBillingDate),
-      createdAt: timestampToISO(doc.data().createdAt),
-      updatedAt: timestampToISO(doc.data().updatedAt),
-    })) as Subscription[];
+    return snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        nextBillingDate: timestampToISO(data.nextBillingDate),
+        createdAt: timestampToISO(data.createdAt),
+        updatedAt: timestampToISO(data.updatedAt),
+        label: data.label,
+        isDifferentService: data.isDifferentService,
+      } as Subscription;
+    });
   } catch (error) {
     console.error('Error fetching subscriptions from cloud:', error);
     throw error;

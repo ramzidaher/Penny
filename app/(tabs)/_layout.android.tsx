@@ -81,6 +81,7 @@ export default function TabLayout() {
   };
 
   const activeTab = getActiveTab();
+  const isReceiptSplit = pathname?.includes('receipt-split') ?? false;
 
   const contentBackground = isDark ? colors.dark.background : colors.background;
   const barBackground = 'transparent';
@@ -221,6 +222,7 @@ export default function TabLayout() {
       >
         <Slot />
       </View>
+      {!isReceiptSplit && (
       <View
         style={[
           styles.tabBarWrapper,
@@ -302,11 +304,12 @@ export default function TabLayout() {
                 ) : (
                   tabContent
                 )}
-              </TouchableOpacity>
-            );
-          })}
+            </TouchableOpacity>
+          );
+        })}
         </View>
       </View>
+      )}
     </View>
   );
 }

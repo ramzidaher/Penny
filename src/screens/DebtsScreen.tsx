@@ -17,6 +17,12 @@ import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
 import { formatCurrencySync } from '../utils/currency';
+import DebtPaymentMatcher from '../components/DebtPaymentMatcher';
+import {
+  findPendingDebtMatches,
+  applyMatch,
+  dismissMatch,
+} from '../services/debtReconciliationService';
 
 export default function DebtsScreen() {
   const { colors } = useTheme();
@@ -30,6 +36,9 @@ export default function DebtsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [pendingMatches, setPendingMatches] = useState<
+    Awaited<ReturnType<typeof findPendingDebtMatches>>
+  >([]);
   const scrollRef = useRef<ScreenWrapperRef>(null);
   const hasLoadedRef = useRef(false);
 
@@ -49,6 +58,8 @@ export default function DebtsScreen() {
       setTransactions(trans);
       setCurrencyCode(settings.defaultCurrency);
       hasLoadedRef.current = true;
+      const matches = await findPendingDebtMatches(trans, debtsData);
+      setPendingMatches(matches);
     } catch (error) {
       console.error('Error loading debts:', error);
     } finally {
@@ -107,6 +118,28 @@ export default function DebtsScreen() {
     setExpandedDebtId(expandedDebtId === debtId ? null : debtId);
   };
 
+  const handleApplyMatch = useCallback(
+    async (transactionId: string, debtId: string) => {
+      await applyMatch(transactionId, debtId);
+      await loadDebts({ showLoading: false });
+    },
+    [loadDebts]
+  );
+
+  const handleDismissMatch = useCallback(
+    async (transactionId: string, debtId?: string) => {
+      await dismissMatch(transactionId, debtId);
+      setPendingMatches((prev) =>
+        prev.filter(
+          (m) =>
+            m.transactionId !== transactionId ||
+            (debtId != null && m.debtId !== debtId)
+        )
+      );
+    },
+    []
+  );
+
   const activeDebts = debts.filter((d) => d.status === 'active');
   const totalRemaining = activeDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
   const upcomingDebts = debts
@@ -161,6 +194,20 @@ export default function DebtsScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Pending debt payment matches */}
+        <DebtPaymentMatcher
+          pendingMatches={pendingMatches}
+          currencyCode={currencyCode}
+          onApply={handleApplyMatch}
+          onDismiss={handleDismissMatch}
+          onNavigateToTransaction={(id) =>
+            router.push({
+              pathname: '/(tabs)/finance/transaction-detail' as any,
+              params: { id },
+            })
+          }
+        />
 
         {/* Upcoming This Week */}
         {upcomingDebts.length > 0 && (
@@ -342,9 +389,16 @@ export default function DebtsScreen() {
                               <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
                             </TouchableOpacity>
                           </View>
+                          <Text style={styles.debtRemainingLabel}>Remaining</Text>
                           <Text style={styles.debtAmount}>
                             {formatCurrencySync(debt.remainingAmount, currencyCode)}
                           </Text>
+                          {debtTransactions.length > 0 && (
+                            <Text style={styles.debtLastPayment}>
+                              Last payment: {formatCurrencySync(debtTransactions[0].amount, currencyCode)} on{' '}
+                              {format(new Date(debtTransactions[0].date), 'MMM d')}
+                            </Text>
+                          )}
                           <Text style={[styles.debtDate, isOverdue && styles.debtDateOverdue]}>
                             Due: {format(new Date(debt.dueDate), 'MMM dd, yyyy')}
                           </Text>
@@ -636,10 +690,20 @@ const createStyles = (colors: any) =>
       gap: 10,
       marginBottom: 2,
     },
+    debtRemainingLabel: {
+      fontSize: 11,
+      color: colors.textSecondary,
+      marginBottom: 2,
+    },
     debtAmount: {
       fontSize: 16,
       fontWeight: '700',
       color: colors.text,
+      marginBottom: 2,
+    },
+    debtLastPayment: {
+      fontSize: 11,
+      color: colors.textSecondary,
       marginBottom: 2,
     },
     debtDate: {

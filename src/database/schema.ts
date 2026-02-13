@@ -67,6 +67,10 @@ export interface Subscription {
   accountId: string;
   createdAt: string;
   updatedAt: string;
+  /** User-facing label to differentiate same merchant (e.g. "Uber One", "Uber Eats") */
+  label?: string;
+  /** When true, exclude from duplicate grouping (user confirmed "different services") */
+  isDifferentService?: boolean;
 }
 
 export interface Debt {

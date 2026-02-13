@@ -137,6 +137,7 @@ export default function SwipeableTransactionCard({
       rightThreshold={100}
       leftThreshold={100}
       friction={2}
+      containerStyle={styles.swipeableContainer}
     >
       <TouchableOpacity 
           style={styles.transactionCard}
@@ -232,6 +233,10 @@ export default function SwipeableTransactionCard({
 
 const createStyles = (colors: { surface: string; border: string; text: string; textSecondary: string; textLight: string; primary: string; background: string; error: string; successGreen?: string }) =>
   StyleSheet.create({
+  swipeableContainer: {
+    backgroundColor: colors.surface,
+    overflow: 'visible' as const,
+  },
   transactionCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -240,6 +245,7 @@ const createStyles = (colors: { surface: string; border: string; text: string; t
     padding: 20,
     borderRadius: 20,
     marginBottom: 12,
+    minHeight: 80,
     borderWidth: 1,
     borderColor: colors.border,
   },

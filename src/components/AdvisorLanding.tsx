@@ -259,8 +259,8 @@ const createStyles = (c: {
       color: c.text,
       fontWeight: '800',
       paddingHorizontal: 20,
-      marginTop: 16,
-      marginBottom: 10,
+      marginTop: 12,
+      marginBottom: 6,
     },
     searchCta: {
       marginHorizontal: 20,

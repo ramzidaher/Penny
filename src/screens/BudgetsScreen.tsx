@@ -10,9 +10,9 @@ import { Budget, Transaction } from '../database/schema';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import { SkeletonList } from '../components/SkeletonLoader';
-import ScreenHeader from '../components/ScreenHeader';
 import { waitForFirebase } from '../services/firebase';
 import { getSettings } from '../services/settingsService';
+import { getNotificationPermissionStatus, requestPermissions } from '../services/notifications';
 import { formatCurrencySync } from '../utils/currency';
 import { format } from 'date-fns';
 
@@ -28,6 +28,9 @@ export default function BudgetsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currencyCode, setCurrencyCode] = useState<string>('USD');
+  const [notificationStatus, setNotificationStatus] = useState<'granted' | 'denied' | 'undetermined' | null>(null);
+  const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
+  const [notificationEnabling, setNotificationEnabling] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const loadBudgets = async (showLoading = true) => {
@@ -60,6 +63,26 @@ export default function BudgetsScreen() {
       return () => clearTimeout(timer);
     }, [])
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getNotificationPermissionStatus().then((status) => {
+        if (!cancelled) setNotificationStatus(status);
+      });
+      return () => { cancelled = true; };
+    }, [])
+  );
+
+  const handleEnableNotifications = async () => {
+    setNotificationEnabling(true);
+    try {
+      const granted = await requestPermissions();
+      setNotificationStatus(granted ? 'granted' : 'denied');
+    } finally {
+      setNotificationEnabling(false);
+    }
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -103,13 +126,47 @@ export default function BudgetsScreen() {
     );
   }
 
+  const showNotificationPrompt = notificationStatus === 'undetermined' && !notificationPromptDismissed;
+
+  const renderListHeader = () => {
+    if (!showNotificationPrompt) return null;
+    return (
+      <View style={styles.notificationPromptCard}>
+        <View style={styles.notificationPromptHeader}>
+          <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+          <Text style={styles.notificationPromptTitle}>Get budget and low balance alerts</Text>
+        </View>
+        <Text style={styles.notificationPromptDescription}>
+          We'll notify you when you're over budget or when an account balance is low.
+        </Text>
+        <View style={styles.notificationPromptActions}>
+          <TouchableOpacity
+            style={styles.notificationPromptDismiss}
+            onPress={() => setNotificationPromptDismissed(true)}
+          >
+            <Text style={styles.notificationPromptDismissText}>Not now</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.notificationPromptEnable}
+            onPress={handleEnableNotifications}
+            disabled={notificationEnabling}
+          >
+            <Text style={styles.notificationPromptEnableText}>
+              {notificationEnabling ? 'Enabling…' : 'Enable'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
-      <ScreenHeader title="Budgets" />
       <FlatList
         data={budgets}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>No budgets yet</Text>
@@ -230,6 +287,56 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   listContent: {
     padding: 20,
+  },
+  notificationPromptCard: {
+    backgroundColor: colors.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  notificationPromptHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  notificationPromptTitle: {
+    ...typography.h3,
+    color: colors.text,
+    fontSize: 16,
+  },
+  notificationPromptDescription: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    marginBottom: 14,
+    lineHeight: 20,
+  },
+  notificationPromptActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  notificationPromptDismiss: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  notificationPromptDismissText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  notificationPromptEnable: {
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+  },
+  notificationPromptEnableText: {
+    ...typography.body,
+    color: colors.background,
+    fontWeight: '600',
   },
   budgetCard: {
     backgroundColor: colors.surface,
