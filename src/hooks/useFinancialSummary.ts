@@ -70,7 +70,19 @@ export function useFinancialSummary(
               { netWorth: summary.netWorth, totalAssets: summary.totalAssets, totalDebts: summary.totalDebts }
             );
           }
-          if (lastSummaryRef && (lastSummaryRef.netWorth !== summary.netWorth || lastSummaryRef.totalAssets !== summary.totalAssets || lastSummaryRef.totalDebts !== summary.totalDebts)) {
+          const mismatch =
+            lastSummaryRef &&
+            (lastSummaryRef.netWorth !== summary.netWorth ||
+              lastSummaryRef.totalAssets !== summary.totalAssets ||
+              lastSummaryRef.totalDebts !== summary.totalDebts);
+          const currentIsEmpty =
+            summary.netWorth === 0 && summary.totalAssets === 0 && summary.totalDebts === 0;
+          const previousIsEmpty =
+            lastSummaryRef &&
+            lastSummaryRef.netWorth === 0 &&
+            lastSummaryRef.totalAssets === 0 &&
+            lastSummaryRef.totalDebts === 0;
+          if (mismatch && !currentIsEmpty && !previousIsEmpty) {
             console.error('[useFinancialSummary] Balance mismatch across screens', {
               previous: lastSummaryRef,
               current: { netWorth: summary.netWorth, totalAssets: summary.totalAssets, totalDebts: summary.totalDebts },

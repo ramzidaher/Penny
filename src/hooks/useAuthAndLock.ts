@@ -10,14 +10,18 @@ import {
   logoutUser,
   refreshAccountDeletionStatus,
 } from '../services/firebase';
-import { initDatabase } from '../database/db';
+import { initDatabase, invalidateCaches } from '../database/db';
+import { clearSettingsCache } from '../services/settingsService';
 import { initializeNotifications } from '../services/notifications';
 import { isPINSetupRequired } from '../services/pinEnforcement';
 import { getOAuthFlowActive } from '../services/oAuthFlowService';
+import { getTransientUIActive, setTransientUIActive } from '../services/transientUIActiveService';
 import { initPurchases } from '../services/subscriptionService';
 import type { User } from 'firebase/auth';
 
-const PIN_CHECK_TIMEOUT_MS = 8000;
+const PIN_CHECK_TIMEOUT_MS = 12000;
+const PIN_CHECK_RETRY_DELAY_MS = 2000;
+const PIN_CHECK_MAX_RETRIES = 2;
 
 export interface UseAuthAndLockResult {
   user: User | null;
@@ -28,6 +32,8 @@ export interface UseAuthAndLockResult {
   lockStateDetermined: boolean;
   handleUnlock: () => void;
   refreshPinState: () => Promise<void>;
+  /** Call after setting PIN (e.g. in onboarding) so lock screen shows immediately without waiting for Firestore. */
+  reportPinJustSet: () => void;
 }
 
 export function useAuthAndLock(): UseAuthAndLockResult {
@@ -42,6 +48,9 @@ export function useAuthAndLock(): UseAuthAndLockResult {
   const appWentToBackgroundRef = useRef(false);
   const hasCheckedInitialLock = useRef(false);
   const authStateChangedFired = useRef(false);
+  /** Timestamp of last unlock; used to avoid re-locking when Face ID dialog briefly sends app to inactive. */
+  const justUnlockedAtRef = useRef<number>(0);
+  const JUST_UNLOCKED_GRACE_MS = 2500;
 
   // Auth subscription and initialization
   useEffect(() => {
@@ -67,6 +76,12 @@ export function useAuthAndLock(): UseAuthAndLockResult {
           setIsAuthReady(true);
 
           if (user) {
+            // Reset lock state so we don't use stale values from a previous user/session.
+            // Without this, nav can run with isAppLocked=false and send user to tabs before PIN check completes.
+            setLockStateDetermined(false);
+            setIsAppLocked(true);
+            setIsPinSet(false);
+
             const deletionStatus = await refreshAccountDeletionStatus();
             if (deletionStatus.status !== 'active') {
               await logoutUser();
@@ -76,19 +91,46 @@ export function useAuthAndLock(): UseAuthAndLockResult {
               console.warn('[useAuthAndLock] RevenueCat init failed:', error);
             });
 
-            // Ensure Firestore is ready before reading PIN (avoids false "no PIN" on new device / cold start)
-            await initDatabase();
+            // Run PIN check in parallel with initDatabase so we don't burn time; PIN is in Firestore, not local DB.
+            type PinCheckResult = { requiresSetup: boolean; timedOut: boolean };
+            const runPinCheckOnce = (): Promise<PinCheckResult> =>
+              Promise.race([
+                isPINSetupRequired().then((requiresSetup) => ({ requiresSetup, timedOut: false })),
+                new Promise<PinCheckResult>((resolve) =>
+                  setTimeout(
+                    () => resolve({ requiresSetup: true, timedOut: true }),
+                    PIN_CHECK_TIMEOUT_MS
+                  )
+                ),
+              ]);
 
-            const pinCheckWithTimeout = Promise.race([
-              isPINSetupRequired(),
-              new Promise<boolean>((resolve) =>
-                setTimeout(() => {
-                  console.warn('[useAuthAndLock] PIN check timed out, requiring PIN setup');
-                  resolve(true);
-                }, PIN_CHECK_TIMEOUT_MS)
-              ),
+            const runPinCheckWithRetries = async (attempt: number): Promise<boolean> => {
+              const result = await runPinCheckOnce();
+              if (!result.timedOut && !result.requiresSetup) return false;
+              if (!result.timedOut && result.requiresSetup && attempt > 0) return true;
+              if (result.timedOut && attempt >= PIN_CHECK_MAX_RETRIES) {
+                console.warn('[useAuthAndLock] PIN check timed out after retries, requiring PIN setup');
+                return true;
+              }
+              const shouldRetry =
+                result.timedOut ||
+                (result.requiresSetup && attempt === 0);
+              if (shouldRetry) {
+                if (result.timedOut) console.warn('[useAuthAndLock] PIN check timed out, retrying...');
+                else console.warn('[useAuthAndLock] PIN not found (e.g. just set in onboarding), retrying...');
+                await new Promise((r) => setTimeout(r, PIN_CHECK_RETRY_DELAY_MS));
+                return runPinCheckWithRetries(attempt + 1);
+              }
+              return result.requiresSetup;
+            };
+
+            const [_, requiresPIN] = await Promise.all([
+              initDatabase(),
+              runPinCheckWithRetries(0),
             ]);
-            const requiresPIN = await pinCheckWithTimeout;
+            // Invalidate caches so new device gets fresh theme, accounts, and net worth from cloud
+            invalidateCaches();
+            clearSettingsCache();
             const pinIsSet = !requiresPIN;
             setIsPinSet(pinIsSet);
 
@@ -188,28 +230,34 @@ export function useAuthAndLock(): UseAuthAndLockResult {
     };
   }, []);
 
-  // App state changes for lock on background/foreground
+  // App state changes: lock only when user fully leaves the app (background), not on inactive (e.g. notification center)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       const previousState = appState.current;
 
-      if (previousState === 'active' && nextAppState.match(/inactive|background/)) {
+      // Lock only when going to background (app fully left), not when going to inactive (notification/control center)
+      if (previousState === 'active' && nextAppState === 'background') {
         const isOAuthFlow = getOAuthFlowActive();
-        if (user && isAuthReady && !isOAuthFlow) {
+        const isTransientUI = getTransientUIActive();
+        if (user && isAuthReady && !isOAuthFlow && !isTransientUI) {
           appWentToBackgroundRef.current = true;
           setIsAppLocked(true);
         }
       }
 
+      // Show lock when returning from background (user had fully left the app)
       if (
-        previousState.match(/inactive|background/) &&
+        previousState === 'background' &&
         nextAppState === 'active' &&
         user &&
         isAuthReady
       ) {
         const isOAuthFlow = getOAuthFlowActive();
-        // Show lock when returning from background if user has PIN (don't rely on appWentToBackgroundRef in case auth state cleared it)
-        if (isPinSet && !isOAuthFlow) {
+        const isTransientUI = getTransientUIActive();
+        if (isTransientUI) setTransientUIActive(false);
+        const justUnlocked = Date.now() - justUnlockedAtRef.current < JUST_UNLOCKED_GRACE_MS;
+        if (justUnlocked) justUnlockedAtRef.current = 0;
+        if (isPinSet && !isOAuthFlow && !isTransientUI && !justUnlocked) {
           setIsAppLocked(true);
         }
       }
@@ -221,6 +269,7 @@ export function useAuthAndLock(): UseAuthAndLockResult {
   }, [user, isAuthReady, isPinSet]);
 
   const handleUnlock = useCallback(() => {
+    justUnlockedAtRef.current = Date.now();
     setIsAppLocked(false);
     appWentToBackgroundRef.current = false;
     hasCheckedInitialLock.current = true;
@@ -241,6 +290,14 @@ export function useAuthAndLock(): UseAuthAndLockResult {
     }
   }, []);
 
+  const reportPinJustSet = useCallback(() => {
+    setIsPinSet(true);
+    setIsAppLocked(true);
+    hasCheckedInitialLock.current = true;
+    setLockStateDetermined(true);
+    setIsInitializing(false);
+  }, []);
+
   return {
     user,
     isAuthReady,
@@ -250,5 +307,6 @@ export function useAuthAndLock(): UseAuthAndLockResult {
     lockStateDetermined,
     handleUnlock,
     refreshPinState,
+    reportPinJustSet,
   };
 }

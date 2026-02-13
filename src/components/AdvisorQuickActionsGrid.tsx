@@ -34,7 +34,7 @@ export default function AdvisorQuickActionsGrid({ actions, disabled, onSelect }:
           onPress={() => onSelect(a.prompt)}
         >
           <View style={styles.iconCircle}>
-            <Ionicons name={a.icon} size={18} color={c.primary} />
+            <Ionicons name={a.icon} size={16} color={c.primary} />
           </View>
           <Text style={styles.title} numberOfLines={1}>
             {a.title}
@@ -60,37 +60,38 @@ const createStyles = (c: {
       paddingHorizontal: 20,
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
+      gap: 8,
     },
     card: {
       width: '48%',
       backgroundColor: c.surface,
       borderWidth: 1,
       borderColor: c.border,
-      borderRadius: 18,
-      padding: 14,
-      minHeight: 112,
+      borderRadius: 14,
+      padding: 10,
+      minHeight: 0,
     },
     iconCircle: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 28,
+      height: 28,
+      borderRadius: 14,
       backgroundColor: c.primary + '10',
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 10,
+      marginBottom: 6,
     },
     title: {
       ...typography.body,
       color: c.text,
       fontWeight: '800',
       fontSize: 14,
-      marginBottom: 4,
+      marginBottom: 2,
     },
     subtitle: {
       ...typography.bodySmall,
       color: c.textSecondary,
-      lineHeight: 18,
+      lineHeight: 16,
+      fontSize: 12,
     },
   });
 

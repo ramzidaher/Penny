@@ -37,6 +37,7 @@ import SettingsSection from '../components/SettingsSection';
 import SettingsCard from '../components/SettingsCard';
 import SettingsRow from '../components/SettingsRow';
 import ProfileSettingsHeader from '../components/ProfileSettingsHeader';
+import LoadingScreen from '../components/LoadingScreen';
 
 const currencies = [
   { code: 'USD', symbol: '$', name: 'US Dollar' },
@@ -75,6 +76,7 @@ export default function SettingsScreen() {
   const [showAccentModal, setShowAccentModal] = useState(false);
   const [accentHexInput, setAccentHexInput] = useState('');
   const [seedingDemo, setSeedingDemo] = useState(false);
+  const [showLoadingPreview, setShowLoadingPreview] = useState(false);
   const [accountDeletionStatus, setAccountDeletionStatus] = useState<AccountDeletionStatus>(
     getAccountDeletionStatus()
   );
@@ -845,6 +847,19 @@ export default function SettingsScreen() {
                     {seedingDemo ? 'Seeding...' : 'Seed demo data'}
                   </Text>
                 </TouchableOpacity>
+                <View style={styles.settingInfo}>
+                  <Text style={styles.settingLabel}>Preview loading animation</Text>
+                  <Text style={styles.settingDescription}>
+                    See how the app loading screen looks.
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.testButton}
+                  onPress={() => setShowLoadingPreview(true)}
+                >
+                  <Ionicons name="play-outline" size={20} color={colors.background} />
+                  <Text style={styles.testButtonText}>Preview loading animation</Text>
+                </TouchableOpacity>
               </>
             )}
           </SettingsCard>
@@ -1049,6 +1064,9 @@ export default function SettingsScreen() {
         </KeyboardAvoidingView>
       </Modal>
       </ScrollView>
+      {showLoadingPreview && (
+        <LoadingScreen onFinish={() => setShowLoadingPreview(false)} />
+      )}
     </View>
   );
 }

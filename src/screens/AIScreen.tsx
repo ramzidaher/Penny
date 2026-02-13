@@ -1,10 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { View, Text, StyleSheet, Alert, Keyboard, Platform } from 'react-native';
+import { View, Text, StyleSheet, Alert, Keyboard, Platform, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { askAI } from '../services/aiService';
+import { parseReceiptFromImage, isReceiptParsingConfigured, expandItemsByQuantity } from '../services/receiptParseService';
+import { setTransientUIActive } from '../services/transientUIActiveService';
+import type { ParsedReceipt } from '../types/receipt';
 import ScreenHeader from '../components/ScreenHeader';
 import ScreenWrapper, { ScreenWrapperRef } from '../components/ScreenWrapper';
 import { useTheme } from '../contexts/ThemeContext';
@@ -45,6 +49,9 @@ import {
 } from '../services/memoryService';
 import { getSettings } from '../services/settingsService';
 import { useAuthAndLock } from '../hooks/useAuthAndLock';
+import ReceiptSplitFlow from '../components/ReceiptSplitFlow';
+import { TEST_RECEIPT_ITEMS, TEST_RECEIPT_CURRENCY } from '../data/testReceipt';
+import { getCurrencySymbol } from '../utils/currency';
 
 export default function AIScreen() {
   const { user } = useAuthAndLock();
@@ -53,7 +60,7 @@ export default function AIScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const router = useRouter();
-  const params = useLocalSearchParams<{ prompt?: string; openThreads?: string }>();
+  const params = useLocalSearchParams<{ prompt?: string; openThreads?: string; mode?: string }>();
   const [question, setQuestion] = useState('');
   const [messages, setMessages] = useState<AdvisorChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -73,6 +80,12 @@ export default function AIScreen() {
   const requestGenerationRef = useRef(0);
   const lastAutoPromptRef = useRef<string | null>(null);
   const openThreadsHandledRef = useRef(false);
+  const receiptSplitInitializedRef = useRef(false);
+  const [splitMode, setSplitMode] = useState<'off' | 'active'>('off');
+  const [parsedReceipt, setParsedReceipt] = useState<ParsedReceipt | null>(null);
+  const [receiptParseLoading, setReceiptParseLoading] = useState(false);
+
+  const receiptSplitIntent = params.mode === 'receipt_split';
 
   const resetToLanding = useCallback(() => {
     requestGenerationRef.current += 1;
@@ -87,8 +100,9 @@ export default function AIScreen() {
     router.replace('/(tabs)/ai' as any);
   }, []);
 
-  // If navigated to /(tabs)/ai/chat with a prompt param, auto-send once.
+  // If navigated to /(tabs)/ai/chat with a prompt param, auto-send once (skip when in receipt-split mode).
   useEffect(() => {
+    if (params.mode === 'receipt_split') return;
     const p = typeof params.prompt === 'string' ? params.prompt : '';
     if (!p) return;
     if (lastAutoPromptRef.current === p) return;
@@ -96,7 +110,20 @@ export default function AIScreen() {
     // Fire and forget; sendQuestion manages UI state.
     sendQuestion(p, { clearComposer: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.prompt]);
+  }, [params.prompt, params.mode]);
+
+  // When navigated with mode=receipt_split, show chat with upload prompt (no askAI call).
+  useEffect(() => {
+    if (!receiptSplitIntent || receiptSplitInitializedRef.current) return;
+    receiptSplitInitializedRef.current = true;
+    setHasStartedChat(true);
+    setMessages([
+      {
+        role: 'assistant',
+        content: "I heard you're splitting the bill hopefully you aren't splitting with a girl! But fine, show me the receipt.",
+      },
+    ]);
+  }, [receiptSplitIntent]);
 
   // Load threads only when user is logged in (avoids Firebase errors after sign out)
   useEffect(() => {
@@ -141,15 +168,15 @@ export default function AIScreen() {
     })();
   }, [user]);
 
-  // Load messages when thread changes
+  // Load messages when thread changes (don't clear when in receipt-split intent — that flow sets its own initial message)
   useEffect(() => {
     if (currentThreadId) {
       setHasStartedChat(true);
       loadThread(currentThreadId);
-    } else {
+    } else if (!receiptSplitIntent) {
       setMessages([]);
     }
-  }, [currentThreadId]);
+  }, [currentThreadId, receiptSplitIntent]);
 
   const loadThreads = async () => {
     try {
@@ -402,6 +429,118 @@ export default function AIScreen() {
     await sendQuestion(question, { clearComposer: true });
   };
 
+  const formatReceiptSummary = useCallback((receipt: ParsedReceipt): string => {
+    const sym = getCurrencySymbol(receipt.currency);
+    const parts: string[] = [];
+    if (receipt.merchant) parts.push(`**${receipt.merchant}**`);
+    parts.push(`Total: ${sym}${receipt.total.toFixed(2)} (${receipt.currency})`);
+    parts.push('');
+    receipt.items.forEach((item) => {
+      const qty = item.quantity ?? 1;
+      const qtyLabel = qty > 1 ? ` x${qty}` : '';
+      parts.push(`• ${item.description}${qtyLabel} – ${sym}${item.amount.toFixed(2)}`);
+    });
+    return parts.join('\n');
+  }, []);
+
+  const pickReceiptImage = useCallback(async (useCamera: boolean) => {
+    let ImagePicker: typeof import('expo-image-picker');
+    try {
+      ImagePicker = await import('expo-image-picker');
+    } catch (e) {
+      console.warn('[AIScreen] expo-image-picker not available:', e);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: "Photo picker isn't available on this device. Try rebuilding the app (e.g. npx expo run:android)." },
+      ]);
+      return;
+    }
+    if (useCamera) {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Camera access', 'Please allow camera access to take a photo of your receipt.');
+        return;
+      }
+    } else {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Photo library access', 'Please allow photo library access to choose a receipt image.');
+        return;
+      }
+    }
+    setTransientUIActive(true);
+    try {
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8, base64: true })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: false, quality: 0.8, base64: true });
+      if (result.canceled || !result.assets?.[0]) {
+        setTransientUIActive(false);
+        return;
+      }
+      const asset = result.assets[0];
+      const base64 = asset.base64;
+      if (!base64) {
+        setMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: "Could not read image. Try another photo." },
+        ]);
+        setTransientUIActive(false);
+        return;
+      }
+      setReceiptParseLoading(true);
+      const mimeType = asset.uri?.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      let parsed;
+      try {
+        parsed = await parseReceiptFromImage(base64, mimeType);
+      } catch (parseErr: unknown) {
+        const code = (parseErr as { code?: string })?.code;
+        if (code === 'RATE_LIMIT') {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: "Too many requests right now. Please wait a minute and try again.",
+            },
+          ]);
+          return;
+        }
+        throw parseErr;
+      }
+      if (!parsed) {
+        const noKey = !isReceiptParsingConfigured();
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: noKey
+              ? "Receipt parsing isn't configured. Add EXPO_PUBLIC_GEMINI_API_KEY to your .env file and restart the app. You can get a free API key from Google AI Studio (https://aistudio.google.com/app/apikey)."
+              : "Could not read the receipt from this image. Try a clearer photo with the full receipt visible.",
+          },
+        ]);
+        return;
+      }
+      setParsedReceipt(parsed);
+      const summary = formatReceiptSummary(parsed);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: `Here’s what I found:\n\n${summary}\n\nTap **Start splitting** below to split this bill.` },
+      ]);
+    } catch (err) {
+      console.warn('[AIScreen] Receipt upload error:', err);
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Something went wrong. Please try again.' },
+      ]);
+    } finally {
+      setReceiptParseLoading(false);
+      setTransientUIActive(false);
+    }
+  }, [formatReceiptSummary]);
+
+  const handleStartSplitting = useCallback(() => {
+    setSplitMode('active');
+  }, []);
+
   const handleQuickQuestion = async (quickQuestion: string) => {
     await sendQuestion(quickQuestion, { clearComposer: true });
   };
@@ -610,26 +749,37 @@ export default function AIScreen() {
     };
   }, [showChatUI]);
 
+  const showSplitFlow = splitMode === 'active';
+
   return (
     <View style={styles.container}>
         <ScreenHeader
-          title="Penny Advisor"
-          subtitle={currentThread?.title || 'Your money plan at a glance'}
+          title={showSplitFlow ? '' : 'Penny Advisor'}
+          subtitle={
+            showSplitFlow ? undefined : (currentThread?.title || 'Your money plan at a glance')
+          }
+          size={showSplitFlow ? 'compact' : 'default'}
           titleFontFamily="GulfsDisplay-Normal"
           titleLetterSpacing={0.5}
           rightAction={{
-            icon: 'chatbubbles',
-            onPress: () => setShowThreadsModal(true),
+            icon: showSplitFlow ? 'close' : 'chatbubbles',
+            onPress: showSplitFlow ? () => setSplitMode('off') : () => setShowThreadsModal(true),
           }}
         />
-        <View style={styles.scrollArea}>
+        <View style={[styles.scrollArea, showSplitFlow && { paddingBottom: insets.bottom + tabBarOverlayOffset }]}>
+          {showSplitFlow ? (
+            <ReceiptSplitFlow
+              items={parsedReceipt ? expandItemsByQuantity(parsedReceipt.items) : TEST_RECEIPT_ITEMS}
+              currency={parsedReceipt?.currency ?? TEST_RECEIPT_CURRENCY}
+              onClose={() => setSplitMode('off')}
+            />
+          ) : (
           <ScreenWrapper
             ref={screenWrapperRef}
             enableKeyboardAvoiding={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               ...styles.scrollContent,
-              // Reserve space for composer + tab bar. When keyboard is open, add keyboard height so user can scroll to see all messages above the input.
               paddingBottom: insets.bottom + tabBarOverlayOffset + composerReserve + keyboardHeight,
             }}
             showsVerticalScrollIndicator={false}
@@ -644,15 +794,42 @@ export default function AIScreen() {
         )}
 
         {showChatUI ? (
-          <AdvisorMessageList
-            messages={messages}
-            loading={loading}
-            onRetryLastError={
-              lastFailedQuestion
-                ? () => sendQuestion(lastFailedQuestion, { isRetry: true })
-                : undefined
-            }
-          />
+          <>
+            <AdvisorMessageList
+              messages={messages}
+              loading={loading}
+              onRetryLastError={
+                lastFailedQuestion
+                  ? () => sendQuestion(lastFailedQuestion, { isRetry: true })
+                  : undefined
+              }
+            />
+            {receiptSplitIntent && receiptParseLoading && (
+              <View style={styles.receiptParseRow}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.receiptParseText}>Reading receipt…</Text>
+              </View>
+            )}
+            {receiptSplitIntent && !parsedReceipt && !receiptParseLoading && (
+              <TouchableOpacity
+                style={styles.takePhotoButton}
+                onPress={() => pickReceiptImage(false)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="images-outline" size={18} color={colors.background} />
+                <Text style={styles.takePhotoButtonText}>Choose from library</Text>
+              </TouchableOpacity>
+            )}
+            {receiptSplitIntent && parsedReceipt && (
+              <TouchableOpacity
+                style={styles.startSplittingButton}
+                onPress={handleStartSplitting}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.startSplittingButtonText}>Start splitting</Text>
+              </TouchableOpacity>
+            )}
+          </>
         ) : (
           <AdvisorLanding
             disabled={loading}
@@ -671,11 +848,21 @@ export default function AIScreen() {
             onCompleteMission={handleCompleteMission}
           />
         )}
-        {/* Keep the legacy quick-questions state for now; landing content is shown when messages are empty */}
           </ScreenWrapper>
+          )}
         </View>
 
+        {!showSplitFlow && (
         <View pointerEvents="box-none" style={[styles.composerOverlay, { bottom: keyboardHeight }]}>
+          {showChatUI && !loading && !receiptSplitIntent && (
+            <TouchableOpacity
+              style={styles.splitChip}
+              onPress={() => setSplitMode('active')}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.splitChipText}>Split receipt</Text>
+            </TouchableOpacity>
+          )}
           <AdvisorChatComposer
             value={question}
             onChangeText={setQuestion}
@@ -688,6 +875,7 @@ export default function AIScreen() {
             focusRequestId={composerFocusRequestId}
           />
         </View>
+        )}
 
         <AdvisorThreadsModal
           visible={showThreadsModal}
@@ -720,5 +908,65 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 100,
+  },
+  splitChip: {
+    alignSelf: 'flex-start',
+    marginHorizontal: 20,
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  splitChipText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  receiptParseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  receiptParseText: {
+    fontSize: 14,
+    color: colors.textSecondary,
+  },
+  takePhotoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    backgroundColor: colors.primary,
+    borderRadius: 9999,
+  },
+  takePhotoButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  startSplittingButton: {
+    alignSelf: 'flex-start',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+  },
+  startSplittingButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.background,
   },
 });

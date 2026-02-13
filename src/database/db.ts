@@ -5,6 +5,28 @@ import * as cloudDb from '../services/cloudDb';
 // Cloud-only database implementation
 // All data is stored in Firebase Firestore
 
+const CACHE_TTL_MS = 45 * 1000; // 45 seconds
+
+let accountsCache: { data: Account[]; ts: number } | null = null;
+let accountsInFlight: Promise<Account[]> | null = null;
+let transactionsCache: { data: Transaction[]; ts: number } | null = null;
+let transactionsInFlight: Promise<Transaction[]> | null = null;
+
+function invalidateAccountsCache(): void {
+  accountsCache = null;
+}
+function invalidateTransactionsCache(): void {
+  transactionsCache = null;
+}
+
+/** Clear all in-memory caches and in-flight requests. Call after login so new device gets fresh data. */
+export const invalidateCaches = (): void => {
+  accountsCache = null;
+  accountsInFlight = null;
+  transactionsCache = null;
+  transactionsInFlight = null;
+};
+
 export const initDatabase = async (): Promise<void> => {
   // Verify Firebase is available
   if (!isFirebaseAvailable()) {
@@ -18,18 +40,28 @@ export const getAccounts = async (): Promise<Account[]> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
-  const accounts = await cloudDb.cloudGetAccounts();
-
-  // IMPORTANT (performance): do NOT block core app screens on TrueLayer API balance fetches.
-  // The `cloudGetAccounts()` balances are good enough for initial render; live balances can be
-  // refreshed explicitly from the Accounts screen (pull-to-refresh / manual refresh).
-  return accounts;
+  const now = Date.now();
+  if (accountsCache && now - accountsCache.ts < CACHE_TTL_MS) {
+    return accountsCache.data;
+  }
+  if (accountsInFlight) {
+    return accountsInFlight;
+  }
+  accountsInFlight = cloudDb.cloudGetAccounts();
+  try {
+    const accounts = await accountsInFlight;
+    accountsCache = { data: accounts, ts: Date.now() };
+    return accounts;
+  } finally {
+    accountsInFlight = null;
+  }
 };
 
 export const addAccount = async (account: Omit<Account, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateAccountsCache();
   return await cloudDb.cloudAddAccount(account);
 };
 
@@ -37,6 +69,7 @@ export const updateAccount = async (id: string, updates: Partial<Account>): Prom
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateAccountsCache();
   return await cloudDb.cloudUpdateAccount(id, updates);
 };
 
@@ -44,18 +77,32 @@ export const deleteAccount = async (id: string): Promise<void> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateAccountsCache();
   return await cloudDb.cloudDeleteAccount(id);
 };
 
 // Transaction operations
-// Now uses secure encrypted cache with API fallback (no Firestore persistence)
 export const getTransactions = async (accountId?: string): Promise<Transaction[]> => {
-  // Manual-only mode: transactions come from Firestore only (no TrueLayer API / token reads).
-  const transactions = await cloudDb.cloudGetTransactions();
-  if (accountId) {
-    return transactions.filter(t => t.accountId === accountId);
+  if (!isFirebaseAvailable()) {
+    throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
-  return transactions;
+  const now = Date.now();
+  if (transactionsCache && now - transactionsCache.ts < CACHE_TTL_MS) {
+    const transactions = transactionsCache.data;
+    return accountId ? transactions.filter((t) => t.accountId === accountId) : transactions;
+  }
+  if (transactionsInFlight) {
+    const transactions = await transactionsInFlight;
+    return accountId ? transactions.filter((t) => t.accountId === accountId) : transactions;
+  }
+  transactionsInFlight = cloudDb.cloudGetTransactions();
+  try {
+    const transactions = await transactionsInFlight;
+    transactionsCache = { data: transactions, ts: Date.now() };
+    return accountId ? transactions.filter((t) => t.accountId === accountId) : transactions;
+  } finally {
+    transactionsInFlight = null;
+  }
 };
 
 export const getTransactionsPage = async (options: {
@@ -70,6 +117,7 @@ export const addTransaction = async (transaction: Omit<Transaction, 'id' | 'crea
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateTransactionsCache();
   return await cloudDb.cloudAddTransaction(transaction);
 };
 
@@ -77,6 +125,7 @@ export const updateTransaction = async (id: string, updates: Partial<Transaction
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateTransactionsCache();
   return await cloudDb.cloudUpdateTransaction(id, updates);
 };
 
@@ -84,6 +133,7 @@ export const deleteTransaction = async (id: string): Promise<void> => {
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateTransactionsCache();
   return await cloudDb.cloudDeleteTransaction(id);
 };
 
@@ -91,6 +141,7 @@ export const untagTransaction = async (id: string, untagType: 'subscription' | '
   if (!isFirebaseAvailable()) {
     throw new Error('Firebase is not available. Please check your connection and Firebase configuration.');
   }
+  invalidateTransactionsCache();
   return await cloudDb.cloudUntagTransaction(id, untagType);
 };
 

@@ -24,8 +24,9 @@ export default function AdvisorIndex() {
   const [searchText, setSearchText] = useState('');
   const [searchFocusRequestId, setSearchFocusRequestId] = useState(0);
 
-  // On iOS, NativeTabs can overlay content; safe-area doesn't include tab bar height.
-  const tabBarOverlayOffset = Platform.OS === 'ios' ? 58 : Platform.OS === 'web' ? 70 : 0;
+  // Tab bar overlays content: add bottom padding so content isn't hidden behind it.
+  const tabBarOverlayOffset =
+    Platform.OS === 'ios' ? 58 : Platform.OS === 'android' ? 72 : Platform.OS === 'web' ? 70 : 0;
 
   useEffect(() => {
     (async () => {
@@ -112,6 +113,13 @@ export default function AdvisorIndex() {
 
   const quickActions = [
     {
+      id: 'receipt',
+      title: 'Split receipt',
+      subtitle: 'Photo a bill, tick your items',
+      icon: 'receipt-outline' as const,
+      prompt: '__receipt_split__',
+    },
+    {
       id: 'spending',
       title: 'Spending',
       subtitle: 'What’s driving it?',
@@ -162,7 +170,13 @@ export default function AdvisorIndex() {
           />
           <AdvisorLanding
             disabled={loading}
-            onAsk={(prompt) => goToChat(prompt)}
+            onAsk={(prompt) => {
+              if (prompt === '__receipt_split__') {
+                router.push({ pathname: '/(tabs)/ai/chat' as any, params: { mode: 'receipt_split' } });
+              } else {
+                goToChat(prompt);
+              }
+            }}
             onStartCheckIn={handleStartCheckIn}
             searchValue={searchText}
             onSearchChange={setSearchText}

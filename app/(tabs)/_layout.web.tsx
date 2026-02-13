@@ -83,7 +83,8 @@ export default function TabLayout() {
   };
   
   const activeTab = getActiveTab();
-  
+  const isReceiptSplit = pathname?.includes('receipt-split') ?? false;
+
   // Use theme colors
   const backgroundColor = isDark ? colors.dark.background : colors.background;
   const activeColor = isDark ? colors.dark.primary : colors.primary;
@@ -122,6 +123,7 @@ export default function TabLayout() {
       <View style={styles.content}>
         <Slot />
       </View>
+      {!isReceiptSplit && (
       <View style={[
         styles.tabBar, 
         { 
@@ -155,6 +157,7 @@ export default function TabLayout() {
           );
         })}
       </View>
+      )}
     </View>
   );
 }

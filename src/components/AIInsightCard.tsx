@@ -1,139 +1,117 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useRef, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ActivityIndicator,
+  TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  type NativeSyntheticEvent,
+  type NativeScrollEvent,
+} from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { askAI } from '../services/aiService';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
-import { Account, Transaction, Budget, Subscription } from '../database/schema';
-import { filterTransactionsByPeriod, FilterPeriod } from '../utils/transactionFilters';
+import type { Insight, InsightType } from '../types/insight';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CONTAINER_WIDTH = SCREEN_WIDTH - 40; // marginHorizontal 20 * 2
+const CARD_WIDTH = CONTAINER_WIDTH; // one card per page for pagingEnabled
 
 interface AIInsightCardProps {
-  accounts: Account[];
-  transactions: Transaction[];
-  budgets: Budget[];
-  subscriptions: Subscription[];
-  filterPeriod: FilterPeriod;
-  currencyCode: string;
+  insights: Insight[];
+  loading: boolean;
+  accessDenied?: boolean;
+  accessDeniedReason?: 'upgrade' | 'limit' | 'demo_paywall';
+  onRefresh: () => void;
 }
 
-const insightTopics = [
-  'How am I doing financially this period? Give me a brief overview.',
-  'What is my savings rate this period? Am I saving enough?',
-  'Are there any concerning spending patterns I should be aware of?',
-  'How healthy are my budgets? Am I staying within limits?',
-  'What percentage of my income goes to subscriptions? Is it reasonable?',
-  'What is my biggest expense category this period?',
-  'Am I spending more or less than usual? What does this mean?',
-  'What financial habit should I focus on improving?',
-];
+function getIconForType(type: InsightType, priority: string): { name: keyof typeof Ionicons.glyphMap; color?: string } {
+  if (priority === 'critical') {
+    return { name: 'warning', color: '#F59E0B' };
+  }
+  switch (type) {
+    case 'spending_pattern':
+      return { name: 'trending-up' };
+    case 'prediction':
+      return { name: 'warning', color: '#F59E0B' };
+    case 'opportunity':
+      return { name: 'bulb' };
+    case 'anomaly':
+      return { name: 'alert-circle' };
+    default:
+      return { name: 'information-circle' };
+  }
+}
+
+function SingleInsightCard({
+  insight,
+  colors,
+  styles,
+  onCtaPress,
+}: {
+  insight: Insight;
+  colors: { surface: string; border: string; text: string; textSecondary: string; primary: string };
+  styles: ReturnType<typeof createStyles>;
+  onCtaPress: (insight: Insight) => void;
+}) {
+  const { name: iconName, color: iconColor } = getIconForType(insight.type, insight.priority);
+  return (
+    <View style={[styles.cardPage, { width: CARD_WIDTH }]}>
+      <View style={styles.cardIconRow}>
+        <View style={[styles.iconContainer, iconColor && { backgroundColor: iconColor + '20' }]}>
+          <Ionicons name={iconName} size={20} color={iconColor || colors.primary} />
+        </View>
+      </View>
+      <Text style={styles.headline} numberOfLines={2}>
+        {insight.headline}
+      </Text>
+      <Text style={styles.detail} numberOfLines={3}>
+        {insight.detail}
+      </Text>
+      <TouchableOpacity
+        style={styles.ctaButton}
+        onPress={() => onCtaPress(insight)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.ctaLabel}>{insight.ctaLabel}</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 export default function AIInsightCard({
-  accounts,
-  transactions,
-  budgets,
-  subscriptions,
-  filterPeriod,
-  currencyCode,
+  insights,
+  loading,
+  accessDenied = false,
+  accessDeniedReason,
+  onRefresh,
 }: AIInsightCardProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [insight, setInsight] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
-  const topicIndexRef = useRef<number>(0);
+  const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
+  const [pageIndex, setPageIndex] = React.useState(0);
 
-  useEffect(() => {
-    // Intentionally do NOT auto-generate insights.
-    // Auto-calling the AI endpoint causes noisy "Network Error" logs (and unnecessary cost)
-    // during app startup / bank OAuth / background transitions.
-    setInsight('');
-    setError(false);
-    setLoading(false);
-  }, [accounts, transactions, budgets, subscriptions, filterPeriod]);
-
-  const generateInsight = async () => {
-    try {
-      if (loading) return; // prevent double-taps
-      setLoading(true);
-      setError(false);
-      
-      // Rotate through topics - use a combination of time and data to determine index
-      const dataHash = accounts.length + transactions.length + budgets.length + subscriptions.length;
-      const timeBased = Math.floor(Date.now() / (1000 * 60)); // Changes every minute
-      const topicIndex = (dataHash + timeBased) % insightTopics.length;
-      topicIndexRef.current = topicIndex;
-      
-      const question = insightTopics[topicIndex];
-      const response = await askAI(question, [], filterPeriod);
-      
-      // Limit insight length for compact display
-      const maxLength = 150;
-      const truncatedInsight = response.length > maxLength 
-        ? response.substring(0, maxLength).trim() + '...'
-        : response;
-      
-      setInsight(truncatedInsight);
-    } catch (err) {
-      // Avoid noisy red-screen style logs for expected network/API failures.
-      setError(true);
-      setInsight('Unable to generate insight at this time.');
-    } finally {
-      setLoading(false);
+  const onCtaPress = (insight: Insight) => {
+    if (insight.ctaRoute) {
+      if (insight.ctaRoute.startsWith('/(tabs)')) {
+        router.push(insight.ctaRoute as any);
+      } else {
+        router.push(insight.ctaRoute as any);
+      }
+    } else {
+      router.push('/(tabs)/advisor');
     }
   };
 
-  // Function to render text with markdown bold (**text**)
-  const renderTextWithBold = (text: string) => {
-    const parts: Array<{ text: string; bold: boolean }> = [];
-    let currentIndex = 0;
-    const regex = /\*\*(.*?)\*\*/g;
-    let match;
-
-    while ((match = regex.exec(text)) !== null) {
-      // Add text before the bold
-      if (match.index > currentIndex) {
-        parts.push({
-          text: text.substring(currentIndex, match.index),
-          bold: false,
-        });
-      }
-      // Add bold text
-      parts.push({
-        text: match[1],
-        bold: true,
-      });
-      currentIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (currentIndex < text.length) {
-      parts.push({
-        text: text.substring(currentIndex),
-        bold: false,
-      });
-    }
-
-    // If no bold markers found, return original text
-    if (parts.length === 0) {
-      return (
-        <Text style={styles.insightText} numberOfLines={3}>
-          {text}
-        </Text>
-      );
-    }
-
-    return (
-      <Text style={styles.insightText} numberOfLines={3}>
-        {parts.map((part, index) => (
-          <Text
-            key={index}
-            style={part.bold ? styles.insightTextBold : undefined}
-          >
-            {part.text}
-          </Text>
-        ))}
-      </Text>
-    );
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const index = Math.round(x / CARD_WIDTH);
+    if (index >= 0 && index < insights.length) setPageIndex(index);
   };
 
   if (loading) {
@@ -143,7 +121,8 @@ export default function AIInsightCard({
           <View style={styles.iconContainer}>
             <Ionicons name="sparkles" size={18} color={colors.primary} />
           </View>
-          <Text style={styles.title}>AI Insight</Text>
+          <Text style={styles.title}>AI Insights</Text>
+          <View style={styles.refreshButton} />
         </View>
         <View style={styles.content}>
           <ActivityIndicator size="small" color={colors.primary} />
@@ -152,85 +131,204 @@ export default function AIInsightCard({
     );
   }
 
+  if (accessDenied) {
+    const message =
+      accessDeniedReason === 'limit'
+        ? 'Weekly AI limit reached. Try again next week.'
+        : accessDeniedReason === 'demo_paywall'
+          ? 'Sign in to see AI insights.'
+          : 'Upgrade to see AI insights.';
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>AI Insights</Text>
+          <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
+            <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.content}>
+          <Text style={styles.insightText}>{message}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!insights || insights.length === 0) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.iconContainer}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <Text style={styles.title}>AI Insights</Text>
+          <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
+            <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.content}>
+          <Text style={styles.insightText}>No insights right now. Pull to refresh or tap Refresh.</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
-    <TouchableOpacity 
-      style={styles.container}
-      onPress={generateInsight}
-      activeOpacity={0.7}
-    >
+    <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.iconContainer}>
           <Ionicons name="sparkles" size={18} color={colors.primary} />
         </View>
-        <Text style={styles.title}>AI Insight</Text>
-        <TouchableOpacity 
-          onPress={(e) => {
-            e.stopPropagation();
-            generateInsight();
-          }}
-          style={styles.refreshButton}
-        >
+        <Text style={styles.title}>AI Insights</Text>
+        <TouchableOpacity onPress={onRefresh} style={styles.refreshButton}>
           <Ionicons name="refresh" size={16} color={colors.textSecondary} />
         </TouchableOpacity>
       </View>
-      <View style={styles.content}>
-        {insight ? renderTextWithBold(insight) : (
-          <Text style={styles.insightText} numberOfLines={3}>
-            Tap to generate an insight
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScroll}
+        contentContainerStyle={styles.carouselContent}
+        decelerationRate="fast"
+      >
+        {insights.map((insight, index) => (
+          <SingleInsightCard
+            key={`${insight.headline}-${index}`}
+            insight={insight}
+            colors={colors}
+            styles={styles}
+            onCtaPress={onCtaPress}
+          />
+        ))}
+      </ScrollView>
+      {insights.length > 1 && (
+        <View style={styles.dots}>
+          {insights.map((_, i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                i === pageIndex && styles.dotActive,
+              ]}
+            />
+          ))}
+        </View>
+      )}
+    </View>
   );
 }
 
-const createStyles = (colors: { surface: string; border: string; text: string; textSecondary: string; primary: string }) =>
+const createStyles = (colors: {
+  surface: string;
+  border: string;
+  text: string;
+  textSecondary: string;
+  primary: string;
+}) =>
   StyleSheet.create({
-  container: {
-    backgroundColor: colors.surface,
-    marginHorizontal: 20,
-    marginBottom: 24,
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 8,
-  },
-  iconContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary + '10',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  title: {
-    ...typography.body,
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.text,
-    flex: 1,
-  },
-  refreshButton: {
-    padding: 4,
-  },
-  content: {
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  insightText: {
-    ...typography.bodySmall,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textSecondary,
-  },
-  insightTextBold: {
-    fontWeight: '700',
-  },
-});
-
+    container: {
+      backgroundColor: colors.surface,
+      marginHorizontal: 20,
+      marginBottom: 24,
+      paddingVertical: 16,
+      paddingHorizontal: 0,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      paddingHorizontal: 16,
+      gap: 8,
+    },
+    iconContainer: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.primary + '10',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    title: {
+      ...typography.body,
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      flex: 1,
+    },
+    refreshButton: {
+      padding: 4,
+      minWidth: 28,
+    },
+    content: {
+      minHeight: 48,
+      justifyContent: 'center',
+      paddingHorizontal: 16,
+    },
+    insightText: {
+      ...typography.bodySmall,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+    },
+    carouselContent: {
+      paddingHorizontal: 16,
+    },
+    cardPage: {
+      paddingHorizontal: 16,
+    },
+    cardIconRow: {
+      marginBottom: 8,
+    },
+    headline: {
+      ...typography.body,
+      fontSize: 15,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 6,
+    },
+    detail: {
+      ...typography.bodySmall,
+      fontSize: 13,
+      lineHeight: 18,
+      color: colors.textSecondary,
+      marginBottom: 12,
+    },
+    ctaButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 4,
+    },
+    ctaLabel: {
+      ...typography.bodySmall,
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.primary,
+    },
+    dots: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 12,
+    },
+    dot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.border,
+    },
+    dotActive: {
+      backgroundColor: colors.primary,
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+  });

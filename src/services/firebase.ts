@@ -655,17 +655,7 @@ export const logoutUser = async (): Promise<void> => {
   
   // Set flag to prevent auto-restore
   isSigningOut = true;
-  
-  // Clear local PIN before signing out (for security)
-  try {
-    const { deletePIN } = await import('./pinService');
-    await deletePIN();
-    console.log('[firebase] Cleared local PIN on logout');
-  } catch (error) {
-    console.error('[firebase] Error clearing PIN on logout:', error);
-    // Don't block logout if PIN clearing fails
-  }
-  
+
   // Sign out from Firebase
   await signOut(auth);
   

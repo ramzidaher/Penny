@@ -2,9 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { useNavigation } from '../utils/navigation';
 import { useDialog } from '../contexts/DialogContext';
-import { addSubscription, getAccounts } from '../database/db';
+import { addSubscription, getAccounts, getSubscriptions } from '../database/db';
 import { scheduleAllNotifications } from '../services/notifications';
-import { Account } from '../database/schema';
+import { Account, Subscription } from '../database/schema';
+import { normalizeMerchantName } from '../utils/subscriptionDeduplication';
 import { useTheme } from '../contexts/ThemeContext';
 import { typography } from '../theme/typography';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -28,16 +29,20 @@ export default function AddSubscriptionScreen() {
   const [accountId, setAccountId] = useState('');
   const [nextBillingDate, setNextBillingDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [label, setLabel] = useState('');
+  const [existingSubscriptions, setExistingSubscriptions] = useState<Subscription[]>([]);
+  const [markAsDifferentService, setMarkAsDifferentService] = useState(false);
 
   useEffect(() => {
-    const loadAccounts = async () => {
-      const accs = await getAccounts();
+    const load = async () => {
+      const [accs, subs] = await Promise.all([getAccounts(), getSubscriptions()]);
       setAccounts(accs);
+      setExistingSubscriptions(subs);
       if (accs.length > 0 && !accountId) {
         setAccountId(accs[0].id);
       }
     };
-    loadAccounts();
+    load();
   }, []);
 
   const handleSave = async () => {
@@ -57,6 +62,11 @@ export default function AddSubscriptionScreen() {
       return;
     }
 
+    const sameMerchant = name.trim() && existingSubscriptions.some(
+      (s) => !s.isDifferentService && normalizeMerchantName(s.name) === normalizeMerchantName(name.trim())
+    );
+    const isDifferentService = sameMerchant && (markAsDifferentService || label.trim().length > 0);
+
     try {
       await addSubscription({
         name: name.trim(),
@@ -65,6 +75,8 @@ export default function AddSubscriptionScreen() {
         frequency,
         nextBillingDate: nextBillingDate.toISOString(),
         accountId,
+        ...(label.trim() && { label: label.trim() }),
+        ...(isDifferentService && { isDifferentService: true }),
       });
       // Reschedule notifications after adding subscription
       await scheduleAllNotifications();
@@ -84,6 +96,41 @@ export default function AddSubscriptionScreen() {
             value={name}
             onChangeText={setName}
             placeholder="e.g., Netflix, Spotify"
+            placeholderTextColor={colors.textLight}
+          />
+        </View>
+
+        {name.trim() && existingSubscriptions.some(
+          (s) => !s.isDifferentService && normalizeMerchantName(s.name) === normalizeMerchantName(name.trim())
+        ) && !markAsDifferentService && !label.trim() && (
+          <View style={styles.differentServicePrompt}>
+            <Text style={styles.differentServicePromptText}>Is this a different service?</Text>
+            <View style={styles.differentServicePromptActions}>
+              <TouchableOpacity
+                style={[styles.differentServiceButton, styles.differentServiceButtonPrimary]}
+                onPress={() => setMarkAsDifferentService(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.differentServiceButtonTextPrimary}>Yes, add a label</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.differentServiceButton}
+                onPress={() => {}}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.differentServiceButtonText}>No, it's a duplicate</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        <View style={styles.field}>
+          <Text style={styles.label}>Label (optional)</Text>
+          <TextInput
+            style={styles.input}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="e.g., Uber One, Uber Eats"
             placeholderTextColor={colors.textLight}
           />
         </View>
@@ -261,6 +308,48 @@ const createStyles = (colors: any) => StyleSheet.create({
     ...typography.body,
     color: colors.background,
     fontWeight: '600',
+  },
+  differentServicePrompt: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  differentServicePromptText: {
+    ...typography.body,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  differentServicePromptActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  differentServiceButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  differentServiceButtonPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  differentServiceButtonText: {
+    ...typography.bodySmall,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  differentServiceButtonTextPrimary: {
+    ...typography.bodySmall,
+    fontWeight: '600',
+    color: colors.background,
   },
 });
 

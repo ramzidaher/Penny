@@ -83,6 +83,19 @@ const ensureAndroidNotificationChannel = async () => {
   }
 };
 
+/** Returns current notification permission status without prompting. Use for contextual prompts. */
+export const getNotificationPermissionStatus = async (): Promise<'granted' | 'denied' | 'undetermined' | null> => {
+  if (Platform.OS === 'web') return null;
+  const isAvailable = await loadNotifications();
+  if (!isAvailable || !Notifications) return null;
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status;
+  } catch {
+    return null;
+  }
+};
+
 export const requestPermissions = async () => {
   // Notifications API is not available on web
   if (Platform.OS === 'web') {

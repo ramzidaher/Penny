@@ -8,6 +8,7 @@ import { getAccounts, getSubscriptions, addSubscription, updateTransaction } fro
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format, addMonths } from 'date-fns';
 import { scheduleAllNotifications } from '../services/notifications';
+import { normalizeMerchantName } from '../utils/subscriptionDeduplication';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -42,6 +43,8 @@ export default function SubscriptionCreationDialog({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedExistingSubscription, setSelectedExistingSubscription] = useState<string | null>(null);
   const [mode, setMode] = useState<'create' | 'link'>('create');
+  const [label, setLabel] = useState('');
+  const [markAsDifferentService, setMarkAsDifferentService] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
@@ -184,6 +187,10 @@ export default function SubscriptionCreationDialog({
         });
         onComplete(selectedExistingSubscription);
       } else {
+        const sameMerchant = name.trim() && existingSubscriptions.some(
+          (s) => !s.isDifferentService && normalizeMerchantName(s.name) === normalizeMerchantName(name.trim())
+        );
+        const isDifferentService = sameMerchant && (markAsDifferentService || label.trim().length > 0);
         // Create new subscription
         const subscriptionId = await addSubscription({
           name: name.trim(),
@@ -192,6 +199,8 @@ export default function SubscriptionCreationDialog({
           frequency,
           nextBillingDate: nextBillingDate.toISOString(),
           accountId,
+          ...(label.trim() && { label: label.trim() }),
+          ...(isDifferentService && { isDifferentService: true }),
         });
 
         // Link transaction to subscription (type + category so backend never stores income+subscriptionId)
@@ -231,8 +240,15 @@ export default function SubscriptionCreationDialog({
     setSelectedExistingSubscription(null);
     setMode('create');
     setShowDatePicker(false);
+    setLabel('');
+    setMarkAsDifferentService(false);
     onClose();
   };
+
+  const sameMerchantExisting = name.trim() && mode === 'create' && existingSubscriptions.some(
+    (s) => !s.isDifferentService && normalizeMerchantName(s.name) === normalizeMerchantName(name.trim())
+  );
+  const showDifferentServicePrompt = sameMerchantExisting && !markAsDifferentService && !label.trim();
 
   if (!transaction) return null;
 
@@ -331,6 +347,40 @@ export default function SubscriptionCreationDialog({
                   />
                 </View>
               </View>
+
+              {showDifferentServicePrompt && (
+                <View style={styles.differentServicePrompt}>
+                  <Text style={styles.differentServicePromptText}>Is this a different service?</Text>
+                  <View style={styles.differentServicePromptActions}>
+                    <TouchableOpacity
+                      style={[styles.differentServiceButton, styles.differentServiceButtonPrimary]}
+                      onPress={() => setMarkAsDifferentService(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.differentServiceButtonTextPrimary}>Yes, add a label</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.differentServiceButton}
+                      onPress={() => {}}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.differentServiceButtonText}>No, it's a duplicate</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              {(label.trim() || markAsDifferentService) && (
+                <View style={styles.labelInputContainer}>
+                  <TextInput
+                    style={styles.input}
+                    value={label}
+                    onChangeText={setLabel}
+                    placeholder="Label (e.g. Uber One, Uber Eats)"
+                    placeholderTextColor={colors.textLight}
+                  />
+                </View>
+              )}
 
               <View style={styles.periodRow}>
                 <View style={styles.periodContainer}>
@@ -524,6 +574,56 @@ const createStyles = (colors: any) => StyleSheet.create({
   existingItemTextActive: {
     color: colors.background,
     fontWeight: '600',
+  },
+  differentServicePrompt: {
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  differentServicePromptText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 10,
+  },
+  differentServicePromptActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  differentServiceButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+  },
+  differentServiceButtonPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  differentServiceButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  differentServiceButtonTextPrimary: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.background,
+  },
+  labelInputContainer: {
+    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    minHeight: 48,
   },
   inputRow: {
     flexDirection: 'row',

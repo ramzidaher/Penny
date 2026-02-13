@@ -16,8 +16,9 @@ import { getAllConnections } from './truelayerService';
 import { syncTrueLayerAccounts, syncTrueLayerTransactions } from './cloudDb';
 import { refreshTransactions, getTransactions } from './transactionService';
 import { refreshAccountBalances } from './accountBalanceService';
-import { getAccounts } from '../database/db';
+import { getAccounts, getDebts } from '../database/db';
 import { triggerAutoTaggingInBackground } from './autoTaggingService';
+import { findPendingDebtMatches } from './debtReconciliationService';
 
 const SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours (4x per day)
 const MIN_SYNC_INTERVAL_MS = 60 * 60 * 1000; // Minimum 1 hour between syncs
@@ -93,9 +94,15 @@ export const performAutoSync = async (force: boolean = false): Promise<void> => 
       }
     }
 
-    // Auto-tagging: run once in background (non-blocking) after all connections synced
-    getTransactions(false).then((transactions) => {
+    // Auto-tagging and debt reconciliation: run once in background (non-blocking) after all connections synced
+    getTransactions(false).then(async (transactions) => {
       triggerAutoTaggingInBackground(transactions);
+      try {
+        const debts = await getDebts();
+        await findPendingDebtMatches(transactions, debts);
+      } catch {
+        // Debt reconciliation is optional; ignore errors
+      }
     }).catch(() => {});
 
     lastSyncTime = now;

@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { AppSettings } from '../database/settingsSchema';
-import { getSettings } from '../services/settingsService';
+import { getSettings, clearSettingsCache } from '../services/settingsService';
 import { buildThemeColors, ThemeColors } from '../theme/themeColors';
 import { getAccentPresetById, isValidHexColor, normalizeHex } from '../theme/themePresets';
+import { getAuth, onAuthStateChanged } from '../services/firebase';
 
 type ThemeContextValue = {
   colors: ThemeColors;
@@ -28,8 +29,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Load theme on mount (e.g. app open with existing session)
   useEffect(() => {
     refreshFromCloud();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // When user logs in (e.g. new device), clear settings cache and reload theme so it syncs from cloud
+  useEffect(() => {
+    const auth = getAuth();
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        clearSettingsCache();
+        refreshFromCloud();
+      } else {
+        setSettings(null);
+      }
+    });
+    return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

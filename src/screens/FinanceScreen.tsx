@@ -24,6 +24,7 @@ import SettingsScreen from './SettingsScreen';
 import { formatCurrencySync } from '../utils/currency';
 import { useFinanceOverviewData } from '../hooks/useFinanceOverviewData';
 import { useFinancialSummary } from '../hooks/useFinancialSummary';
+import { getDuplicateGroups } from '../utils/subscriptionDeduplication';
 
 const Stack = createStackNavigator();
 
@@ -75,6 +76,14 @@ function FinanceHomeScreen({ navigation }: any) {
     .filter(t => t.type === 'expense')
     .reduce((sum, t) => sum + t.amount, 0);
 
+  const allTimeIncome = transactions
+    .filter(t => t.type === 'income')
+    .reduce((sum, t) => sum + t.amount, 0);
+  
+  const allTimeExpenses = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((sum, t) => sum + t.amount, 0);
+
   const activeBudgets = budgets.length;
   const totalBudgetLimit = budgets.reduce((sum, b) => sum + b.limit, 0);
   const totalBudgetSpent = budgets.reduce((sum, b) => sum + b.currentSpent, 0);
@@ -91,6 +100,10 @@ function FinanceHomeScreen({ navigation }: any) {
     .filter(s => new Date(s.nextBillingDate) >= now)
     .sort((a, b) => new Date(a.nextBillingDate).getTime() - new Date(b.nextBillingDate).getTime())
     .slice(0, 3);
+
+  const duplicateGroups = useMemo(() => getDuplicateGroups(subscriptions), [subscriptions]);
+  const duplicateSubscriptionCount = duplicateGroups.reduce((sum, g) => sum + g.count, 0);
+  const duplicateSubscriptionMonthlyTotal = duplicateGroups.reduce((sum, g) => sum + g.monthlyTotal, 0);
 
   const getProgressPercentage = (budget: Budget) => {
     return Math.min((budget.currentSpent / budget.limit) * 100, 100);
@@ -201,6 +214,27 @@ function FinanceHomeScreen({ navigation }: any) {
         </View>
       </View>
 
+      {/* All Time Overview */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>All Time</Text>
+        <View style={styles.overviewCard}>
+          <View style={styles.overviewRow}>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Income</Text>
+              <Text style={[styles.overviewAmount, styles.incomeText]}>
+                {formatCurrencySync(allTimeIncome, currencyCode)}
+              </Text>
+            </View>
+            <View style={styles.overviewItem}>
+              <Text style={styles.overviewLabel}>Expenses</Text>
+              <Text style={[styles.overviewAmount, styles.expenseText]}>
+                {formatCurrencySync(allTimeExpenses, currencyCode)}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+
       {/* Subscriptions Section */}
       {subscriptions.length > 0 && (
         <View style={styles.section}>
@@ -213,6 +247,19 @@ function FinanceHomeScreen({ navigation }: any) {
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
           </View>
+          {duplicateGroups.length > 0 && (
+            <TouchableOpacity
+              style={styles.duplicateSummaryBanner}
+              onPress={() => navigation.navigate('Subscriptions')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="warning" size={18} color={colors.warning} style={styles.duplicateSummaryIcon} />
+              <Text style={styles.duplicateSummaryText}>
+                You have {duplicateSubscriptionCount} duplicate subscription{duplicateSubscriptionCount !== 1 ? 's' : ''} costing{' '}
+                {formatCurrencySync(duplicateSubscriptionMonthlyTotal, currencyCode)}/month
+              </Text>
+            </TouchableOpacity>
+          )}
           {upcomingSubscriptions.length > 0 ? (
             <>
               {upcomingSubscriptions.map((subscription) => {
@@ -622,6 +669,26 @@ const createStyles = (colors: { background: string; surface: string; border: str
     fontSize: 14,
     color: colors.primary,
     fontWeight: '600',
+  },
+  duplicateSummaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning + '18',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.warning + '40',
+    gap: 8,
+  },
+  duplicateSummaryIcon: {
+    marginRight: 0,
+  },
+  duplicateSummaryText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
   },
   budgetCard: {
     backgroundColor: colors.surface,

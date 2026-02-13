@@ -8,6 +8,7 @@ import Avatar from './Avatar';
 interface ScreenHeaderProps {
   title: string;
   subtitle?: string;
+  size?: 'default' | 'compact';
   rightAction?: {
     icon: keyof typeof Ionicons.glyphMap;
     onPress: () => void;
@@ -19,7 +20,7 @@ interface ScreenHeaderProps {
   titleLetterSpacing?: number;
 }
 
-export default function ScreenHeader({ title, subtitle, rightAction, rightAvatarSeed, style, titleFontFamily, titleLetterSpacing }: ScreenHeaderProps) {
+export default function ScreenHeader({ title, subtitle, size = 'default', rightAction, rightAvatarSeed, style, titleFontFamily, titleLetterSpacing }: ScreenHeaderProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const { colors } = useTheme();
@@ -32,15 +33,22 @@ export default function ScreenHeader({ title, subtitle, rightAction, rightAvatar
   const paddingTop = insets.top;
 
   return (
-    <View style={[styles.header, { paddingTop }, style]}>
+    <View style={[styles.header, size === 'compact' && styles.headerCompact, { paddingTop }, style]}>
       <View style={styles.headerContent}>
         <View style={styles.headerTextContainer}>
           {subtitle && (
-            <Text style={styles.subtitle} numberOfLines={1} ellipsizeMode="tail">{subtitle}</Text>
+            <Text
+              style={[styles.subtitle, size === 'compact' && styles.subtitleCompact]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {subtitle}
+            </Text>
           )}
           <Text 
             style={[
               styles.title, 
+              size === 'compact' && styles.titleCompact,
               titleFontFamily && { 
                 fontFamily: titleFontFamily,
                 fontWeight: undefined // Remove fontWeight when using custom font
@@ -81,6 +89,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
+  headerCompact: {
+    paddingBottom: 12,
+  },
   headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -98,11 +109,18 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: 4,
     fontWeight: '500',
   },
+  subtitleCompact: {
+    fontSize: 12,
+  },
   title: {
     fontSize: 32,
     fontWeight: '700',
     color: colors.text,
     letterSpacing: -1,
+  },
+  titleCompact: {
+    fontSize: 22,
+    letterSpacing: -0.5,
   },
   titleWithCustomFont: {
     fontWeight: undefined, // Remove fontWeight when using custom font

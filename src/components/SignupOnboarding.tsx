@@ -12,6 +12,8 @@ import {
   Modal,
   KeyboardAvoidingView,
   ScrollView,
+  useWindowDimensions,
+  useColorScheme,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -19,13 +21,14 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { registerUser, initFirebase, isUsernameAvailable, isEmailAvailable } from '../services/firebase';
 import Avatar from './Avatar';
+import LoadingScreen from './LoadingScreen';
 import { AVATAR_SEEDS } from '../utils/avatarUtils';
-import { requestPermissions } from '../services/notifications';
 import { isBiometricAvailable, getBiometricType, saveBiometricCredentials } from '../services/biometricService';
 import { setPIN } from '../services/pinService';
 import { markPINSetupComplete } from '../services/pinEnforcement';
 import { useDialog } from '../contexts/DialogContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { usePinReport } from '../contexts/PinReportContext';
 import { typography } from '../theme/typography';
 import { format } from 'date-fns';
 
@@ -44,14 +47,24 @@ interface SignupData {
 
 export default function SignupOnboarding() {
   const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const colorScheme = useColorScheme();
+  const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = useWindowDimensions();
+  const isSmallScreen = SCREEN_WIDTH < 375;
+  const isLargeScreen = SCREEN_WIDTH > 414;
+  const styles = useMemo(
+    () => createStyles(colors, { SCREEN_WIDTH, SCREEN_HEIGHT, isSmallScreen, isLargeScreen }),
+    [colors, SCREEN_WIDTH, SCREEN_HEIGHT, isSmallScreen, isLargeScreen]
+  );
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const dialog = useDialog();
+  const pinReport = usePinReport();
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [showCreateAccountSplash, setShowCreateAccountSplash] = useState(false);
   const [slideAnim] = useState(new Animated.Value(0));
-  
+  const continueButtonScale = useRef(new Animated.Value(1)).current;
+
   // Form data
   const [formData, setFormData] = useState<SignupData>({
     name: '',
@@ -83,19 +96,28 @@ export default function SignupOnboarding() {
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   
   // Permissions
-  const [notificationPermission, setNotificationPermission] = useState<boolean | null>(null);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricType, setBiometricType] = useState('Biometric');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
 
   // Preferences state
   const [defaultCurrency, setDefaultCurrency] = useState<string>('USD');
-  const [lowBalanceThreshold, setLowBalanceThreshold] = useState<number>(100);
+  const [lowBalanceThreshold, setLowBalanceThreshold] = useState<number>(1000);
   const [showCurrencyDropdown, setShowCurrencyDropdown] = useState(false);
   const [isCustomThreshold, setIsCustomThreshold] = useState(false);
   const [customThreshold, setCustomThreshold] = useState<string>('');
 
+  // Avatar step: which page of the 4x3 grid (0 or 1) for swipe between 12+12
+  const [avatarPageIndex, setAvatarPageIndex] = useState(0);
+  const [avatarScrollWidth, setAvatarScrollWidth] = useState(SCREEN_WIDTH);
+  const avatarScrollWidthRef = useRef(SCREEN_WIDTH);
+  avatarScrollWidthRef.current = avatarScrollWidth;
+
   const totalSteps = 9;
+
+  const AVATAR_PAGE_SIZE = 12;
+  const avatarChunk1 = AVATAR_SEEDS.slice(0, AVATAR_PAGE_SIZE);
+  const avatarChunk2 = AVATAR_SEEDS.slice(AVATAR_PAGE_SIZE, AVATAR_PAGE_SIZE * 2);
 
   // Check biometric availability on mount
   useEffect(() => {
@@ -127,6 +149,30 @@ export default function SignupOnboarding() {
     }).start();
   }, [currentStep]);
 
+  // Continue button pulse animation on first page only
+  useEffect(() => {
+    if (currentStep !== 1) {
+      continueButtonScale.setValue(1);
+      return;
+    }
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(continueButtonScale, {
+          toValue: 1.04,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(continueButtonScale, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [currentStep, continueButtonScale]);
+
   // Input length limits to prevent DoS attacks
   const MAX_NAME_LENGTH = 100;
   const MAX_USERNAME_LENGTH = 20;
@@ -134,8 +180,6 @@ export default function SignupOnboarding() {
   const MAX_EMAIL_LENGTH = 254; // RFC 5321
   const MIN_PASSWORD_LENGTH = 8;
   const MAX_PASSWORD_LENGTH = 128;
-  const MIN_AGE = 18; // Minimum age for financial app
-
   const sanitizeInput = (input: string, maxLength: number): string => {
     // Remove leading/trailing whitespace and limit length
     return input.trim().slice(0, maxLength);
@@ -196,10 +240,6 @@ export default function SignupOnboarding() {
     const monthDiff = today.getMonth() - dateOfBirth.getMonth();
     const dayDiff = today.getDate() - dateOfBirth.getDate();
     const actualAge = monthDiff < 0 || (monthDiff === 0 && dayDiff < 0) ? age - 1 : age;
-    
-    if (actualAge < MIN_AGE) {
-      return { valid: false, message: `You must be at least ${MIN_AGE} years old to use this app` };
-    }
     // Check for reasonable maximum age (150 years)
     if (actualAge > 150) {
       return { valid: false, message: 'Please enter a valid date of birth' };
@@ -233,16 +273,20 @@ export default function SignupOnboarding() {
       console.log('[SignupOnboarding] Email check result:', email, 'available:', available);
       setEmailAvailable(available);
     } catch (error: any) {
-      console.error('[SignupOnboarding] Error checking email:', error);
-      // Handle errors
+      // Don't log expected "already taken" as ERROR
+      const isTakenOrInvalid =
+        error.message?.includes('Invalid email') ||
+        error.message?.includes('email-already-in-use') ||
+        error.message?.includes('already registered') ||
+        error.code === 'auth/email-already-in-use';
+      if (!isTakenOrInvalid) {
+        console.error('[SignupOnboarding] Error checking email:', error);
+      }
       if (error.message?.includes('Invalid email')) {
         setEmailAvailable(false);
-      } else if (error.message?.includes('email-already-in-use') || error.code === 'auth/email-already-in-use') {
-        // Email is already in use
+      } else if (error.message?.includes('email-already-in-use') || error.message?.includes('already registered') || error.code === 'auth/email-already-in-use') {
         setEmailAvailable(false);
       } else {
-        // For other errors, don't reveal error details to prevent information leakage
-        // Set to null so user can still try, but don't show checkmark
         setEmailAvailable(null);
       }
     } finally {
@@ -272,16 +316,19 @@ export default function SignupOnboarding() {
       const available = await isUsernameAvailable(username.toLowerCase());
       setUsernameAvailable(available);
     } catch (error: any) {
-      console.error('Error checking username:', error);
-      // Handle rate limiting errors from Cloud Function
+      // Don't log expected "already taken" as ERROR
+      const isTakenOrRateLimit =
+        error.message?.includes('Username is already taken') ||
+        error.message?.includes('Too many requests');
+      if (!isTakenOrRateLimit) {
+        console.error('Error checking username:', error);
+      }
       if (error.message?.includes('Too many requests')) {
         dialog.alert('Rate Limit', 'Too many username checks. Please wait a moment and try again.');
         setUsernameAvailable(null);
       } else if (error.message) {
-        // Show user-friendly error messages
         setUsernameAvailable(false);
       } else {
-        // Don't reveal error details to prevent information leakage
         setUsernameAvailable(null);
       }
     } finally {
@@ -446,21 +493,13 @@ export default function SignupOnboarding() {
   };
 
   const handleBack = () => {
+    if (currentStep === 5 && pinStep === 'confirm') {
+      setPinStep('enter');
+      setFormData((prev) => ({ ...prev, confirmPin: '' }));
+      return;
+    }
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleRequestNotifications = async () => {
-    try {
-      const granted = await requestPermissions();
-      setNotificationPermission(granted);
-      if (granted) {
-        dialog.alert('Success', 'Notifications enabled!');
-      }
-    } catch (error) {
-      console.error('Error requesting notifications:', error);
-      setNotificationPermission(false);
     }
   };
 
@@ -477,7 +516,8 @@ export default function SignupOnboarding() {
     try {
       console.log('[SignupOnboarding] Starting account creation...');
       setLoading(true);
-      
+      setShowCreateAccountSplash(true);
+
       // Final validation before registration
       const sanitizedName = sanitizeInput(formData.name, MAX_NAME_LENGTH);
       const sanitizedUsername = sanitizeInput(formData.username, MAX_USERNAME_LENGTH).toLowerCase();
@@ -497,6 +537,7 @@ export default function SignupOnboarding() {
         console.log('[SignupOnboarding] Username validation failed');
         dialog.alert('Error', usernameValidation.message);
         setLoading(false);
+        setShowCreateAccountSplash(false);
         return;
       }
       
@@ -504,6 +545,7 @@ export default function SignupOnboarding() {
         console.log('[SignupOnboarding] Email validation failed');
         dialog.alert('Error', 'Invalid email address');
         setLoading(false);
+        setShowCreateAccountSplash(false);
         return;
       }
       
@@ -512,6 +554,7 @@ export default function SignupOnboarding() {
         console.log('[SignupOnboarding] DOB validation failed');
         dialog.alert('Error', dobValidation.message);
         setLoading(false);
+        setShowCreateAccountSplash(false);
         return;
       }
       
@@ -520,6 +563,7 @@ export default function SignupOnboarding() {
         console.log('[SignupOnboarding] Password validation failed');
         dialog.alert('Error', passwordValidation.message);
         setLoading(false);
+        setShowCreateAccountSplash(false);
         return;
       }
       
@@ -547,7 +591,8 @@ export default function SignupOnboarding() {
           console.log('[SignupOnboarding] Setting PIN...');
           await setPIN(formData.pin);
           await markPINSetupComplete();
-          console.log('[SignupOnboarding] PIN set successfully - lock screen will show after auth state propagates');
+          pinReport?.reportPinJustSet();
+          console.log('[SignupOnboarding] PIN set successfully - lock screen will show immediately');
         } catch (error) {
           console.error('[SignupOnboarding] Error setting PIN:', error);
           dialog.alert('Error', 'Failed to set PIN. You can set it later in settings.');
@@ -642,6 +687,7 @@ export default function SignupOnboarding() {
       dialog.alert('Registration Failed', errorMessage);
     } finally {
       setLoading(false);
+      setShowCreateAccountSplash(false);
       console.log('[SignupOnboarding] handleCreateAccount completed, loading set to false');
     }
   };
@@ -670,21 +716,21 @@ export default function SignupOnboarding() {
   };
 
   const renderStep1 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.iconContainer}>
+    <View style={[styles.stepContainer, styles.stepContainerStep1]}>
+      <View style={[styles.iconContainer, styles.iconContainerStep1]}>
         <Image 
           source={require('../../assets/PennyLogoTransparent.png')} 
-          style={styles.logo}
+          style={[styles.logo, styles.logoStep1]}
           resizeMode="contain"
         />
       </View>
-      <Text style={styles.title}>
+      <Text style={[styles.title, styles.titleStep1]}>
         Welcome to <Text style={styles.pennyTitleText}>Penny</Text>
       </Text>
-      <Text style={styles.subtitle}>
+      <Text style={[styles.subtitle, styles.subtitleStep1]}>
         Your personal finance companion to track accounts, manage budgets, monitor subscriptions, and gain AI-powered insights.
       </Text>
-      <View style={styles.featuresList}>
+      <View style={[styles.featuresList, styles.featuresListStep1]}>
         <View style={styles.featureItem}>
           <Ionicons name="wallet-outline" size={24} color={colors.primary} />
           <Text style={styles.featureText}>Track accounts & balances</Text>
@@ -730,8 +776,9 @@ export default function SignupOnboarding() {
             placeholderTextColor={colors.textLight}
             value={formData.name}
             onChangeText={(text) => {
-              const sanitized = sanitizeInput(text, MAX_NAME_LENGTH);
-              setFormData({ ...formData, name: sanitized });
+              // Only limit length while typing; allow spaces (trim on submit only)
+              const limited = text.slice(0, MAX_NAME_LENGTH);
+              setFormData({ ...formData, name: limited });
             }}
             onFocus={() => setFocusedInput('name')}
             onBlur={() => setFocusedInput(null)}
@@ -773,9 +820,6 @@ export default function SignupOnboarding() {
             <Ionicons name="close-circle" size={20} color={colors.error} style={styles.inputRightIcon} />
           )}
         </View>
-        {usernameAvailable === false && (
-          <Text style={styles.errorText}>Username is already taken</Text>
-        )}
 
         <View style={[styles.inputContainer, focusedInput === 'email' && styles.inputContainerFocused]}>
           <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
@@ -812,9 +856,6 @@ export default function SignupOnboarding() {
             <Ionicons name="close-circle" size={20} color={colors.error} style={styles.inputRightIcon} />
           )}
         </View>
-        {emailAvailable === false && (
-          <Text style={styles.errorText}>This email is already registered. Please sign in instead.</Text>
-        )}
 
         <View style={[styles.dateInputContainer, focusedInput === 'dateOfBirth' && styles.dateInputContainerFocused]}>
           <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
@@ -881,6 +922,8 @@ export default function SignupOnboarding() {
                         setFormData({ ...formData, dateOfBirth: selectedDate });
                       }
                     }}
+                    themeVariant="light"
+                    textColor={Platform.OS === 'ios' ? '#000000' : undefined}
                     style={styles.datePickerIOS}
                   />
                 </View>
@@ -902,6 +945,7 @@ export default function SignupOnboarding() {
                   setFormData({ ...formData, dateOfBirth: selectedDate });
                 }
               }}
+              themeVariant={colorScheme === 'dark' ? 'dark' : 'light'}
             />
           )
         )}
@@ -909,39 +953,77 @@ export default function SignupOnboarding() {
     </View>
   );
 
-  const renderStep3Avatar = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.logoContainerSmall}>
-        <Image 
-          source={require('../../assets/PennyLogoTransparent.png')} 
-          style={styles.logoSmall}
-          resizeMode="contain"
-        />
+  const renderStep3Avatar = () => {
+    const pageWidth = avatarScrollWidth || SCREEN_WIDTH;
+    const padding = isSmallScreen ? 16 : 20;
+    const gap = isSmallScreen ? 12 : 16;
+    const contentWidth = pageWidth - 2 * padding;
+    const itemSize = Math.floor((contentWidth - 3 * gap) / 4);
+
+    const renderAvatarPage = (seeds: string[]) => (
+      <View style={[styles.avatarGridPage, { width: pageWidth }]}>
+        <View style={[styles.avatarGridInner, { gap }]}>
+          {seeds.map((seed) => (
+            <TouchableOpacity
+              key={seed}
+              style={[
+                styles.avatarGridItem,
+                { width: itemSize, height: itemSize, borderRadius: itemSize / 2 },
+                formData.avatarSeed === seed && styles.avatarGridItemSelected,
+              ]}
+              onPress={() => setFormData({ ...formData, avatarSeed: seed })}
+              activeOpacity={0.7}
+            >
+              <Avatar seed={seed} size={Math.min(56, itemSize - 8)} />
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
-      <Text style={styles.stepTitle}>Choose your avatar</Text>
-      <Text style={styles.stepDescription}>Pick an avatar to represent you</Text>
-      <View style={styles.avatarGrid}>
-        {AVATAR_SEEDS.map((seed) => (
-          <TouchableOpacity
-            key={seed}
-            style={[
-              styles.avatarGridItem,
-              formData.avatarSeed === seed && styles.avatarGridItemSelected,
-            ]}
-            onPress={() => setFormData({ ...formData, avatarSeed: seed })}
-            activeOpacity={0.7}
-          >
-            <Avatar seed={seed} size={56} />
-            {formData.avatarSeed === seed && (
-              <View style={styles.avatarGridCheck}>
-                <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+    );
+
+    return (
+      <View style={styles.stepContainer}>
+        <View style={styles.logoContainerSmall}>
+          <Image 
+            source={require('../../assets/PennyLogoTransparent.png')} 
+            style={styles.logoSmall}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.stepTitle}>Choose your avatar</Text>
+        <Text style={styles.stepDescription}>Pick an avatar to represent you</Text>
+        <View style={styles.avatarSwipeHint}>
+          <Ionicons name="chevron-back" size={14} color={colors.textSecondary} />
+          <Text style={styles.avatarSwipeHintText}>
+            Swipe for more — Page {avatarPageIndex + 1} of 2
+          </Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+        </View>
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onLayout={(e) => setAvatarScrollWidth(e.nativeEvent.layout.width)}
+          onMomentumScrollEnd={(e) => {
+            const w = avatarScrollWidthRef.current || SCREEN_WIDTH;
+            const index = Math.round(e.nativeEvent.contentOffset.x / w);
+            setAvatarPageIndex(Math.min(1, Math.max(0, index)));
+          }}
+          onScroll={(e) => {
+            const w = avatarScrollWidthRef.current || SCREEN_WIDTH;
+            const index = Math.round(e.nativeEvent.contentOffset.x / w);
+            setAvatarPageIndex(Math.min(1, Math.max(0, index)));
+          }}
+          scrollEventThrottle={50}
+          style={styles.avatarScrollView}
+          contentContainerStyle={styles.avatarScrollContent}
+        >
+          {renderAvatarPage(avatarChunk1)}
+          {renderAvatarPage(avatarChunk2)}
+        </ScrollView>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderStep3 = () => (
     <View style={styles.stepContainer}>
@@ -1097,35 +1179,6 @@ export default function SignupOnboarding() {
             secureTextEntry={Platform.OS === 'ios'}
           />
         </View>
-        
-        {/* Show PIN dots for visual feedback */}
-        <View style={styles.pinDotsContainer}>
-          {[0, 1, 2, 3, 4, 5].map((index) => {
-            const currentValue = pinStep === 'enter' ? formData.pin : formData.confirmPin;
-            return (
-              <View
-                key={index}
-                style={[
-                  styles.pinDot,
-                  index < currentValue.length && styles.pinDotFilled,
-                ]}
-              />
-            );
-          })}
-        </View>
-        
-        {pinStep === 'confirm' && (
-          <TouchableOpacity
-            style={styles.backButtonInline}
-            onPress={() => {
-              setPinStep('enter');
-              setFormData({ ...formData, confirmPin: '' });
-            }}
-          >
-            <Ionicons name="arrow-back" size={16} color={colors.primary} />
-            <Text style={styles.backButtonTextInline}>Back</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </View>
   );
@@ -1159,25 +1212,26 @@ export default function SignupOnboarding() {
     ];
 
     return (
-      <View style={styles.stepContainer}>
-        <View style={styles.logoContainerSmall}>
+      <View style={[styles.stepContainer, styles.stepContainerTone]}>
+        <View style={[styles.logoContainerSmall, styles.logoContainerTone]}>
           <Image 
             source={require('../../assets/PennyLogoTransparent.png')} 
             style={styles.logoSmall}
             resizeMode="contain"
           />
         </View>
-        <Text style={styles.stepTitle}>Choose AI Tone</Text>
-        <Text style={styles.stepDescription}>
+        <Text style={[styles.stepTitle, styles.stepTitleTone]}>Choose AI Tone</Text>
+        <Text style={[styles.stepDescription, styles.stepDescriptionTone]}>
           How should Penny's AI talk to you?
         </Text>
         
-        <View style={styles.toneOptionsContainer}>
+        <View style={[styles.toneOptionsContainer, styles.toneOptionsContainerTone]}>
           {toneOptions.map((option) => (
             <TouchableOpacity
               key={option.value}
               style={[
                 styles.toneOptionCardCompact,
+                styles.toneOptionCardCompactTone,
                 formData.aiTone === option.value && styles.toneOptionCardCompactSelected,
               ]}
               onPress={() => setFormData({ ...formData, aiTone: option.value })}
@@ -1204,7 +1258,7 @@ export default function SignupOnboarding() {
           ))}
         </View>
         
-        <Text style={styles.toneNote}>
+        <Text style={[styles.toneNote, styles.toneNoteTone]}>
           You can change this later in Profile settings
         </Text>
       </View>
@@ -1237,19 +1291,19 @@ export default function SignupOnboarding() {
   ];
 
   const renderStep6 = () => (
-    <View style={styles.stepContainer}>
-      <View style={styles.logoContainerSmall}>
+    <View style={[styles.stepContainer, styles.stepContainerPrefs]}>
+      <View style={[styles.logoContainerSmall, styles.logoContainerPrefs]}>
         <Image 
           source={require('../../assets/PennyLogoTransparent.png')} 
           style={styles.logoSmall}
           resizeMode="contain"
         />
       </View>
-      <Text style={styles.stepTitle}>Configure Preferences</Text>
-      <Text style={styles.stepDescription}>Set up your default settings</Text>
+      <Text style={[styles.stepTitle, styles.stepTitlePrefs]}>Configure Preferences</Text>
+      <Text style={[styles.stepDescription, styles.stepDescriptionPrefs]}>Set up your default settings</Text>
       
       {/* Currency Selection */}
-      <View style={styles.preferenceSection}>
+      <View style={[styles.preferenceSection, styles.preferenceSectionCompact]}>
         <Text style={styles.preferenceLabel}>Default Currency</Text>
         <TouchableOpacity
           style={styles.preferenceDropdown}
@@ -1302,13 +1356,13 @@ export default function SignupOnboarding() {
       </View>
 
       {/* Low Balance Threshold */}
-      <View style={styles.preferenceSection}>
+      <View style={[styles.preferenceSection, styles.preferenceSectionCompact]}>
         <Text style={styles.preferenceLabel}>Low Balance Warning</Text>
         <Text style={styles.preferenceDescription}>
           Get notified when balance falls below this amount
         </Text>
         <View style={styles.thresholdButtonsContainer}>
-          {[50, 100, 200, 500].map((amount) => (
+          {[1000, 2000, 3000].map((amount) => (
             <TouchableOpacity
               key={amount}
               style={[
@@ -1398,39 +1452,10 @@ export default function SignupOnboarding() {
           resizeMode="contain"
         />
       </View>
-      <Text style={styles.stepTitle}>Enable Features</Text>
+      <Text style={styles.stepTitle}>Enable Biometric</Text>
       <Text style={styles.stepDescription}>Optional but recommended</Text>
       
       <View style={styles.permissionsContainer}>
-        <View style={styles.permissionCard}>
-          <View style={styles.permissionCardHeader}>
-            <Ionicons name="notifications-outline" size={24} color={colors.primary} />
-            <Text style={styles.permissionTitleCompact}>Notifications</Text>
-          </View>
-          <Text style={styles.permissionDescriptionCompact}>
-            Get alerts for low balances and budget warnings
-          </Text>
-          {notificationPermission === null ? (
-            <TouchableOpacity
-              style={styles.permissionButtonCompact}
-              onPress={handleRequestNotifications}
-            >
-              <Text style={styles.permissionButtonTextCompact}>Enable</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.permissionStatusCompact}>
-              <Ionicons 
-                name={notificationPermission ? 'checkmark-circle' : 'close-circle'} 
-                size={20} 
-                color={notificationPermission ? colors.success : colors.textSecondary} 
-              />
-              <Text style={styles.permissionStatusTextCompact}>
-                {notificationPermission ? 'Enabled' : 'Not Enabled'}
-              </Text>
-            </View>
-          )}
-        </View>
-
         <View style={styles.permissionCard}>
           <View style={styles.permissionCardHeader}>
             <Ionicons 
@@ -1517,23 +1542,24 @@ export default function SignupOnboarding() {
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
+        scrollEnabled={currentStep !== 1 && currentStep !== 7}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-        contentInsetAdjustmentBehavior={Platform.OS === 'ios' ? 'automatic' : undefined}
+        contentInsetAdjustmentBehavior="never"
         bounces={false}
         alwaysBounceVertical={false}
       >
         <View style={[
           styles.content,
           { 
-            paddingTop: Math.max(insets.top + (isSmallScreen ? 20 : 32), isSmallScreen ? 40 : 60),
-            paddingBottom: Math.max(insets.bottom + (isSmallScreen ? 24 : 32), isSmallScreen ? 24 : 32),
+            paddingTop: insets.top + (isSmallScreen ? 12 : 16),
+            paddingBottom: insets.bottom + (isSmallScreen ? 24 : 32),
             minHeight: SCREEN_HEIGHT - insets.top - insets.bottom
           }
         ]}>
-          <View style={styles.progressWrapper}>
+          <View style={[styles.progressWrapper, currentStep === 1 && styles.progressWrapperStep1]}>
             {renderProgressDots()}
           </View>
           
@@ -1561,33 +1587,54 @@ export default function SignupOnboarding() {
                 <Text style={styles.backButtonText}>Back</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              style={[styles.nextButton, loading && styles.nextButtonDisabled]}
-              onPress={async () => {
-                console.log('[SignupOnboarding] Button pressed, currentStep:', currentStep, 'loading:', loading);
-                if (!loading) {
-                  try {
-                    await handleNext();
-                  } catch (error) {
-                    console.error('[SignupOnboarding] Error in handleNext:', error);
+            {currentStep === 1 ? (
+              <Animated.View style={[styles.nextButtonWrapper, { transform: [{ scale: continueButtonScale }] }]}>
+                <TouchableOpacity
+                  style={[styles.nextButton, loading && styles.nextButtonDisabled]}
+                  onPress={async () => {
+                    console.log('[SignupOnboarding] Button pressed, currentStep:', currentStep, 'loading:', loading);
+                    if (!loading) {
+                      try {
+                        await handleNext();
+                      } catch (error) {
+                        console.error('[SignupOnboarding] Error in handleNext:', error);
+                      }
+                    }
+                  }}
+                  disabled={loading}
+                >
+                  <Text style={styles.nextButtonText}>Continue</Text>
+                </TouchableOpacity>
+              </Animated.View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.nextButton, loading && styles.nextButtonDisabled]}
+                onPress={async () => {
+                  console.log('[SignupOnboarding] Button pressed, currentStep:', currentStep, 'loading:', loading);
+                  if (!loading) {
+                    try {
+                      await handleNext();
+                    } catch (error) {
+                      console.error('[SignupOnboarding] Error in handleNext:', error);
+                    }
                   }
-                }
-              }}
-              disabled={loading}
-            >
-              <Text style={styles.nextButtonText}>
-                {loading 
-                  ? 'Creating Account...' 
-                  : currentStep === totalSteps 
-                    ? 'Create Account' 
-                    : currentStep === 5 && pinStep === 'enter'
-                    ? 'Continue'
-                    : currentStep === 5 && pinStep === 'confirm'
-                    ? 'Confirm'
-                    : 'Continue'
-                }
-              </Text>
-            </TouchableOpacity>
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.nextButtonText}>
+                  {loading 
+                    ? 'Creating Account...' 
+                    : currentStep === totalSteps 
+                      ? 'Create Account' 
+                      : currentStep === 5 && pinStep === 'enter'
+                      ? 'Continue'
+                      : currentStep === 5 && pinStep === 'confirm'
+                      ? 'Confirm'
+                      : 'Continue'
+                  }
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {currentStep === 1 && (
@@ -1601,15 +1648,23 @@ export default function SignupOnboarding() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    {showCreateAccountSplash && (
+      <LoadingScreen readyToDismiss={false} onFinish={() => {}} />
+    )}
     </View>
   );
 }
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const isSmallScreen = SCREEN_WIDTH < 375;
-const isLargeScreen = SCREEN_WIDTH > 414;
+type DimensionsParam = {
+  SCREEN_WIDTH: number;
+  SCREEN_HEIGHT: number;
+  isSmallScreen: boolean;
+  isLargeScreen: boolean;
+};
 
-const createStyles = (colors: any) => StyleSheet.create({
+const createStyles = (colors: any, dim: DimensionsParam) => {
+  const { SCREEN_WIDTH, SCREEN_HEIGHT, isSmallScreen, isLargeScreen } = dim;
+  return StyleSheet.create({
   wrapper: {
     flex: 1,
     backgroundColor: colors.background,
@@ -1638,9 +1693,15 @@ const createStyles = (colors: any) => StyleSheet.create({
   progressWrapper: {
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: isSmallScreen ? 24 : 32,
     paddingHorizontal: 20,
     backgroundColor: colors.background,
+    minHeight: 32,
+    flexShrink: 0,
+  },
+  progressWrapperStep1: {
+    marginBottom: isSmallScreen ? 16 : 24,
   },
   progressContainer: {
     flexDirection: 'row',
@@ -1669,7 +1730,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
   stepWrapper: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     minHeight: 0,
     flexShrink: 1,
   },
@@ -2012,38 +2073,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     paddingVertical: 0,
   },
-  pinDotsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: isSmallScreen ? 10 : 12,
-    marginTop: isSmallScreen ? 16 : 20,
-    marginBottom: isSmallScreen ? 12 : 16,
-  },
-  pinDot: {
-    width: isSmallScreen ? 10 : 12,
-    height: isSmallScreen ? 10 : 12,
-    borderRadius: isSmallScreen ? 5 : 6,
-    borderWidth: 2,
-    borderColor: colors.border,
-    backgroundColor: 'transparent',
-  },
-  pinDotFilled: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  backButtonInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: isSmallScreen ? 12 : 16,
-    padding: isSmallScreen ? 8 : 12,
-    gap: 6,
-  },
-  backButtonTextInline: {
-    fontSize: isSmallScreen ? 14 : 16,
-    color: colors.primary,
-    fontWeight: '600',
-  },
   preferenceSection: {
     width: '100%',
     marginBottom: isSmallScreen ? 20 : 24,
@@ -2241,6 +2270,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontWeight: '600',
     fontSize: isSmallScreen ? 15 : typography.body.fontSize,
   },
+  nextButtonWrapper: {
+    flex: 2,
+  },
   nextButton: {
     flex: 2,
     backgroundColor: colors.primary,
@@ -2348,6 +2380,46 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontStyle: 'italic',
     marginTop: 8,
   },
+  // AI Tone step (step 6) compact so buttons stay visible without scrolling
+  stepContainerTone: {
+    paddingVertical: isSmallScreen ? 4 : 8,
+  },
+  logoContainerTone: {
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
+  stepTitleTone: {
+    marginBottom: 4,
+  },
+  stepDescriptionTone: {
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
+  toneOptionsContainerTone: {
+    gap: isSmallScreen ? 6 : 8,
+    marginBottom: isSmallScreen ? 8 : 12,
+  },
+  toneNoteTone: {
+    marginTop: 4,
+  },
+  toneOptionCardCompactTone: {
+    paddingVertical: isSmallScreen ? 8 : 10,
+    paddingHorizontal: isSmallScreen ? 10 : 12,
+  },
+  // Configure Preferences step (step 7) compact so buttons stay visible without scrolling
+  stepContainerPrefs: {
+    paddingVertical: isSmallScreen ? 4 : 8,
+  },
+  logoContainerPrefs: {
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
+  stepTitlePrefs: {
+    marginBottom: 4,
+  },
+  stepDescriptionPrefs: {
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
+  preferenceSectionCompact: {
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
   avatarGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2356,10 +2428,34 @@ const createStyles = (colors: any) => StyleSheet.create({
     width: '100%',
     paddingHorizontal: 8,
   },
+  avatarSwipeHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: isSmallScreen ? 12 : 16,
+  },
+  avatarSwipeHintText: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: isSmallScreen ? 12 : 13,
+  },
+  avatarScrollView: {
+    width: '100%',
+    flexGrow: 0,
+  },
+  avatarScrollContent: {},
+  avatarGridPage: {
+    paddingHorizontal: isSmallScreen ? 16 : 20,
+    flexGrow: 0,
+  },
+  avatarGridInner: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    width: '100%',
+  },
   avatarGridItem: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -2370,12 +2466,26 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderColor: colors.primary,
     borderWidth: 2,
   },
-  avatarGridCheck: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: colors.background,
-    borderRadius: 12,
+  // Step 1 (welcome) compact styles so content fits without scroll
+  stepContainerStep1: {
+    paddingVertical: isSmallScreen ? 8 : 12,
+  },
+  iconContainerStep1: {
+    marginBottom: 20,
+  },
+  logoStep1: {
+    width: isSmallScreen ? 120 : 140,
+    height: isSmallScreen ? 120 : 140,
+  },
+  titleStep1: {
+    marginBottom: isSmallScreen ? 8 : 12,
+  },
+  subtitleStep1: {
+    marginBottom: isSmallScreen ? 16 : 24,
+  },
+  featuresListStep1: {
+    gap: 12,
   },
 });
+};
 

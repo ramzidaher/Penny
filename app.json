@@ -19,11 +19,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.pennyfinance.app",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "associatedDomains": [],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSFaceIDUsageDescription": "Use Face ID to unlock your account securely."
+        "NSFaceIDUsageDescription": "Use Face ID to unlock your account securely.",
+        "NSCameraUsageDescription": "Penny uses the camera to take photos of receipts so you can split bills and track spending.",
+        "NSPhotoLibraryUsageDescription": "Penny uses your photo library so you can choose receipt photos to split bills and track spending.",
+        "NSPhotoLibraryAddUsageDescription": "Penny saves receipt photos to your library when you add them for splitting bills."
       }
     },
     "android": {

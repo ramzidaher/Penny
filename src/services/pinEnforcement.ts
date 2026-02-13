@@ -5,7 +5,7 @@ const PIN_SETUP_REQUIRED_KEY = 'pin_setup_required';
 
 /**
  * Check if PIN setup is required
- * PIN is mandatory after first login
+ * PIN setup is only enforced during onboarding in the UI
  */
 export const isPINSetupRequired = async (): Promise<boolean> => {
   try {

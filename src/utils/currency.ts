@@ -51,10 +51,13 @@ export const formatCurrencySync = (amount: number | undefined | null, currencyCo
   return `${currency.symbol}${safeAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-// Get currency symbol (synchronous version)
+// Get currency symbol (synchronous version). For unknown codes returns the code itself (e.g. THB, KRW) so all currencies display correctly.
 export const getCurrencySymbol = (currencyCode: string = 'USD'): string => {
-  const currency = currencies[currencyCode] || currencies.USD;
-  return currency.symbol;
+  const code = (currencyCode || 'USD').trim().toUpperCase();
+  if (!code) return currencies.USD.symbol;
+  const currency = currencies[code];
+  if (currency) return currency.symbol;
+  return code;
 };
 
 

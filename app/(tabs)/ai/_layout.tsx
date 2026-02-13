@@ -5,6 +5,7 @@ export default function AdvisorLayout() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="chat" />
+      <Stack.Screen name="receipt-split" />
     </Stack>
   );
 }

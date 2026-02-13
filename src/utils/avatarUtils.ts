@@ -4,6 +4,22 @@ import { notionists } from '@dicebear/collection';
 /** Seed strings for the avatar picker (signup and change avatar). Same list in both flows. */
 export const AVATAR_SEEDS = Array.from({ length: 24 }, (_, i) => `avatar-${i + 1}`);
 
+/** Display names for each avatar (by seed index). Used in split receipt and anywhere we show "who" chose an avatar. */
+const AVATAR_NAMES = [
+  'Alex', 'Sam', 'Jordan', 'Riley', 'Casey', 'Morgan', 'Quinn', 'Avery',
+  'Taylor', 'Jamie', 'Reese', 'Drew', 'Skyler', 'Parker', 'Cameron', 'Finley',
+  'River', 'Blake', 'Sage', 'Rowan', 'Emery', 'Hayden', 'Kai', 'Phoenix',
+];
+
+/**
+ * Returns a friendly display name for an avatar seed (e.g. "Alex", "Jordan").
+ * Falls back to "Player N" if seed is not in the known list.
+ */
+export function getAvatarDisplayName(seed: string): string {
+  const i = AVATAR_SEEDS.indexOf(seed);
+  return i >= 0 && i < AVATAR_NAMES.length ? AVATAR_NAMES[i] : seed;
+}
+
 const DICEBEAR_PNG_BASE = 'https://api.dicebear.com/9.x/notionists/png';
 
 /**
